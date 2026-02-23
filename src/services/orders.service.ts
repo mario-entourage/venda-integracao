@@ -1,8 +1,16 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, writeBatch, Firestore,
+  query, where, orderBy, serverTimestamp, writeBatch,
+  Firestore, Query, Timestamp,
 } from 'firebase/firestore';
-import type { Order, OrderCustomer, OrderProduct, OrderShipping } from '@/types';
+import type {
+  Order, OrderCustomer, OrderRepresentative, OrderDoctor,
+  OrderProduct, OrderShipping, ShippingAddress,
+} from '@/types';
+
+// ---------------------------------------------------------------------------
+// Collection / document references
+// ---------------------------------------------------------------------------
 
 export function getOrdersRef(db: Firestore) {
   return collection(db, 'orders');
@@ -15,9 +23,253 @@ export function getOrderRef(db: Firestore, orderId: string) {
 export function getOrderSubcollectionRef(
   db: Firestore,
   orderId: string,
-  subcollection: 'customer' | 'representative' | 'doctor' | 'products' | 'shipping' | 'documents' | 'documentRequests' | 'payments' | 'paymentLinks'
+  subcollection:
+    | 'customer'
+    | 'representative'
+    | 'doctor'
+    | 'products'
+    | 'shipping'
+    | 'documents'
+    | 'documentRequests'
+    | 'payments'
+    | 'paymentLinks',
 ) {
   return collection(db, 'orders', orderId, subcollection);
 }
 
-// TODO: Implement complex order creation with batch writes
+// ---------------------------------------------------------------------------
+// Order creation (atomic batch write)
+// ---------------------------------------------------------------------------
+
+export interface CreateOrderData {
+  customer: { name: string; document: string; userId: string };
+  representative: { name: string; code: string; userId: string };
+  doctor: { name: string; crm: string; userId: string };
+  products: Array<{
+    stockProductId: string;
+    quantity: number;
+    price: number;
+    discount: number;
+    productName: string;
+  }>;
+  currency?: string;
+  discount?: number;
+  legalGuardian?: boolean;
+  anvisaOption?: string;
+  type?: string;
+  shippingAddress?: ShippingAddress;
+  prescriptionDocId?: string;
+}
+
+/**
+ * Create a full order in a single atomic Firestore batch write.
+ *
+ * This writes:
+ *  - The root `orders/{orderId}` document
+ *  - `orders/{orderId}/customer/{auto}` subcollection doc
+ *  - `orders/{orderId}/representative/{auto}` subcollection doc
+ *  - `orders/{orderId}/doctor/{auto}` subcollection doc
+ *  - `orders/{orderId}/products/{auto}` docs (one per line item)
+ *  - `orders/{orderId}/shipping/{auto}` (if a shipping address is provided)
+ *
+ * @returns The pre-generated order document ID.
+ */
+export async function createOrder(
+  db: Firestore,
+  orderData: CreateOrderData,
+  createdById: string,
+): Promise<string> {
+  // Phase 1 -- Pre-generate the order ID so every subcollection can reference it.
+  const orderId = doc(collection(db, 'orders')).id;
+
+  // Phase 2 -- Calculate the order total.
+  const amount = orderData.products.reduce((sum, p) => {
+    const lineTotal = p.price * p.quantity * (1 - (p.discount || 0) / 100);
+    return sum + lineTotal;
+  }, 0);
+
+  // Phase 3 -- Build the batch.
+  const batch = writeBatch(db);
+
+  // --- Order root document ---------------------------------------------------
+  batch.set(doc(db, 'orders', orderId), {
+    status: 'pending',
+    invoice: '',
+    type: orderData.type || 'sale',
+    currency: orderData.currency || 'BRL',
+    amount,
+    discount: orderData.discount || 0,
+    legalGuardian: orderData.legalGuardian || false,
+    anvisaOption: orderData.anvisaOption || '',
+    anvisaStatus: '',
+    zapsignDocId: '',
+    zapsignStatus: '',
+    documentsComplete: false,
+    tristarShipmentId: '',
+    prescriptionDocId: orderData.prescriptionDocId || '',
+    createdById,
+    updatedById: createdById,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // --- Customer subcollection ------------------------------------------------
+  batch.set(doc(collection(db, 'orders', orderId, 'customer')), {
+    name: orderData.customer.name,
+    document: orderData.customer.document,
+    userId: orderData.customer.userId,
+    orderId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // --- Representative subcollection ------------------------------------------
+  batch.set(doc(collection(db, 'orders', orderId, 'representative')), {
+    name: orderData.representative.name,
+    code: orderData.representative.code,
+    saleId: orderId,
+    userId: orderData.representative.userId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // --- Doctor subcollection --------------------------------------------------
+  batch.set(doc(collection(db, 'orders', orderId, 'doctor')), {
+    name: orderData.doctor.name,
+    crm: orderData.doctor.crm,
+    userId: orderData.doctor.userId,
+    orderId,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+
+  // --- Products subcollection ------------------------------------------------
+  for (const product of orderData.products) {
+    batch.set(doc(collection(db, 'orders', orderId, 'products')), {
+      stockProductId: product.stockProductId,
+      quantity: product.quantity,
+      price: product.price,
+      discount: product.discount || 0,
+      productName: product.productName,
+      orderId,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  // --- Shipping subcollection (optional) -------------------------------------
+  if (orderData.shippingAddress) {
+    batch.set(doc(collection(db, 'orders', orderId, 'shipping')), {
+      tracking: '',
+      price: 0,
+      insurance: false,
+      insuranceValue: 0,
+      orderId,
+      address: orderData.shippingAddress,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  // Phase 4 -- Commit everything atomically.
+  await batch.commit();
+  return orderId;
+}
+
+// ---------------------------------------------------------------------------
+// Order updates
+// ---------------------------------------------------------------------------
+
+/**
+ * Update the status of an order and record who made the change.
+ */
+export async function updateOrderStatus(
+  db: Firestore,
+  orderId: string,
+  status: string,
+  updatedById: string,
+): Promise<void> {
+  const orderRef = getOrderRef(db, orderId);
+  await updateDoc(orderRef, {
+    status,
+    updatedById,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Partially update an order document. Always bumps `updatedAt`.
+ */
+export async function updateOrder(
+  db: Firestore,
+  orderId: string,
+  data: Partial<Omit<Order, 'id' | 'createdAt' | 'createdById'>>,
+): Promise<void> {
+  const orderRef = getOrderRef(db, orderId);
+  await updateDoc(orderRef, {
+    ...data,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Order queries
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a Firestore query for orders.
+ * Optionally filter by status; always ordered by creation date descending.
+ */
+export function getOrdersQuery(db: Firestore, status?: string): Query {
+  const constraints = [orderBy('createdAt', 'desc')];
+
+  if (status) {
+    return query(
+      getOrdersRef(db),
+      where('status', '==', status),
+      ...constraints,
+    );
+  }
+
+  return query(getOrdersRef(db), ...constraints);
+}
+
+/**
+ * Return orders created by a specific user, ordered by creation date desc.
+ */
+export function getOrdersByCreatorQuery(db: Firestore, createdById: string): Query {
+  return query(
+    getOrdersRef(db),
+    where('createdById', '==', createdById),
+    orderBy('createdAt', 'desc'),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Order reads
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch a single order document by ID. Returns `null` if not found.
+ */
+export async function getOrderById(
+  db: Firestore,
+  orderId: string,
+): Promise<(Order & { id: string }) | null> {
+  const snap = await getDoc(getOrderRef(db, orderId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as Order & { id: string };
+}
+
+/**
+ * Fetch all documents in an order subcollection (e.g. products, shipping).
+ */
+export async function getOrderSubcollectionDocs<T>(
+  db: Firestore,
+  orderId: string,
+  subcollection: Parameters<typeof getOrderSubcollectionRef>[2],
+): Promise<(T & { id: string })[]> {
+  const ref = getOrderSubcollectionRef(db, orderId, subcollection);
+  const snap = await getDocs(ref);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T & { id: string });
+}
