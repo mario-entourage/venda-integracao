@@ -1,0 +1,11 @@
+runConfig:
+  minInstances: 0
+  maxInstances: 4
+  cpu: 1
+  memoryMiB: 512
+  concurrency: 100
+env:
+  - variable: NEXT_PUBLIC_APP_NAME
+    value: "Entourage Lab"
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://app.entouragelab.com"

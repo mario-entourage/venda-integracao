@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSuperAdmin()
+          || exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    function isSuperAdmin() {
+      return request.auth.token.email == 'caio@entouragelab.com'
+          || request.auth.token.email == 'mario@entouragelab.com';
+    }
+
+    function isEntourageDomain() {
+      return request.auth.token.email.matches('.*@entouragelab[.]com');
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /users/{userId}/profiles/{profileId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    match /users/{userId}/addresses/{addressId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin() || request.auth.uid == userId;
+    }
+
+    match /userGroups/{groupId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin();
+    }
+
+    match /stocks/{stockId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin();
+    }
+
+    match /stockProducts/{spId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create: if isSignedIn() && isEntourageDomain();
+      allow update: if isSignedIn() && isEntourageDomain();
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId}/{subcollection}/{docId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isSignedIn() && isEntourageDomain();
+    }
+
+    match /documents/{docId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isSignedIn() && isEntourageDomain();
+    }
+
+    match /medicalSpecialties/{specId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /roles_admin/{userId} {
+      allow read: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    match /exchangeQuotes/{quoteId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin();
+    }
+
+    match /paymentMethods/{pmId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow write: if isAdmin();
+    }
+  }
+}
