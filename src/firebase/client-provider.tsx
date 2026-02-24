@@ -1,12 +1,28 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, type ReactNode } from 'react';
-import { FirebaseProvider } from '@/firebase/provider';
+import { FirebaseContext, FirebaseProvider, type FirebaseContextState } from '@/firebase/provider';
 import { initializeFirebase } from '@/firebase';
 
 interface FirebaseClientProviderProps {
   children: ReactNode;
 }
+
+// Provided to all hooks before Firebase finishes initializing.
+// isUserLoading:true causes AuthGuard to show a skeleton instead of
+// rendering child pages (which would call useFirestore() with no db).
+const LOADING_CONTEXT: FirebaseContextState = {
+  areServicesAvailable: false,
+  firebaseApp: null,
+  firestore: null,
+  auth: null,
+  storage: null,
+  user: null,
+  isUserLoading: true,
+  userError: null,
+  isAdmin: false,
+  isAdminLoading: true,
+};
 
 export function FirebaseClientProvider({ children }: FirebaseClientProviderProps) {
   const [isMounted, setIsMounted] = useState(false);
@@ -17,14 +33,17 @@ export function FirebaseClientProvider({ children }: FirebaseClientProviderProps
 
   const firebaseServices = useMemo(() => {
     if (!isMounted) return null;
-    // Initialize Firebase on the client side only
     return initializeFirebase();
   }, [isMounted]);
 
-  // During SSR / static prerendering, render children without Firebase context.
-  // Firebase hooks will see null values and show loading states.
+  // Before Firebase is ready: still wrap children with a context so
+  // useFirebase() / useUser() don't throw "must be used within a FirebaseProvider".
   if (!firebaseServices) {
-    return <>{children}</>;
+    return (
+      <FirebaseContext.Provider value={LOADING_CONTEXT}>
+        {children}
+      </FirebaseContext.Provider>
+    );
   }
 
   return (

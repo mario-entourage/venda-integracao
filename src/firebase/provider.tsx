@@ -195,15 +195,28 @@ export const useFirebase = (): FirebaseServicesAndUser => {
     throw new Error('useFirebase must be used within a FirebaseProvider.');
   }
 
-  if (!context.areServicesAvailable || !context.firebaseApp || !context.firestore || !context.auth || !context.storage) {
-    throw new Error('Firebase core services not available. Check FirebaseProvider props.');
+  // Services not yet available (Firebase still initializing on the client).
+  // Return a loading state so hooks like useUser() work gracefully and
+  // AuthGuard can show a skeleton without crashing.
+  if (!context.areServicesAvailable) {
+    return {
+      firebaseApp: null as unknown as FirebaseApp,
+      firestore: null as unknown as Firestore,
+      auth: null as unknown as Auth,
+      storage: null as unknown as FirebaseStorage,
+      user: null,
+      isUserLoading: true,
+      userError: null,
+      isAdmin: false,
+      isAdminLoading: true,
+    };
   }
 
   return {
-    firebaseApp: context.firebaseApp,
-    firestore: context.firestore,
-    auth: context.auth,
-    storage: context.storage,
+    firebaseApp: context.firebaseApp!,
+    firestore: context.firestore!,
+    auth: context.auth!,
+    storage: context.storage!,
     user: context.user,
     isUserLoading: context.isUserLoading,
     userError: context.userError,
