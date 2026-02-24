@@ -1,13 +1,45 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useFirestore } from '@/firebase/provider';
+import { createDoctor } from '@/services/doctors.service';
+import { DoctorForm } from '@/components/forms/doctor-form';
+import { PageHeader } from '@/components/shared/page-header';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import type { DoctorFormValues } from '@/types';
 
 export default function NovoMedicoPage() {
+  const db = useFirestore();
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (data: DoctorFormValues) => {
+    setIsLoading(true);
+    try {
+      await createDoctor(db, data);
+      toast({ title: 'Medico cadastrado com sucesso.' });
+      router.push('/medicos');
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao cadastrar medico.', variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <h1 className="font-headline text-2xl font-bold">Novo Medico</h1>
-      <Card>
-        <CardHeader><CardTitle>Dados do Medico</CardTitle></CardHeader>
-        <CardContent><p className="text-muted-foreground">Formulario de cadastro em desenvolvimento.</p></CardContent>
-      </Card>
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/medicos">← Voltar</Link>
+        </Button>
+        <PageHeader title="Novo Medico" />
+      </div>
+      <DoctorForm onSubmit={handleSubmit} isLoading={isLoading} submitLabel="Cadastrar Medico" />
     </div>
   );
 }

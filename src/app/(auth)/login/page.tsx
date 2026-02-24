@@ -1,15 +1,13 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { GoogleSignIn } from '@/components/auth/google-sign-in';
-import { LoginForm } from '@/components/auth/login-form';
-import { useUser } from '@/firebase/provider';
-import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useUser } from '@/firebase/provider';
+import { GoogleSignIn } from '@/components/auth/google-sign-in';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function LoginPage() {
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading, userError } = useUser();
   const router = useRouter();
 
   useEffect(() => {
@@ -19,22 +17,20 @@ export default function LoginPage() {
   }, [user, isUserLoading, router]);
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
+    <Card className="w-full max-w-sm">
+      <CardHeader className="text-center space-y-1">
         <CardTitle className="font-headline text-2xl">Entourage Lab</CardTitle>
-        <CardDescription>Entre com sua conta para continuar</CardDescription>
+        <CardDescription>
+          Acesso restrito a colaboradores com conta @entouragelab.com
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <GoogleSignIn />
-        <div className="relative">
-          <div className="absolute inset-0 flex items-center">
-            <Separator className="w-full" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">ou</span>
-          </div>
-        </div>
-        <LoginForm />
+        {userError && (
+          <p className="text-center text-sm text-destructive">
+            {userError.message}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

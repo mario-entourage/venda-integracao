@@ -1,20 +1,66 @@
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus } from 'lucide-react';
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { getActiveDoctorsQuery } from '@/services/doctors.service';
+import { DataTable } from '@/components/shared/data-table';
+import { PageHeader } from '@/components/shared/page-header';
+import { Card, CardContent } from '@/components/ui/card';
+import type { ColumnDef } from '@/components/shared/data-table';
+import type { Doctor } from '@/types/doctor';
+
+const columns: ColumnDef<Doctor>[] = [
+  {
+    key: 'fullName',
+    header: 'Nome',
+    sortable: true,
+  },
+  {
+    key: 'crm',
+    header: 'CRM',
+    sortable: true,
+  },
+  {
+    key: 'mainSpecialty',
+    header: 'Especialidade',
+    render: (item) => item.mainSpecialty || '—',
+  },
+  {
+    key: 'email',
+    header: 'Email',
+    render: (item) => item.email || '—',
+  },
+];
 
 export default function MedicosPage() {
+  const db = useFirestore();
+  const router = useRouter();
+
+  const doctorsQuery = useMemoFirebase(
+    () => getActiveDoctorsQuery(db),
+    [db],
+  );
+
+  const { data: doctors, isLoading } = useCollection<Doctor>(doctorsQuery);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-headline text-2xl font-bold">Medicos</h1>
-        <Button asChild>
-          <Link href="/medicos/novo"><Plus className="mr-2 h-4 w-4" />Novo Medico</Link>
-        </Button>
-      </div>
+      <PageHeader
+        title="Medicos"
+        action={{ label: 'Novo Medico', href: '/medicos/novo' }}
+      />
       <Card>
-        <CardHeader><CardTitle>Lista de Medicos</CardTitle></CardHeader>
-        <CardContent><p className="text-muted-foreground">Nenhum medico cadastrado ainda.</p></CardContent>
+        <CardContent className="pt-6">
+          <DataTable
+            columns={columns}
+            data={doctors || []}
+            loading={isLoading}
+            searchPlaceholder="Buscar por nome, CRM, especialidade..."
+            emptyMessage="Nenhum medico cadastrado ainda."
+            onRowClick={(d) => router.push(`/medicos/${d.id}`)}
+          />
+        </CardContent>
       </Card>
     </div>
   );
