@@ -24,7 +24,11 @@ export interface ProductLine {
   productId: string;
   productName: string;
   quantity: number;
-  price: number;
+  /** Original list price from the product catalogue */
+  listPrice: number;
+  /** Price the sales rep negotiated — drives the discount */
+  negotiatedPrice: number;
+  /** Auto-computed: (listPrice - negotiatedPrice) / listPrice * 100 */
   discount: number;
   aiHintName?: string;
 }
@@ -113,7 +117,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     state.step1.clientId !== '' &&
     state.step1.doctorId !== '' &&
     state.step1.products.length > 0 &&
-    state.step1.products.every((p) => p.productId !== '' && p.quantity > 0 && p.price > 0) &&
+    state.step1.products.every((p) => p.productId !== '' && p.quantity > 0 && p.listPrice > 0) &&
     state.step1.prescriptionFile !== null;
 
   // ── upload prescription helper ──────────────────────────────────────────
@@ -151,7 +155,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
 
         // Calculate amount
         const amount = step1.products.reduce(
-          (sum, p) => sum + p.price * p.quantity * (1 - (p.discount || 0) / 100),
+          (sum, p) => sum + p.negotiatedPrice * p.quantity,
           0,
         );
 
@@ -177,7 +181,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             products: step1.products.map((p) => ({
               stockProductId: p.productId, // using product ID as stockProductId
               quantity: p.quantity,
-              price: p.price,
+              price: p.listPrice,
               discount: p.discount,
               productName: p.productName,
             })),
@@ -279,7 +283,11 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           <StepDocumentacao
             orderId={state.orderId}
             anvisaOption={state.step1.anvisaOption}
+            clientId={state.step1.clientId}
             clientName={state.step1.clientName}
+            doctorId={state.step1.doctorId}
+            clientIsNew={state.step1.clientIsNew}
+            doctorIsNew={state.step1.doctorIsNew}
           />
         )}
       </StepWizard>

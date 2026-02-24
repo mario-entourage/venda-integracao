@@ -20,6 +20,7 @@ export type LoginFormValues = z.infer<typeof loginSchema>;
 
 export const customerSchema = z.object({
   document: z.string().min(11, 'CPF/CNPJ obrigatorio'),
+  rg: z.string().optional(),
   firstName: z.string().min(1, 'Nome obrigatorio'),
   lastName: z.string().optional(),
   email: z.string().email('Email invalido').optional().or(z.literal('')),
@@ -47,8 +48,11 @@ export const doctorSchema = z.object({
   lastName: z.string().optional(),
   email: z.string().email('Email invalido').optional().or(z.literal('')),
   crm: z.string().min(1, 'CRM obrigatorio'),
-  mainSpecialtyId: z.string().optional(),
-  specialtyIds: z.array(z.string()).optional(),
+  mainSpecialty: z.string().optional(),
+  state: z.string().max(2, 'UF deve ter 2 caracteres').optional(),
+  city: z.string().optional(),
+  phone: z.string().optional(),
+  mobilePhone: z.string().optional(),
 });
 export type DoctorFormValues = z.infer<typeof doctorSchema>;
 

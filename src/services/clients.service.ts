@@ -32,6 +32,7 @@ export async function createClient(
 ): Promise<string> {
   const ref = await addDoc(getClientsRef(db), {
     document: data.document,
+    rg: data.rg || '',
     firstName: data.firstName,
     lastName: data.lastName || '',
     fullName: `${data.firstName} ${data.lastName || ''}`.trim(),

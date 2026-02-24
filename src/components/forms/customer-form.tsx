@@ -84,6 +84,21 @@ export function CustomerForm({
               )}
             />
 
+            {/* RG */}
+            <FormField
+              control={form.control}
+              name="rg"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nº do Documento de Identificação (RG)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="12.345.678-9" {...field} value={field.value ?? ''} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="grid grid-cols-2 gap-4">
               {/* First Name */}
               <FormField

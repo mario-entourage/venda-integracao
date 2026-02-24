@@ -67,7 +67,11 @@ export default function MedicoDetailPage() {
     lastName: doctor.lastName,
     email: doctor.email,
     crm: doctor.crm,
-    mainSpecialtyId: doctor.mainSpecialty,
+    mainSpecialty: doctor.mainSpecialty,
+    state: doctor.state,
+    city: doctor.city,
+    phone: doctor.phone,
+    mobilePhone: doctor.mobilePhone,
   };
 
   const handleSave = async (data: DoctorFormValues) => {
@@ -80,7 +84,11 @@ export default function MedicoDetailPage() {
         fullName: `${data.firstName} ${data.lastName || ''}`.trim(),
         email: data.email || '',
         crm: data.crm,
-        mainSpecialty: data.mainSpecialtyId || '',
+        mainSpecialty: data.mainSpecialty || '',
+        state: data.state || '',
+        city: data.city || '',
+        phone: data.phone || '',
+        mobilePhone: data.mobilePhone || '',
       });
       toast({ title: 'Medico atualizado com sucesso.' });
       setEditing(false);
@@ -139,6 +147,10 @@ export default function MedicoDetailPage() {
           <InfoRow label="CPF" value={<span className="font-mono">{doctor.document}</span>} />
           <InfoRow label="CRM" value={doctor.crm} />
           <InfoRow label="Especialidade" value={doctor.mainSpecialty} />
+          <InfoRow label="UF" value={doctor.state} />
+          <InfoRow label="Município" value={doctor.city} />
+          <InfoRow label="Telefone" value={doctor.phone} />
+          <InfoRow label="Celular" value={doctor.mobilePhone} />
           <InfoRow label="Email" value={doctor.email} />
           <InfoRow
             label="Status"

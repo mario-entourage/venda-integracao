@@ -9,6 +9,14 @@ export interface Doctor {
   email?: string;
   crm: string;
   mainSpecialty?: string;
+  /** UF do estado onde o médico é registrado (ex: "SP") */
+  state?: string;
+  /** Município do prescritor */
+  city?: string;
+  /** Telefone fixo do consultório */
+  phone?: string;
+  /** Celular do prescritor */
+  mobilePhone?: string;
   active: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;

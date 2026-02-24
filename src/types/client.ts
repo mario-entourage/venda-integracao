@@ -3,6 +3,8 @@ import { Timestamp } from 'firebase/firestore';
 export interface Client {
   id: string;
   document: string; // CPF or CNPJ
+  /** Número do RG (documento de identidade) */
+  rg?: string;
   firstName: string;
   lastName?: string;
   fullName: string;
