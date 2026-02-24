@@ -1,0 +1,296 @@
+'use client';
+
+import React, { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase';
+import { getActiveClientsQuery } from '@/services/clients.service';
+import { getActiveDoctorsQuery } from '@/services/doctors.service';
+import { getActiveProductsQuery } from '@/services/products.service';
+import { createOrder } from '@/services/orders.service';
+import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
+import { updateOrderStatus } from '@/services/orders.service';
+import { StepWizard } from '@/components/shared/step-wizard';
+import { StepIdentificacao, type Step1State } from './step-identificacao';
+import { StepPagamento } from './step-pagamento';
+import { StepDocumentacao } from './step-documentacao';
+import type { Client, Doctor, Product } from '@/types';
+
+// ─── types ───────────────────────────────────────────────────────────────────
+
+export interface ProductLine {
+  id: string;
+  productId: string;
+  productName: string;
+  quantity: number;
+  price: number;
+  discount: number;
+  aiHintName?: string;
+}
+
+interface WizardState {
+  // Step 1
+  step1: Step1State;
+  // Created after step 1 submit
+  orderId: string;
+  orderAmount: number;
+  // Step 2
+  paymentUrl: string;
+  gpId: string;
+}
+
+const INITIAL_STEP1: Step1State = {
+  clientId: '',
+  clientName: '',
+  clientDocument: '',
+  clientPhone: '',
+  clientIsNew: false,
+  doctorId: '',
+  doctorName: '',
+  doctorCrm: '',
+  doctorIsNew: false,
+  prescriptionFile: null,
+  prescriptionFileName: '',
+  products: [],
+  anvisaOption: 'regular',
+};
+
+const INITIAL_STATE: WizardState = {
+  step1: INITIAL_STEP1,
+  orderId: '',
+  orderAmount: 0,
+  paymentUrl: '',
+  gpId: '',
+};
+
+const STEPS = [
+  { label: 'Identificação', description: 'Paciente, médico e produtos' },
+  { label: 'Pagamento', description: 'Gerar link GlobalPay' },
+  { label: 'Documentação', description: 'Checklist de documentos' },
+];
+
+// ─── component ───────────────────────────────────────────────────────────────
+
+interface NovaVendaWizardProps {
+  onComplete: (orderId: string) => void;
+}
+
+export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
+  const router = useRouter();
+  const { firestore, storage, user } = useFirebase();
+
+  // ── Firebase data ───────────────────────────────────────────────────────
+  const clientsQ = useMemoFirebase(
+    () => (firestore ? getActiveClientsQuery(firestore) : null),
+    [firestore],
+  );
+  const doctorsQ = useMemoFirebase(
+    () => (firestore ? getActiveDoctorsQuery(firestore) : null),
+    [firestore],
+  );
+  const productsQ = useMemoFirebase(
+    () => (firestore ? getActiveProductsQuery(firestore) : null),
+    [firestore],
+  );
+
+  const { data: clients } = useCollection<Client>(clientsQ);
+  const { data: doctors } = useCollection<Doctor>(doctorsQ);
+  const { data: products } = useCollection<Product>(productsQ);
+
+  // ── wizard state ────────────────────────────────────────────────────────
+  const [state, setState] = useState<WizardState>(INITIAL_STATE);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const updateStep1 = useCallback((changes: Partial<Step1State>) => {
+    setState((prev) => ({ ...prev, step1: { ...prev.step1, ...changes } }));
+  }, []);
+
+  // ── step 1 validation ───────────────────────────────────────────────────
+  const step1Valid =
+    state.step1.clientId !== '' &&
+    state.step1.doctorId !== '' &&
+    state.step1.products.length > 0 &&
+    state.step1.products.every((p) => p.productId !== '' && p.quantity > 0 && p.price > 0) &&
+    state.step1.prescriptionFile !== null;
+
+  // ── upload prescription helper ──────────────────────────────────────────
+  async function uploadPrescription(file: File): Promise<string> {
+    const path = `documents/prescriptions/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+    const storageRef = ref(storage, path);
+    const task = uploadBytesResumable(storageRef, file);
+    await new Promise<void>((resolve, reject) => {
+      task.on('state_changed', null, reject, resolve);
+    });
+    await getDownloadURL(task.snapshot.ref);
+    return path;
+  }
+
+  // ── step transition ─────────────────────────────────────────────────────
+  const handleStepChange = async (newStep: number) => {
+    if (newStep < currentStep) {
+      setCurrentStep(newStep);
+      return;
+    }
+
+    // Advancing from step 0 → 1: create order
+    if (currentStep === 0 && newStep === 1) {
+      if (!step1Valid || !firestore || !user) return;
+      setIsSubmitting(true);
+      setSubmitError(null);
+
+      try {
+        const { step1 } = state;
+
+        // Upload prescription
+        const prescriptionPath = step1.prescriptionFile
+          ? await uploadPrescription(step1.prescriptionFile)
+          : '';
+
+        // Calculate amount
+        const amount = step1.products.reduce(
+          (sum, p) => sum + p.price * p.quantity * (1 - (p.discount || 0) / 100),
+          0,
+        );
+
+        // Create order
+        const orderId = await createOrder(
+          firestore,
+          {
+            customer: {
+              name: step1.clientName,
+              document: step1.clientDocument,
+              userId: step1.clientId,
+            },
+            representative: {
+              name: 'Venda Direta',
+              code: 'DIRECT',
+              userId: '',
+            },
+            doctor: {
+              name: step1.doctorName,
+              crm: step1.doctorCrm,
+              userId: step1.doctorId,
+            },
+            products: step1.products.map((p) => ({
+              stockProductId: p.productId, // using product ID as stockProductId
+              quantity: p.quantity,
+              price: p.price,
+              discount: p.discount,
+              productName: p.productName,
+            })),
+            anvisaOption: step1.anvisaOption as 'regular' | 'exceptional' | 'exempt',
+            prescriptionDocId: prescriptionPath,
+          },
+          user.uid,
+        );
+
+        // Create document requests
+        const docTypes = ['identity', 'proof_of_address', 'prescription'];
+        if (step1.anvisaOption !== 'exempt') {
+          docTypes.push('anvisa_authorization');
+        }
+        await Promise.all(
+          docTypes.map((t) => createOrderDocumentRequest(firestore, orderId, t)),
+        );
+
+        setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
+        setCurrentStep(1);
+      } catch (err) {
+        console.error('Order creation error:', err);
+        setSubmitError('Erro ao criar pedido. Verifique os dados e tente novamente.');
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    setCurrentStep(newStep);
+  };
+
+  // ── completion (step 2 → finalize) ─────────────────────────────────────
+  const handleComplete = async () => {
+    if (!state.orderId || !firestore || !user) return;
+    setIsSubmitting(true);
+    try {
+      await updateOrderStatus(firestore, state.orderId, 'processing', user.uid);
+      onComplete(state.orderId);
+      router.push(`/controle/${state.orderId}`);
+    } catch (err) {
+      console.error('Order finalization error:', err);
+      setSubmitError('Erro ao finalizar pedido. Tente novamente.');
+      setIsSubmitting(false);
+    }
+  };
+
+  // ── step can-advance logic ──────────────────────────────────────────────
+  const canAdvance = (() => {
+    if (isSubmitting) return false;
+    if (currentStep === 0) return step1Valid;
+    if (currentStep === 1) return state.paymentUrl !== '';
+    return true; // step 2 — always allow finalize
+  })();
+
+  // ── render ──────────────────────────────────────────────────────────────
+  return (
+    <div className="space-y-4">
+      {submitError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {submitError}
+        </div>
+      )}
+
+      <StepWizard
+        steps={STEPS}
+        currentStep={currentStep}
+        onStepChange={handleStepChange}
+        onComplete={handleComplete}
+        canAdvance={canAdvance}
+        canGoBack={!isSubmitting && currentStep > 0 && state.orderId === ''}
+        completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
+      >
+        {currentStep === 0 && (
+          <StepIdentificacao
+            state={state.step1}
+            onChange={updateStep1}
+            clients={clients ?? []}
+            doctors={doctors ?? []}
+            allProducts={products ?? []}
+          />
+        )}
+
+        {currentStep === 1 && (
+          <StepPagamento
+            orderId={state.orderId}
+            orderAmount={state.orderAmount}
+            clientName={state.step1.clientName}
+            clientPhone={state.step1.clientPhone}
+            paymentUrl={state.paymentUrl}
+            gpId={state.gpId}
+            onPaymentGenerated={(paymentUrl, gpId) =>
+              setState((prev) => ({ ...prev, paymentUrl, gpId }))
+            }
+          />
+        )}
+
+        {currentStep === 2 && (
+          <StepDocumentacao
+            orderId={state.orderId}
+            anvisaOption={state.step1.anvisaOption}
+            clientName={state.step1.clientName}
+          />
+        )}
+      </StepWizard>
+
+      {/* Submission overlay */}
+      {isSubmitting && (
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          {currentStep === 0 ? 'Criando pedido…' : 'Finalizando…'}
+        </div>
+      )}
+    </div>
+  );
+}
