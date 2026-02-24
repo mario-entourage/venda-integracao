@@ -4,8 +4,12 @@ import { Toaster } from '@/components/ui/toaster';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
-  title: 'Entourage Lab',
+  title: 'Project VENDA',
   description: 'Plataforma de gestao de vendas e importacao de produtos regulados.',
+  icons: {
+    icon: '/favicon.png',
+    apple: '/favicon.png',
+  },
 };
 
 export default function RootLayout({
