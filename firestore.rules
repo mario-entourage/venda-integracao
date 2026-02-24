@@ -41,6 +41,18 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /clients/{clientId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create, update: if isSignedIn() && isEntourageDomain();
+      allow delete: if isAdmin();
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create, update: if isSignedIn() && isEntourageDomain();
+      allow delete: if isAdmin();
+    }
+
     match /products/{productId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow write: if isAdmin();
