@@ -425,7 +425,7 @@ export function StepIdentificacao({
                   className="text-center px-1" />
                 {/* List price (read-only) */}
                 <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
-                  {line.listPrice > 0 ? fmtBRL(line.listPrice).replace('R$\u00a0', '') : '—'}
+                  {line.listPrice > 0 ? line.listPrice.toFixed(2) : '—'}
                 </div>
                 {/* Negotiated price */}
                 <Input type="number" min={0} step="0.01" value={line.negotiatedPrice}

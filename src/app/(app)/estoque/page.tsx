@@ -35,15 +35,6 @@ import { useToast } from '@/hooks/use-toast';
 import type { Product, Stock } from '@/types/product';
 import type { ProductFormValues } from '@/types/forms';
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function formatBRL(value: number): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(value);
-}
-
 // ─── page component ───────────────────────────────────────────────────────────
 
 type ProductWithId = Product & { id: string };
@@ -147,7 +138,7 @@ export default function EstoquePage() {
       header: 'Preco Lista',
       sortable: true,
       className: 'text-right w-32',
-      render: (p) => formatBRL(p.price),
+      render: (p) => p.price > 0 ? p.price.toFixed(2) : <span className="text-muted-foreground italic text-xs">A definir</span>,
     },
     {
       key: 'inventory',
