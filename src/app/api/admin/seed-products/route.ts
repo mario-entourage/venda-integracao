@@ -6,16 +6,18 @@ import { PRODUCTS_CATALOG } from '@/data/products-catalog';
 export const dynamic = 'force-dynamic';
 
 /**
- * POST /api/admin/seed-products
+ * GET & POST /api/admin/seed-products
  *
  * Seeds the Firestore `products` collection with the static product catalog.
  * Skips any product whose SKU already exists in the collection to avoid
  * duplicates. Safe to call multiple times.
  *
+ * GET is provided so you can simply visit the URL in a browser to trigger it.
+ *
  * Uses Firebase Admin SDK with Application Default Credentials (works
  * automatically on App Hosting / Cloud Run with the default service account).
  */
-export async function POST() {
+async function seedProducts() {
   try {
     // Initialize Admin SDK (reuse existing app if already initialized)
     if (getApps().length === 0) {
@@ -71,4 +73,12 @@ export async function POST() {
     console.error('Seed products error:', msg, error);
     return NextResponse.json({ ok: false, error: msg }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return seedProducts();
+}
+
+export async function POST() {
+  return seedProducts();
 }
