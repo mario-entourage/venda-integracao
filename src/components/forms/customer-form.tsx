@@ -138,7 +138,7 @@ export function CustomerForm({
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>E-mail</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -158,7 +158,7 @@ export function CustomerForm({
                 name="phone"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Telefone</FormLabel>
+                    <FormLabel>Celular</FormLabel>
                     <FormControl>
                       <ReactInputMask
                         mask="(99) 99999-9999"

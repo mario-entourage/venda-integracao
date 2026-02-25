@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { Timestamp } from 'firebase/firestore';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { getClientRef, updateClient, softDeleteClient } from '@/services/clients.service';
@@ -65,6 +66,7 @@ export default function ClienteDetailPage() {
   // Map Firestore Client back to CustomerFormValues for the edit form
   const defaultValues: Partial<CustomerFormValues> = {
     document: client.document,
+    rg: client.rg,
     firstName: client.firstName,
     lastName: client.lastName,
     email: client.email,
@@ -81,11 +83,13 @@ export default function ClienteDetailPage() {
     try {
       await updateClient(db, id, {
         document: data.document,
+        rg: data.rg || '',
         firstName: data.firstName,
         lastName: data.lastName || '',
         fullName: `${data.firstName} ${data.lastName || ''}`.trim(),
         email: data.email || '',
         phone: data.phone || '',
+        birthDate: data.birthDate ? Timestamp.fromDate(data.birthDate) : undefined,
         sex: data.sex,
         motherName: data.motherName || '',
         representativeId: data.representativeId || '',
@@ -146,9 +150,18 @@ export default function ClienteDetailPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <InfoRow label="CPF / CNPJ" value={<span className="font-mono">{client.document}</span>} />
-          <InfoRow label="Email" value={client.email} />
-          <InfoRow label="Telefone" value={client.phone} />
+          <InfoRow label="CPF" value={<span className="font-mono">{client.document}</span>} />
+          <InfoRow label="RG" value={client.rg} />
+          <InfoRow
+            label="Data de Nascimento"
+            value={
+              client.birthDate
+                ? new Intl.DateTimeFormat('pt-BR').format(client.birthDate.toDate())
+                : undefined
+            }
+          />
+          <InfoRow label="E-mail" value={client.email} />
+          <InfoRow label="Celular" value={client.phone} />
           <InfoRow label="Sexo" value={client.sex ? SEX_LABELS[client.sex] : undefined} />
           <InfoRow label="Nome da Mae" value={client.motherName} />
           <InfoRow
