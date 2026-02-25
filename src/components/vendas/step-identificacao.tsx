@@ -219,8 +219,8 @@ export function StepIdentificacao({
     maxFiles: 1, disabled: isExtracting,
   });
 
-  const fmtBRL = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const fmtUSD = (v: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
 
   const orderTotal = state.products.reduce(
     (sum, p) => sum + p.negotiatedPrice * p.quantity, 0
@@ -447,7 +447,7 @@ export function StepIdentificacao({
             {/* Total */}
             <div className="flex justify-end border-t pt-3 pr-2">
               <p className="text-sm font-medium">
-                Total: <span className="text-base font-bold text-primary">{fmtBRL(orderTotal)}</span>
+                Total: <span className="text-base font-bold text-primary">{fmtUSD(orderTotal)}</span>
               </p>
             </div>
           </div>
