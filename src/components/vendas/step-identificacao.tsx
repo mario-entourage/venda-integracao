@@ -18,10 +18,62 @@ import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/r
 function normalize(str: string) {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim();
 }
+
 function nameMatches(a: string, b: string): boolean {
   if (!a || !b) return false;
   const na = normalize(a); const nb = normalize(b);
   return na.includes(nb) || nb.includes(na);
+}
+
+/**
+ * Fallback fuzzy matcher when the AI didn't return a catalogSku.
+ * Scores a catalog product against a raw prescription string by counting
+ * how many meaningful tokens (numbers, key words) appear in both.
+ * Returns the best-scoring product with score > 0, or null.
+ */
+function fuzzyMatchProduct(
+  rawName: string,
+  products: Product[],
+): Product | null {
+  if (!rawName || products.length === 0) return null;
+
+  const raw = normalize(rawName);
+
+  // Extract numeric tokens (e.g. "7000", "3500", "60", "30", "10")
+  const rawNums = new Set(raw.match(/\d+/g) ?? []);
+  // Extract meaningful word tokens (length > 2, not purely numeric filler)
+  const rawWords = new Set(
+    raw.split(/\s+/).filter((t) => t.length > 2 && !/^\d+$/.test(t)),
+  );
+
+  let bestScore = 0;
+  let bestProduct: Product | null = null;
+
+  for (const p of products) {
+    const pn = normalize(p.name);
+    const pc = normalize(p.concentration ?? '');
+    const combined = `${pn} ${pc}`;
+
+    let score = 0;
+
+    // Each matching number is a strong signal
+    for (const n of rawNums) {
+      if (combined.includes(n)) score += 3;
+    }
+    // Each matching word token
+    for (const w of rawWords) {
+      if (combined.includes(w)) score += 1;
+    }
+    // Substring containment bonus
+    if (pn.includes(raw) || raw.includes(pn)) score += 5;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestProduct = p;
+    }
+  }
+
+  return bestScore > 0 ? bestProduct : null;
 }
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -177,7 +229,15 @@ export function StepIdentificacao({
 
       if (data.products?.length) {
         updates.products = data.products.map((ap) => {
-          const matched = allProducts.find((p) => nameMatches(p.name, ap.name));
+          // 1. AI returned a catalogSku → exact SKU lookup (most reliable)
+          // 2. Fuzzy token match (numbers + keywords in name/concentration)
+          // 3. Simple substring name match as last resort
+          const matched =
+            (ap.catalogSku ? allProducts.find((p) => p.sku === ap.catalogSku) : null) ??
+            fuzzyMatchProduct(ap.name, allProducts) ??
+            allProducts.find((p) => nameMatches(p.name, ap.name)) ??
+            null;
+
           if (matched) {
             return {
               id: crypto.randomUUID(), productId: matched.id, productName: matched.name,
