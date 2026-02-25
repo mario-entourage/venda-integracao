@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect } from '@/components/shared/searchable-select';
+import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import type { Client, Doctor, Product } from '@/types';
@@ -58,6 +59,16 @@ export function StepIdentificacao({
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
+
+  // Generate a blob URL for image preview (revoked on file change / unmount)
+  const previewUrl = useMemo(() => {
+    if (!state.prescriptionFile || !state.prescriptionFile.type?.startsWith('image/')) return null;
+    return URL.createObjectURL(state.prescriptionFile);
+  }, [state.prescriptionFile]);
+
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
 
   const clientOptions = clients.map((c) => ({
     value: c.id, label: c.fullName, sublabel: c.document ? `CPF: ${c.document}` : undefined,
@@ -239,43 +250,65 @@ export function StepIdentificacao({
         }}
       />
 
-      {/* ── Prescription drop zone ─────────────────────────────────── */}
+      {/* ── Prescription upload & viewer ──────────────────────────── */}
       <div className="space-y-2">
-        <Label className="text-sm font-semibold">Receita Médica</Label>
-        <div
-          {...getRootProps()}
-          className={cn(
-            'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
-            isDragActive ? 'border-primary bg-primary/5 scale-[1.01]'
-              : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
-            isExtracting && 'pointer-events-none opacity-70',
-          )}
-        >
-          <input {...getInputProps()} />
-          {isExtracting ? (
-            <>
-              <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-              <p className="text-sm font-medium text-primary">Analisando com IA…</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados da receita</p>
-            </>
-          ) : state.prescriptionFileName ? (
-            <>
-              <svg className="mb-2 h-8 w-8 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.prescriptionFileName}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Clique ou arraste para substituir</p>
-            </>
-          ) : (
-            <>
-              <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              <p className="text-sm font-semibold">Arraste a receita aqui</p>
-              <p className="mt-1 text-xs text-muted-foreground">A IA preencherá os campos automaticamente · PDF, JPG, PNG (máx 5MB)</p>
-            </>
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">Receita Médica</Label>
+          {state.prescriptionFile && !isExtracting && (
+            <div {...getRootProps()} className="contents">
+              <input {...getInputProps()} />
+              <Button type="button" variant="outline" size="sm" className="text-xs gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                Trocar receita
+              </Button>
+            </div>
           )}
         </div>
+
+        {isExtracting ? (
+          /* ── Extraction spinner ─── */
+          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-8 text-center pointer-events-none">
+            <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="text-sm font-medium text-primary">Analisando com IA…</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados da receita</p>
+          </div>
+        ) : previewUrl && state.prescriptionFile?.type?.startsWith('image/') ? (
+          /* ── Image viewer with zoom / pan / rotate ─── */
+          <ImageViewer
+            src={previewUrl}
+            alt={state.prescriptionFileName || 'Receita médica'}
+          />
+        ) : state.prescriptionFile ? (
+          /* ── PDF or non-image file fallback ─── */
+          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
+            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.prescriptionFileName}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
+          </div>
+        ) : (
+          /* ── Initial drop zone ─── */
+          <div
+            {...getRootProps()}
+            className={cn(
+              'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
+              isDragActive
+                ? 'border-primary bg-primary/5 scale-[1.01]'
+                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+            )}
+          >
+            <input {...getInputProps()} />
+            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <p className="text-sm font-semibold">Arraste a receita aqui</p>
+            <p className="mt-1 text-xs text-muted-foreground">A IA preencherá os campos automaticamente · PDF, JPG, PNG (máx 5MB)</p>
+          </div>
+        )}
+
         {extractionMsg && (
           <p className={cn('flex items-center gap-1.5 text-xs', extractionMsg.includes('sucesso') ? 'text-green-600' : 'text-amber-600')}>
             {extractionMsg.includes('sucesso') ? '✓' : '⚠'} {extractionMsg}
