@@ -7,6 +7,9 @@ runConfig:
 
 env:
   # ── Public / non-sensitive values ────────────────────────────────────────────
+  - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+    value: "AIzaSyBD_dVs2kB4d4IVp7w31XW0eLtv8rIpanc"
+
   - variable: NEXT_PUBLIC_APP_NAME
     value: "Entourage Lab"
   - variable: NEXT_PUBLIC_APP_URL
