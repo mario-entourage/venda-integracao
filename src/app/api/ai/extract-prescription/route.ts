@@ -60,7 +60,11 @@ Retorne APENAS o JSON válido.`,
     const data: PrescriptionExtraction = JSON.parse(rawText.slice(jsonStart, jsonEnd));
     return NextResponse.json(data);
   } catch (error) {
-    console.error('Prescription extraction error:', error);
+    // Log full error details to Cloud Run / App Hosting logs for diagnosis
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errCode = (error as Record<string, unknown>)?.code ?? 'unknown';
+    console.error('Prescription extraction error:', errMsg, '| code:', errCode, '| full:', error);
+
     return NextResponse.json(
       {
         patientName: null,
