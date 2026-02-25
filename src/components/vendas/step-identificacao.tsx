@@ -381,14 +381,11 @@ export function StepIdentificacao({
 
       {/* ── Products ──────────────────────────────────────────────── */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <Label className="text-sm font-semibold">Produtos <span className="text-red-500">*</span></Label>
-          <Button type="button" variant="outline" size="sm" onClick={addProductLine}>+ Adicionar produto</Button>
-        </div>
+        <Label className="text-sm font-semibold">Produtos <span className="text-red-500">*</span></Label>
 
         {state.products.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center">
-            <p className="text-sm text-muted-foreground">Arraste uma receita ou clique em "+ Adicionar produto".</p>
+            <p className="text-sm text-muted-foreground">Envie uma receita acima para preencher os produtos automaticamente.</p>
           </div>
         ) : (
           <div className="space-y-2">
