@@ -4,8 +4,31 @@ runConfig:
   cpu: 1
   memoryMiB: 512
   concurrency: 100
+
 env:
+  # ── Public / non-sensitive values ────────────────────────────────────────────
   - variable: NEXT_PUBLIC_APP_NAME
     value: "Entourage Lab"
   - variable: NEXT_PUBLIC_APP_URL
     value: "https://app.entouragelab.com"
+
+  # Default values — override per-environment if needed
+  - variable: PAYMENT_LINK_EXPIRATION_HOURS
+    value: "24"
+  - variable: GLOBALPAYS_MERCHANT_CODE
+    value: "4912"
+
+  # ── Secrets — create with: firebase apphosting:secrets:set <NAME> ────────────
+  # Google AI (Gemini) — required for AI prescription & document features
+  - variable: GOOGLE_API_KEY
+    secret: GOOGLE_API_KEY
+
+  # GlobalPay — uncomment once live credentials are ready
+  # - variable: GLOBALPAY_API_KEY
+  #   secret: GLOBALPAY_API_KEY
+  # - variable: GLOBALPAY_API_URL
+  #   secret: GLOBALPAY_API_URL
+
+  # ZapSign — uncomment once live credentials are ready
+  # - variable: ZAPSIGN_API_KEY
+  #   secret: ZAPSIGN_API_KEY
