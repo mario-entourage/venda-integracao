@@ -15,6 +15,7 @@ import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
 import { StepDocumentacao } from './step-documentacao';
+import { PostWizardDialog } from './post-wizard-dialog';
 import type { Client, Doctor, Product } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -107,6 +108,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Post-completion dialog: shown when one or both entities were quick-added
+  const [showPostDialog, setShowPostDialog] = useState(false);
+  const [completedOrderId, setCompletedOrderId] = useState('');
 
   const updateStep1 = useCallback((changes: Partial<Step1State>) => {
     setState((prev) => ({ ...prev, step1: { ...prev.step1, ...changes } }));
@@ -221,12 +225,26 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     try {
       await updateOrderStatus(firestore, state.orderId, 'processing', user.uid);
       onComplete(state.orderId);
-      router.push(`/controle/${state.orderId}`);
+
+      // If any entity was quick-added, pause navigation and show the
+      // supplementary-info dialog before proceeding to the order page.
+      if (state.step1.clientIsNew || state.step1.doctorIsNew) {
+        setCompletedOrderId(state.orderId);
+        setShowPostDialog(true);
+      } else {
+        router.push(`/controle/${state.orderId}`);
+      }
     } catch (err) {
       console.error('Order finalization error:', err);
       setSubmitError('Erro ao finalizar pedido. Tente novamente.');
       setIsSubmitting(false);
     }
+  };
+
+  // Called when PostWizardDialog is dismissed (save or skip)
+  const handlePostDialogDone = () => {
+    setShowPostDialog(false);
+    router.push(`/controle/${completedOrderId}`);
   };
 
   // ── step can-advance logic ──────────────────────────────────────────────
@@ -240,6 +258,17 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   // ── render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
+      {/* Post-completion supplementary info dialog */}
+      <PostWizardDialog
+        open={showPostDialog}
+        onDone={handlePostDialogDone}
+        clientId={state.step1.clientId}
+        clientName={state.step1.clientName}
+        clientIsNew={state.step1.clientIsNew}
+        doctorId={state.step1.doctorId}
+        doctorName={state.step1.doctorName}
+        doctorIsNew={state.step1.doctorIsNew}
+      />
       {submitError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {submitError}
