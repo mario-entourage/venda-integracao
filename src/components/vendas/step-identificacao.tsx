@@ -250,6 +250,69 @@ export function StepIdentificacao({
         }}
       />
 
+      {/* ── Client & Doctor — side by side ─────────────────────────── */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        {/* Client */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Paciente / Cliente <span className="text-red-500">*</span></Label>
+          {state.clientIsNew && state.clientName && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="truncate">Não encontrado: <strong>{state.clientName}</strong></p>
+                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                  onClick={() => setShowAddClient(true)}>
+                  + Cadastrar novo
+                </Button>
+              </div>
+            </div>
+          )}
+          <SearchableSelect
+            options={clientOptions}
+            value={state.clientId}
+            onChange={(id) => {
+              const client = clients.find((c) => c.id === id);
+              if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
+            }}
+            placeholder="Buscar paciente…"
+            searchPlaceholder="Nome ou CPF…"
+            emptyMessage="Nenhum paciente encontrado."
+          />
+        </div>
+
+        {/* Doctor */}
+        <div className="space-y-2">
+          <Label className="text-sm font-semibold">Médico Prescritor <span className="text-red-500">*</span></Label>
+          {state.doctorIsNew && (state.doctorName || state.doctorCrm) && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <div className="flex-1 min-w-0">
+                <p className="truncate">Não encontrado: <strong>{state.doctorName || '–'}{state.doctorCrm ? ` (${state.doctorCrm})` : ''}</strong></p>
+                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                  onClick={() => setShowAddDoctor(true)}>
+                  + Cadastrar novo
+                </Button>
+              </div>
+            </div>
+          )}
+          <SearchableSelect
+            options={doctorOptions}
+            value={state.doctorId}
+            onChange={(id) => {
+              const doctor = doctors.find((d) => d.id === id);
+              if (doctor) onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+            }}
+            placeholder="Buscar médico…"
+            searchPlaceholder="Nome ou CRM…"
+            emptyMessage="Nenhum médico encontrado."
+          />
+        </div>
+      </div>
+
       {/* ── Prescription upload & viewer ──────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -314,72 +377,6 @@ export function StepIdentificacao({
             {extractionMsg.includes('sucesso') ? '✓' : '⚠'} {extractionMsg}
           </p>
         )}
-      </div>
-
-      {/* ── Client ────────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Paciente / Cliente <span className="text-red-500">*</span></Label>
-        {state.clientIsNew && state.clientName && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <div className="flex-1">
-              <p>Extraído da receita: <strong>{state.clientName}</strong> — não encontrado no cadastro.</p>
-              <div className="mt-2 flex gap-2">
-                <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddClient(true)}>
-                  + Cadastrar como novo paciente
-                </Button>
-                <span className="text-xs self-center text-amber-600">ou selecione abaixo:</span>
-              </div>
-            </div>
-          </div>
-        )}
-        <SearchableSelect
-          options={clientOptions}
-          value={state.clientId}
-          onChange={(id) => {
-            const client = clients.find((c) => c.id === id);
-            if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
-          }}
-          placeholder="Buscar paciente pelo nome ou CPF…"
-          searchPlaceholder="Nome ou CPF…"
-          emptyMessage="Nenhum paciente encontrado."
-        />
-      </div>
-
-      {/* ── Doctor ────────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Médico Prescritor <span className="text-red-500">*</span></Label>
-        {state.doctorIsNew && (state.doctorName || state.doctorCrm) && (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
-            </svg>
-            <div className="flex-1">
-              <p>Extraído da receita: <strong>{state.doctorName || '–'}{state.doctorCrm ? ` (CRM: ${state.doctorCrm})` : ''}</strong> — não encontrado no cadastro.</p>
-              <div className="mt-2 flex gap-2">
-                <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddDoctor(true)}>
-                  + Cadastrar como novo médico
-                </Button>
-                <span className="text-xs self-center text-amber-600">ou selecione abaixo:</span>
-              </div>
-            </div>
-          </div>
-        )}
-        <SearchableSelect
-          options={doctorOptions}
-          value={state.doctorId}
-          onChange={(id) => {
-            const doctor = doctors.find((d) => d.id === id);
-            if (doctor) onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
-          }}
-          placeholder="Buscar médico pelo nome ou CRM…"
-          searchPlaceholder="Nome ou CRM…"
-          emptyMessage="Nenhum médico encontrado."
-        />
       </div>
 
       {/* ── Products ──────────────────────────────────────────────── */}
