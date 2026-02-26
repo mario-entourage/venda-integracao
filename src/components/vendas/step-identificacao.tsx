@@ -538,19 +538,6 @@ export function StepIdentificacao({
         )}
       </div>
 
-      {/* ── ANVISA option ─────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Opção ANVISA</Label>
-        <div className="flex gap-3">
-          {([{ value: 'regular', label: 'Regular' }, { value: 'exceptional', label: 'Excepcional' }, { value: 'exempt', label: 'Isento' }] as const).map((opt) => (
-            <button key={opt.value} type="button" onClick={() => onChange({ anvisaOption: opt.value })}
-              className={cn('flex-1 rounded-lg border-2 py-2 text-sm font-medium transition-colors',
-                state.anvisaOption === opt.value ? 'border-primary bg-primary/5 text-primary' : 'border-border bg-card hover:border-primary/40')}>
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
