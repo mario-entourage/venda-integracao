@@ -4,6 +4,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useFirebase } from '@/firebase/provider';
+import { createPaymentLink } from '@/services/payments.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -13,9 +15,11 @@ interface StepPagamentoProps {
   orderAmount: number;
   clientName: string;
   clientPhone: string;
+  clientDocument: string;
+  clientEmail: string;
   paymentUrl: string;
-  gpId: string;
-  onPaymentGenerated: (paymentUrl: string, gpId: string) => void;
+  gpOrderId: string;
+  onPaymentGenerated: (paymentUrl: string, gpOrderId: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -25,13 +29,17 @@ export function StepPagamento({
   orderAmount,
   clientName,
   clientPhone,
+  clientDocument,
+  clientEmail,
   paymentUrl,
-  gpId,
+  gpOrderId,
   onPaymentGenerated,
 }: StepPagamentoProps) {
+  const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [whatsappSent, setWhatsappSent] = useState(false);
   const hasGenerated = useRef(false);
 
   // Auto-generate on mount (or when orderId becomes available)
@@ -43,10 +51,43 @@ export function StepPagamento({
       setIsGenerating(true);
       setError(null);
       try {
-        const result = await generatePaymentLink(orderId, orderAmount);
-        onPaymentGenerated(result.paymentUrl, result.gpId);
-      } catch {
-        setError('Erro ao gerar link de pagamento. Tente novamente.');
+        const result = await generatePaymentLink(
+          orderId,
+          orderAmount,
+          'USD',
+          clientName || undefined,
+          clientPhone || undefined,
+          clientEmail || undefined,
+          clientDocument || undefined,
+        );
+
+        if (result.error || !result.paymentUrl) {
+          throw new Error(result.error || 'Link de pagamento não retornado.');
+        }
+
+        // Persist the payment link in Firestore
+        if (firestore) {
+          const expiresAt = new Date();
+          expiresAt.setHours(
+            expiresAt.getHours() +
+              parseInt(process.env.NEXT_PUBLIC_PAYMENT_LINK_EXPIRATION_HOURS || '24', 10),
+          );
+
+          await createPaymentLink(firestore, orderId, {
+            amount: orderAmount,
+            currency: 'USD',
+            referenceId: result.gpOrderId,
+            paymentUrl: result.paymentUrl,
+            provider: 'globalpay',
+            expiresAt,
+          });
+        }
+
+        onPaymentGenerated(result.paymentUrl, result.gpOrderId);
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Erro ao gerar link de pagamento.';
+        setError(msg);
         hasGenerated.current = false;
       } finally {
         setIsGenerating(false);
@@ -54,7 +95,12 @@ export function StepPagamento({
     };
 
     generate();
-  }, [orderId, orderAmount, paymentUrl, onPaymentGenerated]);
+  }, [orderId, orderAmount, paymentUrl, onPaymentGenerated, clientName, clientPhone, clientEmail, clientDocument, firestore]);
+
+  const handleRetry = () => {
+    hasGenerated.current = false;
+    setError(null);
+  };
 
   const handleCopy = () => {
     if (!paymentUrl) return;
@@ -72,10 +118,16 @@ export function StepPagamento({
       `Olá! Segue o link de pagamento para o seu pedido:\n\n${paymentUrl}\n\nO link é válido por 24 horas.`,
     );
     window.open(`https://wa.me/${numberedPhone}?text=${text}`, '_blank');
+    setWhatsappSent(true);
   };
 
-  const fmtBRL = (v: number) =>
-    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const fmtUSD = (v: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+
+  const maskedPhone =
+    clientPhone && clientPhone.length >= 4
+      ? `(${clientPhone.slice(0, 2)}) ${clientPhone.slice(2, 3)}****-${clientPhone.slice(-4)}`
+      : clientPhone || '';
 
   return (
     <div className="space-y-6">
@@ -92,7 +144,7 @@ export function StepPagamento({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Valor total</span>
-            <span className="text-xl font-bold text-primary">{fmtBRL(orderAmount)}</span>
+            <span className="text-xl font-bold text-primary">{fmtUSD(orderAmount)}</span>
           </div>
         </CardContent>
       </Card>
@@ -115,10 +167,7 @@ export function StepPagamento({
               variant="link"
               size="sm"
               className="text-red-700 underline ml-2 p-0 h-auto"
-              onClick={() => {
-                hasGenerated.current = false;
-                setError(null);
-              }}
+              onClick={handleRetry}
             >
               Tentar novamente
             </Button>
@@ -127,12 +176,19 @@ export function StepPagamento({
 
         {paymentUrl && (
           <div className="space-y-3">
-            {/* GP ID badge */}
-            {gpId && (
-              <p className="text-xs text-muted-foreground">
-                GlobalPay ID: <span className="font-mono">{gpId}</span>
-              </p>
-            )}
+            {/* GP Order ID badge */}
+            <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide shrink-0">
+                  GlobalPay Link
+                </span>
+                {gpOrderId && (
+                  <span className="rounded bg-blue-200 px-2 py-0.5 text-[11px] font-mono font-medium text-blue-800">
+                    ID: {gpOrderId}
+                  </span>
+                )}
+              </div>
+            </div>
 
             {/* Copyable URL */}
             <div className="flex gap-2">
@@ -201,25 +257,48 @@ export function StepPagamento({
               </p>
             )}
 
-            <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
-              <svg
-                className="h-4 w-4 text-green-600 flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4.5 12.75l6 6 9-13.5"
-                />
-              </svg>
-              <p className="text-xs text-green-700">
-                Link de pagamento gerado com sucesso. Válido por 24 horas.
-              </p>
-            </div>
+            {/* Status line */}
+            {whatsappSent && clientPhone ? (
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+                <svg
+                  className="h-4 w-4 text-green-600 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4.5 12.75l6 6 9-13.5"
+                  />
+                </svg>
+                <p className="text-xs text-green-700">
+                  Enviado via WhatsApp para {maskedPhone}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2">
+                <svg
+                  className="h-4 w-4 text-green-600 flex-shrink-0"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4.5 12.75l6 6 9-13.5"
+                  />
+                </svg>
+                <p className="text-xs text-green-700">
+                  Link de pagamento gerado com sucesso. Válido por 24 horas.
+                </p>
+              </div>
+            )}
           </div>
         )}
 

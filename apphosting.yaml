@@ -27,10 +27,12 @@ env:
     secret: GOOGLE_API_KEY
 
   # GlobalPay — uncomment once live credentials are ready
-  # - variable: GLOBALPAY_API_KEY
-  #   secret: GLOBALPAY_API_KEY
+  # For sandbox testing, set GLOBALPAY_API_URL to https://apihml.tryglobalpays.com/v1
+  # For production, set to https://api.tryglobalpays.com/v1
   # - variable: GLOBALPAY_API_URL
   #   secret: GLOBALPAY_API_URL
+  # - variable: GLOBALPAY_PUB_KEY
+  #   secret: GLOBALPAY_PUB_KEY
 
   # ZapSign — uncomment once live credentials are ready
   # - variable: ZAPSIGN_API_KEY

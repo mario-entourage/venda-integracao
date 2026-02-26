@@ -42,7 +42,7 @@ interface WizardState {
   orderAmount: number;
   // Step 2
   paymentUrl: string;
-  gpId: string;
+  gpOrderId: string;
 }
 
 const INITIAL_STEP1: Step1State = {
@@ -66,7 +66,7 @@ const INITIAL_STATE: WizardState = {
   orderId: '',
   orderAmount: 0,
   paymentUrl: '',
-  gpId: '',
+  gpOrderId: '',
 };
 
 const STEPS = [
@@ -301,10 +301,12 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             orderAmount={state.orderAmount}
             clientName={state.step1.clientName}
             clientPhone={state.step1.clientPhone}
+            clientDocument={state.step1.clientDocument}
+            clientEmail=""
             paymentUrl={state.paymentUrl}
-            gpId={state.gpId}
-            onPaymentGenerated={(paymentUrl, gpId) =>
-              setState((prev) => ({ ...prev, paymentUrl, gpId }))
+            gpOrderId={state.gpOrderId}
+            onPaymentGenerated={(paymentUrl, gpOrderId) =>
+              setState((prev) => ({ ...prev, paymentUrl, gpOrderId }))
             }
           />
         )}
