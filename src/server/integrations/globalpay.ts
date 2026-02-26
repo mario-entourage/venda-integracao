@@ -220,18 +220,24 @@ export async function createGlobalPayLink(
   const merchantCode = request.merchantCode;
   const baseUrl = getBaseUrl();
 
+  // Build client sub-object (all fields optional per docs)
+  const client: Record<string, string> = {};
+  if (request.customerName)     client.name  = request.customerName;
+  if (request.customerEmail)    client.email = request.customerEmail;
+  if (request.customerPhone)    client.phone = request.customerPhone;
+  if (request.customerDocument) client.doc   = request.customerDocument;
+
   const body: Record<string, unknown> = {
-    amount: request.amount,
+    amount:      request.amount,
+    currency:    request.currency || 'USD',
     merchantCode,
     pubKey,
-    callback: request.callbackUrl,
+    invoice:     request.referenceId,
+    callback:    request.callbackUrl,
   };
 
-  if (request.description) body.description = request.description;
-  if (request.customerName) body.name = request.customerName;
-  if (request.customerEmail) body.email = request.customerEmail;
-  if (request.customerDocument) body.document = request.customerDocument;
-  if (request.customerPhone) body.phone = request.customerPhone;
+  if (request.description)          body.description = request.description;
+  if (Object.keys(client).length)   body.client      = client;
 
   // Auto-retry once on auth error to handle stale cached token
   for (let attempt = 0; attempt < 2; attempt++) {
