@@ -112,6 +112,10 @@ export function StepIdentificacao({
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
 
+  // Local editing state for "P. Total" inputs — holds the raw string while
+  // the user is typing so that the computed value doesn't overwrite mid-edit.
+  const [editingTotals, setEditingTotals] = useState<Record<string, string>>({});
+
   // Generate a blob URL for image preview (revoked on file change / unmount)
   const previewUrl = useMemo(() => {
     if (!state.prescriptionFile || !state.prescriptionFile.type?.startsWith('image/')) return null;
@@ -510,10 +514,33 @@ export function StepIdentificacao({
                   value={line.negotiatedPrice}
                   onChange={(e) => handleNegotiatedPriceChange(line.id, parseFloat(e.target.value) || 0)}
                   className="text-center px-1" />
-                {/* Negotiated TOTAL price — changing this back-calculates unit price (floor to cent) */}
+                {/* Negotiated TOTAL price — user types freely; committed on blur */}
                 <Input type="number" min={0} step="0.01"
-                  value={parseFloat((line.negotiatedPrice * line.quantity).toFixed(2))}
-                  onChange={(e) => handleNegotiatedTotalChange(line.id, parseFloat(e.target.value) || 0)}
+                  value={
+                    editingTotals[line.id] !== undefined
+                      ? editingTotals[line.id]
+                      : parseFloat((line.negotiatedPrice * line.quantity).toFixed(2))
+                  }
+                  onFocus={() =>
+                    setEditingTotals((prev) => ({
+                      ...prev,
+                      [line.id]: (line.negotiatedPrice * line.quantity).toFixed(2),
+                    }))
+                  }
+                  onChange={(e) =>
+                    setEditingTotals((prev) => ({ ...prev, [line.id]: e.target.value }))
+                  }
+                  onBlur={() => {
+                    const raw = editingTotals[line.id];
+                    if (raw !== undefined) {
+                      handleNegotiatedTotalChange(line.id, parseFloat(raw) || 0);
+                    }
+                    setEditingTotals((prev) => {
+                      const next = { ...prev };
+                      delete next[line.id];
+                      return next;
+                    });
+                  }}
                   className="text-center px-1" />
                 {/* Discount % */}
                 <Input type="number" min={0} max={100} step="0.5" value={parseFloat(line.discount.toFixed(1))}
