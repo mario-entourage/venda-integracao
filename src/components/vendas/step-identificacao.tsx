@@ -172,6 +172,23 @@ export function StepIdentificacao({
     updateLine(lineId, { negotiatedPrice, discount });
   };
 
+  /**
+   * When the user edits the negotiated TOTAL for a line, back-calculate the
+   * unit price by dividing by qty and rounding DOWN to the nearest cent.
+   * Then recompute the discount from that unit price.
+   */
+  const handleNegotiatedTotalChange = (lineId: string, total: number) => {
+    const line = state.products.find((l) => l.id === lineId);
+    if (!line) return;
+    const qty = Math.max(1, line.quantity);
+    // Floor to nearest cent: never let fractional cents inflate the unit price
+    const unitPrice = Math.floor((Math.max(0, total) / qty) * 100) / 100;
+    const discount = line.listPrice > 0
+      ? Math.max(0, Math.min(100, ((line.listPrice - unitPrice) / line.listPrice) * 100))
+      : 0;
+    updateLine(lineId, { negotiatedPrice: unitPrice, discount });
+  };
+
   const handleDiscountChange = (lineId: string, discount: number) => {
     const line = state.products.find((l) => l.id === lineId);
     if (!line) return;
@@ -450,11 +467,12 @@ export function StepIdentificacao({
         ) : (
           <div className="space-y-2">
             {/* Header */}
-            <div className="hidden grid-cols-[1fr_60px_95px_105px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
+            <div className="hidden grid-cols-[1fr_60px_90px_90px_90px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
               <span>Produto</span>
               <span className="text-center">Qtd</span>
               <span className="text-center">Preço Lista</span>
-              <span className="text-center">Preço Negoc.</span>
+              <span className="text-center">P. Unit.</span>
+              <span className="text-center">P. Total</span>
               <span className="text-center">Desc %</span>
               <span />
             </div>
@@ -463,7 +481,7 @@ export function StepIdentificacao({
               <div
                 key={line.id}
                 className={cn(
-                  'grid grid-cols-[1fr_60px_95px_105px_70px_36px] items-center gap-2 rounded-lg border p-2',
+                  'grid grid-cols-[1fr_60px_90px_90px_90px_70px_36px] items-center gap-2 rounded-lg border p-2',
                   line.aiHintName && !line.productId ? 'border-amber-300 bg-amber-50' : 'border-border bg-card',
                 )}
               >
@@ -487,9 +505,15 @@ export function StepIdentificacao({
                 <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
                   {line.listPrice > 0 ? line.listPrice.toFixed(2) : '—'}
                 </div>
-                {/* Negotiated price */}
-                <Input type="number" min={0} step="0.01" value={line.negotiatedPrice}
+                {/* Negotiated UNIT price — changing this recalculates total & discount */}
+                <Input type="number" min={0} step="0.01"
+                  value={line.negotiatedPrice}
                   onChange={(e) => handleNegotiatedPriceChange(line.id, parseFloat(e.target.value) || 0)}
+                  className="text-center px-1" />
+                {/* Negotiated TOTAL price — changing this back-calculates unit price (floor to cent) */}
+                <Input type="number" min={0} step="0.01"
+                  value={parseFloat((line.negotiatedPrice * line.quantity).toFixed(2))}
+                  onChange={(e) => handleNegotiatedTotalChange(line.id, parseFloat(e.target.value) || 0)}
                   className="text-center px-1" />
                 {/* Discount % */}
                 <Input type="number" min={0} max={100} step="0.5" value={parseFloat(line.discount.toFixed(1))}

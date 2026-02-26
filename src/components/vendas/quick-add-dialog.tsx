@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -59,14 +59,23 @@ export function QuickAddClientDialog({
   const { firestore } = useFirebase();
   const { toast } = useToast();
 
-  const nameParts = (prefillName ?? '').trim().split(' ');
-  const firstName = nameParts[0] ?? '';
-  const lastName = nameParts.slice(1).join(' ') || '';
-
   const form = useForm<ClientQuickValues>({
     resolver: zodResolver(clientQuickSchema),
-    defaultValues: { firstName, lastName, cpf: prefillDocument ?? '' },
+    defaultValues: {},
   });
+
+  // Every time the dialog opens, reset with the latest prescription data.
+  // useForm defaultValues are only read on first mount, so we must reset
+  // explicitly here whenever `open` flips to true.
+  useEffect(() => {
+    if (!open) return;
+    const parts = (prefillName ?? '').trim().split(' ');
+    form.reset({
+      firstName: parts[0] ?? '',
+      lastName:  parts.slice(1).join(' ') || '',
+      cpf:       prefillDocument ?? '',
+    });
+  }, [open, prefillName, prefillDocument, form]);
 
   const { formState: { isSubmitting } } = form;
 
@@ -316,19 +325,24 @@ export function QuickAddDoctorDialog({
   const { firestore } = useFirebase();
   const { toast } = useToast();
 
-  const nameParts = (prefillName ?? '').replace(/^Dr\.?\s*/i, '').trim().split(' ');
-  const firstName = nameParts[0] ?? '';
-  const lastName = nameParts.slice(1).join(' ') || '';
-
-  // Parse "12345/SP" or "12345-SP" into crm + state
-  const crmMatch = (prefillCrm ?? '').match(/^(\d+)[\/\-]?([A-Z]{2})?$/i);
-  const crmNumber = crmMatch?.[1] ?? prefillCrm ?? '';
-  const crmState = (crmMatch?.[2] ?? '').toUpperCase();
-
   const form = useForm<DoctorQuickValues>({
     resolver: zodResolver(doctorQuickSchema),
-    defaultValues: { firstName, lastName, crm: prefillCrm ?? crmNumber, state: crmState || undefined },
+    defaultValues: {},
   });
+
+  // Every time the dialog opens, reset with the latest prescription data.
+  // Parse "12345/SP" or "12345-SP" to split CRM number from state abbreviation.
+  useEffect(() => {
+    if (!open) return;
+    const parts = (prefillName ?? '').replace(/^Dr\.?\s*/i, '').trim().split(' ');
+    const crmMatch = (prefillCrm ?? '').match(/^(\d+)[\/\-]?([A-Z]{2})?$/i);
+    form.reset({
+      firstName: parts[0] ?? '',
+      lastName:  parts.slice(1).join(' ') || '',
+      crm:       prefillCrm ?? crmMatch?.[1] ?? '',
+      state:     (crmMatch?.[2] ?? '').toUpperCase() || undefined,
+    });
+  }, [open, prefillName, prefillCrm, form]);
 
   const { formState: { isSubmitting } } = form;
 
