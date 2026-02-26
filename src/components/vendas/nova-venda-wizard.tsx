@@ -146,23 +146,35 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
 
     // Advancing from step 0 → 1: create order
     if (currentStep === 0 && newStep === 1) {
-      if (!step1Valid || !firestore || !storage || !user) return;
+      if (!step1Valid || !firestore || !user) return;
       setIsSubmitting(true);
       setSubmitError(null);
 
       try {
         const { step1 } = state;
 
-        // Upload prescription
-        const prescriptionPath = step1.prescriptionFile
-          ? await uploadPrescription(step1.prescriptionFile)
-          : '';
+        // Upload prescription (non-fatal — if it fails, we still create the order)
+        let prescriptionPath = '';
+        if (step1.prescriptionFile && storage) {
+          try {
+            prescriptionPath = await uploadPrescription(step1.prescriptionFile);
+          } catch (uploadErr) {
+            console.warn('Prescription upload failed (continuing):', uploadErr);
+          }
+        }
 
         // Calculate amount
         const amount = step1.products.reduce(
           (sum, p) => sum + p.negotiatedPrice * p.quantity,
           0,
         );
+
+        console.log('[wizard] Creating order…', {
+          client: step1.clientName,
+          doctor: step1.doctorName,
+          productCount: step1.products.length,
+          amount,
+        });
 
         // Create order
         const orderId = await createOrder(
@@ -184,7 +196,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
               userId: step1.doctorId,
             },
             products: step1.products.map((p) => ({
-              stockProductId: p.productId, // using product ID as stockProductId
+              stockProductId: p.productId,
               quantity: p.quantity,
               price: p.listPrice,
               discount: p.discount,
@@ -196,20 +208,28 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           user.uid,
         );
 
-        // Create document requests
-        const docTypes = ['identity', 'proof_of_address', 'prescription'];
-        if (step1.anvisaOption !== 'exempt') {
-          docTypes.push('anvisa_authorization');
+        console.log('[wizard] Order created:', orderId);
+
+        // Create document requests (non-fatal)
+        try {
+          const docTypes = ['identity', 'proof_of_address', 'prescription'];
+          if (step1.anvisaOption !== 'exempt') {
+            docTypes.push('anvisa_authorization');
+          }
+          await Promise.all(
+            docTypes.map((t) => createOrderDocumentRequest(firestore, orderId, t)),
+          );
+        } catch (docErr) {
+          console.warn('Document requests creation failed (continuing):', docErr);
         }
-        await Promise.all(
-          docTypes.map((t) => createOrderDocumentRequest(firestore, orderId, t)),
-        );
 
         setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
         setCurrentStep(1);
       } catch (err) {
         console.error('Order creation error:', err);
-        setSubmitError('Erro ao criar pedido. Verifique os dados e tente novamente.');
+        const msg =
+          err instanceof Error ? err.message : 'Erro desconhecido';
+        setSubmitError(`Erro ao criar pedido: ${msg}`);
       } finally {
         setIsSubmitting(false);
       }
