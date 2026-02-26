@@ -2,15 +2,23 @@
  * GlobalPay API integration.
  *
  * Two-step flow:
- *   1. POST /v1/token  — exchange the pubKey for a short-lived bearer token.
- *   2. POST /v1/transaction — create a payment link using that token.
+ *   1. POST /v1/paymentapi/auth        — exchange pubKey + merchantCode for a JWT.
+ *   2. POST /v1/paymentapi/order       — create a payment link using that JWT.
  *
  * Documentation: https://tryglobalpays.com/developers/api-reference-payment-link
  *
+ * Key facts discovered through API probing:
+ *   - Auth endpoint:    POST {base}/paymentapi/auth
+ *   - Order endpoint:   POST {base}/paymentapi/order
+ *   - Auth header:      Authorization: Bearer <token>  (NOT "token: <value>")
+ *   - Success code:     statusCode === 1               (NOT 200)
+ *   - Token field:      json.token                     (NOT json.data)
+ *   - Credentials only work on production (api.tryglobalpays.com)
+ *
  * Environment variables:
- *   GLOBALPAY_API_URL    — base URL (default: sandbox)
- *   GLOBALPAY_PUB_KEY    — merchant public key for token generation
- *   GLOBALPAYS_MERCHANT_CODE — merchant code (default: "4912")
+ *   GLOBALPAY_API_URL         — base URL (defaults to production)
+ *   GLOBALPAY_PUB_KEY         — merchant public key
+ *   GLOBALPAYS_MERCHANT_CODE  — merchant code (default: "4912")
  */
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -69,18 +77,15 @@ interface CachedToken {
   expiresAt: number;
 }
 
-/** Module-level token cache. Tokens are refreshed 60 s before their lifetime. */
+/** Module-level token cache. Cleared on auth errors to force a fresh fetch. */
 let tokenCache: CachedToken | null = null;
-
-/** Token lifetime — assume 55 minutes to be safe (re-fetch before real expiry). */
-const TOKEN_LIFETIME_MS = 55 * 60 * 1000;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function getBaseUrl(): string {
   return (
     process.env.GLOBALPAY_API_URL ||
-    'https://apihml.tryglobalpays.com/v1' // sandbox default
+    'https://api.tryglobalpays.com/v1' // production default (sandbox rejects these creds)
   );
 }
 
@@ -96,37 +101,45 @@ function getPubKey(): string {
   return key;
 }
 
+/** Parse the `expirate` string ("2026-02-26 15:52:19") into an epoch-ms timestamp. */
+function parseExpiry(expirate: string): number {
+  const ms = Date.parse(expirate.replace(' ', 'T'));
+  // Subtract 60 s so we refresh before the token actually expires
+  return isNaN(ms) ? Date.now() + 55 * 60 * 1000 : ms - 60_000;
+}
+
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 /**
- * Obtain a bearer token from GlobalPay by exchanging the merchant's pubKey.
+ * Obtain a JWT from GlobalPay by exchanging the merchant's pubKey + merchantCode.
  *
- * POST {baseUrl}/token
- * Body: { pubKey }
- * Response: { statusCode: 200, data: "<token_string>" }
+ * POST {baseUrl}/paymentapi/auth
+ * Body:     { pubKey, merchantCode }
+ * Response: { statusCode: 1, statusType: "success", expirate: "...", token: "..." }
  */
 async function fetchToken(): Promise<string> {
   const baseUrl = getBaseUrl();
   const pubKey = getPubKey();
+  const merchantCode = process.env.GLOBALPAYS_MERCHANT_CODE || '4912';
 
-  const res = await fetch(`${baseUrl}/token`, {
+  const res = await fetch(`${baseUrl}/paymentapi/auth`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pubKey }),
+    body: JSON.stringify({ pubKey, merchantCode }),
   });
 
   const json = await res.json();
 
-  if (!res.ok || (json.statusCode && json.statusCode !== 200)) {
+  // Success is statusCode === 1
+  if (json.statusCode !== 1) {
     throw new GlobalPayError(
-      `Token request failed: ${json.message || json.statusType || res.statusText}`,
-      json.statusCode || res.status,
+      `Token request failed: ${json.msg || json.statusType || res.statusText}`,
+      json.statusCode ?? res.status,
       json.statusType || 'token_error',
     );
   }
 
-  // The API returns the token in `data` (a string)
-  const token = typeof json.data === 'string' ? json.data : json.token || json.data?.token;
+  const token = json.token as string | undefined;
   if (!token) {
     throw new GlobalPayError(
       'Token response did not include a token value.',
@@ -139,19 +152,41 @@ async function fetchToken(): Promise<string> {
 }
 
 /**
- * Get a valid GlobalPay token, using the in-memory cache when possible.
+ * Get a valid GlobalPay JWT, using the in-memory cache when possible.
  */
-async function getToken(): Promise<string> {
+async function getToken(): Promise<{ token: string; expiresAt: number }> {
   if (tokenCache && Date.now() < tokenCache.expiresAt) {
-    return tokenCache.token;
+    return tokenCache;
   }
 
-  const token = await fetchToken();
-  tokenCache = {
-    token,
-    expiresAt: Date.now() + TOKEN_LIFETIME_MS,
-  };
-  return token;
+  const baseUrl = getBaseUrl();
+  const pubKey = getPubKey();
+  const merchantCode = process.env.GLOBALPAYS_MERCHANT_CODE || '4912';
+
+  const res = await fetch(`${baseUrl}/paymentapi/auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pubKey, merchantCode }),
+  });
+
+  const json = await res.json();
+
+  if (json.statusCode !== 1) {
+    throw new GlobalPayError(
+      `Token request failed: ${json.msg || json.statusType || res.statusText}`,
+      json.statusCode ?? res.status,
+      json.statusType || 'token_error',
+    );
+  }
+
+  const token = json.token as string;
+  if (!token) {
+    throw new GlobalPayError('Token response did not include a token value.', 0, 'parse_error');
+  }
+
+  const expiresAt = parseExpiry(json.expirate || '');
+  tokenCache = { token, expiresAt };
+  return tokenCache;
 }
 
 /**
@@ -160,11 +195,11 @@ async function getToken(): Promise<string> {
 const GP_ERROR_MESSAGES: Record<number, string> = {
   300: 'Chave pública (pubKey) não informada.',
   310: 'Código do lojista (merchantCode) não informado.',
+  320: 'Credenciais inválidas.',
   340: 'Valor (amount) deve ser maior ou igual a 1.',
   350: 'URL de callback não informada.',
   400: 'Pedido não encontrado no GlobalPay.',
-  410: 'Token inválido. Será renovado automaticamente.',
-  420: 'Token expirado. Será renovado automaticamente.',
+  401: 'Token inválido ou expirado.',
   500: 'Erro interno do servidor GlobalPay. Tente novamente.',
 };
 
@@ -173,19 +208,18 @@ const GP_ERROR_MESSAGES: Record<number, string> = {
 /**
  * Request a new payment link from the GlobalPay API.
  *
- * POST {baseUrl}/transaction
- * Header: token: <bearer>
- * Body: { amount, merchantCode, pubKey, callback, description?, ... }
- * Response: { statusCode: 200, data: { url, orderId } }
+ * POST {baseUrl}/paymentapi/order
+ * Header: Authorization: Bearer <jwt>
+ * Body:   { amount, merchantCode, pubKey, callback, ... }
+ * Response: { statusCode: 1, data: { orderId, authCode, url } }
  */
 export async function createGlobalPayLink(
   request: GlobalPayLinkRequest,
 ): Promise<GlobalPayLinkResponse> {
-  const baseUrl = getBaseUrl();
   const pubKey = getPubKey();
   const merchantCode = request.merchantCode;
+  const baseUrl = getBaseUrl();
 
-  // Build the request body
   const body: Record<string, unknown> = {
     amount: request.amount,
     merchantCode,
@@ -199,43 +233,42 @@ export async function createGlobalPayLink(
   if (request.customerDocument) body.document = request.customerDocument;
   if (request.customerPhone) body.phone = request.customerPhone;
 
-  // Attempt with auto-retry on expired/invalid token (once)
+  // Auto-retry once on auth error to handle stale cached token
   for (let attempt = 0; attempt < 2; attempt++) {
-    const token = await getToken();
+    const { token } = await getToken();
 
-    const res = await fetch(`${baseUrl}/transaction`, {
+    const res = await fetch(`${baseUrl}/paymentapi/order`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        token,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify(body),
     });
 
     const json = await res.json();
 
-    // Token expired or invalid — clear cache and retry
-    if (json.statusCode === 410 || json.statusCode === 420) {
+    // Auth error — clear cache and retry once
+    if ((json.cod === '401' || json.statusCode === 401) && attempt === 0) {
       tokenCache = null;
-      if (attempt === 0) continue; // retry once
+      continue;
     }
 
-    if (!res.ok || (json.statusCode && json.statusCode !== 200)) {
+    if (json.statusCode !== 1) {
       const friendlyMsg =
         GP_ERROR_MESSAGES[json.statusCode] ||
-        json.message ||
+        json.msg ||
         json.statusType ||
         res.statusText;
       throw new GlobalPayError(
-        `GlobalPay transaction failed: ${friendlyMsg}`,
-        json.statusCode || res.status,
-        json.statusType || 'transaction_error',
+        `GlobalPay order failed: ${friendlyMsg}`,
+        json.statusCode ?? res.status,
+        json.statusType || 'order_error',
       );
     }
 
-    // Success — extract url and orderId from response
-    const paymentUrl = json.data?.url || json.data?.paymentUrl || '';
-    const gpOrderId = String(json.data?.orderId || json.data?.id || '');
+    const paymentUrl = json.data?.url || '';
+    const gpOrderId = String(json.data?.orderId || '');
 
     if (!paymentUrl) {
       throw new GlobalPayError(
@@ -253,34 +286,32 @@ export async function createGlobalPayLink(
     };
   }
 
-  // Should never reach here, but TS needs a return
-  throw new GlobalPayError('Token refresh failed after retry.', 420, 'token_error');
+  throw new GlobalPayError('Token refresh failed after retry.', 401, 'token_error');
 }
 
 // ─── query / cancel (for future use) ─────────────────────────────────────────
 
 /**
  * Query a transaction status from GlobalPay.
- *
- * GET {baseUrl}/transaction/{gpOrderId}
+ * GET {baseUrl}/paymentapi/order/{gpOrderId}
  */
 export async function getGlobalPayTransaction(
   gpOrderId: string,
 ): Promise<Record<string, unknown>> {
   const baseUrl = getBaseUrl();
-  const token = await getToken();
+  const { token } = await getToken();
 
-  const res = await fetch(`${baseUrl}/transaction/${gpOrderId}`, {
+  const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}`, {
     method: 'GET',
-    headers: { token },
+    headers: { 'Authorization': `Bearer ${token}` },
   });
 
   const json = await res.json();
 
-  if (!res.ok || (json.statusCode && json.statusCode !== 200)) {
+  if (json.statusCode !== 1) {
     throw new GlobalPayError(
-      `Query failed: ${json.message || res.statusText}`,
-      json.statusCode || res.status,
+      `Query failed: ${json.msg || res.statusText}`,
+      json.statusCode ?? res.status,
       json.statusType || 'query_error',
     );
   }
@@ -290,26 +321,23 @@ export async function getGlobalPayTransaction(
 
 /**
  * Cancel / deactivate a transaction on GlobalPay.
- *
- * POST {baseUrl}/transaction/{gpOrderId}/cancel
+ * POST {baseUrl}/paymentapi/order/{gpOrderId}/cancel
  */
-export async function cancelGlobalPayTransaction(
-  gpOrderId: string,
-): Promise<void> {
+export async function cancelGlobalPayTransaction(gpOrderId: string): Promise<void> {
   const baseUrl = getBaseUrl();
-  const token = await getToken();
+  const { token } = await getToken();
 
-  const res = await fetch(`${baseUrl}/transaction/${gpOrderId}/cancel`, {
+  const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}/cancel`, {
     method: 'POST',
-    headers: { token },
+    headers: { 'Authorization': `Bearer ${token}` },
   });
 
   const json = await res.json();
 
-  if (!res.ok || (json.statusCode && json.statusCode !== 200)) {
+  if (json.statusCode !== 1) {
     throw new GlobalPayError(
-      `Cancellation failed: ${json.message || res.statusText}`,
-      json.statusCode || res.status,
+      `Cancellation failed: ${json.msg || res.statusText}`,
+      json.statusCode ?? res.status,
       json.statusType || 'cancel_error',
     );
   }
