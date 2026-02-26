@@ -117,12 +117,13 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   }, []);
 
   // ── step 1 validation ───────────────────────────────────────────────────
+  // listPrice === 0 is valid (TBD-priced products); prescriptionFile is optional
+  // (the upload step writes '' when absent — no Firestore validation requires it).
   const step1Valid =
     state.step1.clientId !== '' &&
     state.step1.doctorId !== '' &&
     state.step1.products.length > 0 &&
-    state.step1.products.every((p) => p.productId !== '' && p.quantity > 0 && p.listPrice > 0) &&
-    state.step1.prescriptionFile !== null;
+    state.step1.products.every((p) => p.productId !== '' && p.quantity > 0);
 
   // ── upload prescription helper ──────────────────────────────────────────
   async function uploadPrescription(file: File): Promise<string> {
@@ -145,7 +146,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
 
     // Advancing from step 0 → 1: create order
     if (currentStep === 0 && newStep === 1) {
-      if (!step1Valid || !firestore || !user) return;
+      if (!step1Valid || !firestore || !storage || !user) return;
       setIsSubmitting(true);
       setSubmitError(null);
 
