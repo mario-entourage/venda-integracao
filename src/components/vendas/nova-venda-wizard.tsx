@@ -130,9 +130,19 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     const path = `documents/prescriptions/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const storageRef = ref(storage, path);
     const task = uploadBytesResumable(storageRef, file);
-    await new Promise<void>((resolve, reject) => {
+
+    // Race against a 15-second timeout so CORS / network failures don't hang forever
+    const uploadPromise = new Promise<void>((resolve, reject) => {
       task.on('state_changed', null, reject, resolve);
     });
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        task.cancel();
+        reject(new Error('Upload timed out after 15 s'));
+      }, 15_000),
+    );
+    await Promise.race([uploadPromise, timeout]);
+
     await getDownloadURL(task.snapshot.ref);
     return path;
   }
