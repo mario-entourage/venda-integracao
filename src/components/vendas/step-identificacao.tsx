@@ -542,10 +542,10 @@ export function StepIdentificacao({
                     });
                   }}
                   className="text-center px-1" />
-                {/* Discount % */}
-                <Input type="number" min={0} max={100} step="0.5" value={parseFloat(line.discount.toFixed(1))}
-                  onChange={(e) => handleDiscountChange(line.id, parseFloat(e.target.value) || 0)}
-                  className="text-center px-1" />
+                {/* Discount % (read-only — derived from list price vs negotiated) */}
+                <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
+                  {line.listPrice > 0 ? `${line.discount.toFixed(1)}%` : '—'}
+                </div>
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={() => removeLine(line.id)}>
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
