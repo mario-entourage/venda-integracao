@@ -226,9 +226,17 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           if (step1.anvisaOption !== 'exempt') {
             docTypes.push('anvisa_authorization');
           }
-          await Promise.all(
+          const docIds = await Promise.all(
             docTypes.map((t) => createOrderDocumentRequest(firestore, orderId, t)),
           );
+
+          // If the prescription was already uploaded in Step 1, mark it received immediately
+          if (prescriptionPath) {
+            const prescIdx = docTypes.indexOf('prescription');
+            if (prescIdx !== -1) {
+              await updateDocumentRequestStatus(firestore, orderId, docIds[prescIdx], 'received');
+            }
+          }
         } catch (docErr) {
           console.warn('Document requests creation failed (continuing):', docErr);
         }
