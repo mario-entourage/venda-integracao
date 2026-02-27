@@ -232,8 +232,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             docTypes.map((t) => createOrderDocumentRequest(firestore, orderId, t)),
           );
 
-          // If the prescription was already uploaded in Step 1, mark it received immediately
-          if (prescriptionPath) {
+          // If the user provided a prescription in Step 1 (even if Storage upload
+          // timed out), mark the document request as received immediately.
+          if (step1.prescriptionFile || prescriptionPath) {
             const prescIdx = docTypes.indexOf('prescription');
             if (prescIdx !== -1) {
               await updateDocumentRequestStatus(firestore, orderId, docIds[prescIdx], 'received');

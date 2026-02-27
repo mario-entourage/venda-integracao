@@ -100,18 +100,28 @@ export function StepDocumentacao({
 
   // ── process uploaded document ─────────────────────────────────────────────
   const processDocument = useCallback(async (file: File) => {
-    if (!firestore || !storage || !user) return;
+    if (!firestore || !storage || !user) {
+      setProcessingMsg('Serviços indisponíveis. Recarregue a página e tente novamente.');
+      return;
+    }
     setIsProcessing(true);
     setProcessingMsg('Enviando documento…');
 
     try {
-      // 1. Upload to Storage
+      // 1. Upload to Storage (with 20 s timeout to prevent CORS hangs)
       const path = `documents/${orderId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
       const storageRef = ref(storage, path);
       const task = uploadBytesResumable(storageRef, file);
-      await new Promise<void>((resolve, reject) => {
+      const uploadPromise = new Promise<void>((resolve, reject) => {
         task.on('state_changed', null, reject, resolve);
       });
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          task.cancel();
+          reject(new Error('Upload timed out — check network or CORS configuration.'));
+        }, 20_000),
+      );
+      await Promise.race([uploadPromise, timeout]);
 
       setProcessingMsg('Classificando documento com IA…');
 
