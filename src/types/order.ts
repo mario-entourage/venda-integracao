@@ -14,6 +14,7 @@ export interface Order {
   anvisaStatus?: string;
   zapsignDocId?: string;
   zapsignStatus?: string;
+  zapsignSignUrl?: string;
   documentsComplete: boolean;
   tristarShipmentId?: string;
   prescriptionDocId?: string;

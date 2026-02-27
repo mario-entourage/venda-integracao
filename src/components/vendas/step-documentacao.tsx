@@ -1,20 +1,23 @@
 'use client';
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { useCollection } from '@/firebase';
-import { getOrderSubcollectionRef } from '@/services/orders.service';
+import { getOrderSubcollectionRef, getOrderRef, updateOrder } from '@/services/orders.service';
 import { getClientRef } from '@/services/clients.service';
 import { getDoctorRef } from '@/services/doctors.service';
 import { updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateClient } from '@/services/clients.service';
 import { updateDoctor } from '@/services/doctors.service';
+import { generateProcuracao } from '@/server/actions/zapsign.actions';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
 import { cn } from '@/lib/utils';
-import type { Client, Doctor } from '@/types';
+import type { Client, Doctor, Order } from '@/types';
 import type { ClassifyAndExtractResponse } from '@/app/api/ai/classify-and-extract-document/route';
 
 // ─── label maps ──────────────────────────────────────────────────────────────
@@ -89,14 +92,85 @@ export function StepDocumentacao({
   const { data: clientData } = useDoc<Client>(clientRef);
   const { data: doctorData } = useDoc<Doctor>(doctorRef);
 
+  // Subscribe to order for ZapSign fields
+  const orderDocRef = useMemoFirebase(
+    () => firestore && orderId ? getOrderRef(firestore, orderId) : null,
+    [firestore, orderId],
+  );
+  const { data: orderData } = useDoc<Order>(orderDocRef);
+
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingMsg, setProcessingMsg] = useState<string | null>(null);
   const [pendingUpdate, setPendingUpdate] = useState<PendingUpdate | null>(null);
+
+  // ZapSign state
+  const hasTriggeredZapSign = useRef(false);
+  const [zapsignLoading, setZapsignLoading] = useState(false);
+  const [zapsignError, setZapsignError] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const requests = docRequests ?? [];
   const receivedCount = requests.filter((r) => r.status === 'received' || r.status === 'approved').length;
   const totalCount = requests.length;
   const allReceived = totalCount > 0 && receivedCount === totalCount;
+
+  // ── auto-trigger ZapSign procuração ───────────────────────────────────────
+  useEffect(() => {
+    if (
+      !allReceived ||
+      anvisaOption === 'exempt' ||
+      !orderId ||
+      !firestore ||
+      orderData?.zapsignDocId ||
+      hasTriggeredZapSign.current ||
+      !clientData?.address ||
+      !clientData?.document
+    ) return;
+
+    hasTriggeredZapSign.current = true;
+
+    const trigger = async () => {
+      setZapsignLoading(true);
+      setZapsignError(null);
+      try {
+        const addr = clientData.address!;
+        const result = await generateProcuracao(
+          orderId,
+          clientData.fullName,
+          clientData.document,
+          clientData.email || undefined,
+          clientData.phone || undefined,
+          {
+            street: addr.street,
+            number: addr.number,
+            complement: addr.complement,
+            neighborhood: addr.neighborhood,
+            city: addr.city,
+            state: addr.state,
+            postalCode: addr.postalCode,
+          },
+        );
+
+        if (result.error || !result.signUrl) {
+          throw new Error(result.error || 'Link de assinatura não retornado.');
+        }
+
+        await updateOrder(firestore, orderId, {
+          zapsignDocId: result.docId,
+          zapsignStatus: result.status,
+          zapsignSignUrl: result.signUrl,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro ao gerar procuração.';
+        setZapsignError(msg);
+        hasTriggeredZapSign.current = false; // allow retry
+      } finally {
+        setZapsignLoading(false);
+      }
+    };
+
+    trigger();
+  }, [allReceived, anvisaOption, orderId, firestore, orderData?.zapsignDocId, clientData]);
 
   // ── process uploaded document ─────────────────────────────────────────────
   const processDocument = useCallback(async (file: File) => {
@@ -411,18 +485,125 @@ export function StepDocumentacao({
         </div>
       )}
 
-      {/* ANVISA notice */}
+      {/* ZapSign procuração */}
       {anvisaOption !== 'exempt' && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-          <div className="flex items-start gap-2">
-            <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-blue-800">Procuração ANVISA ({anvisaOption === 'exceptional' ? 'Excepcional' : 'Regular'})</p>
-              <p className="mt-0.5 text-xs text-blue-600">Uma procuração ZapSign será enviada após a finalização do pedido.</p>
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Procuração ANVISA ({anvisaOption === 'exceptional' ? 'Excepcional' : 'Regular'})</p>
+
+          {/* State: signing link ready */}
+          {orderData?.zapsignSignUrl ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-green-600 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                <p className="text-sm font-medium text-green-700">Procuração gerada</p>
+                <Badge variant="outline" className="ml-auto border-green-300 text-green-700 bg-green-50 text-xs">
+                  {orderData.zapsignStatus === 'signed' ? 'Assinada' : 'Pendente'}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={orderData.zapsignSignUrl}
+                  className="h-8 text-xs bg-white"
+                  onFocus={(e) => e.target.select()}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 h-8"
+                  onClick={() => {
+                    navigator.clipboard.writeText(orderData.zapsignSignUrl!);
+                    setCopiedLink(true);
+                    setTimeout(() => setCopiedLink(false), 2000);
+                  }}
+                >
+                  {copiedLink ? 'Copiado!' : 'Copiar'}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  asChild
+                >
+                  <a href={orderData.zapsignSignUrl} target="_blank" rel="noopener noreferrer">
+                    Abrir link de assinatura
+                  </a>
+                </Button>
+                {clientData?.phone && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    asChild
+                  >
+                    <a
+                      href={`https://wa.me/${clientData.phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Olá ${clientData.firstName ?? clientData.fullName}, segue o link para assinar a procuração ANVISA:\n${orderData.zapsignSignUrl}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Enviar via WhatsApp
+                    </a>
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
+          ) : zapsignLoading ? (
+            /* State: generating */
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent shrink-0" />
+                <p className="text-sm text-blue-700">Gerando procuração no ZapSign…</p>
+              </div>
+            </div>
+          ) : zapsignError ? (
+            /* State: error */
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2">
+              <p className="text-sm text-red-700">{zapsignError}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                onClick={() => {
+                  hasTriggeredZapSign.current = false;
+                  setZapsignError(null);
+                }}
+              >
+                Tentar novamente
+              </Button>
+            </div>
+          ) : allReceived && !clientData?.address ? (
+            /* State: missing address */
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <p className="text-sm text-amber-700">
+                  Endereço do paciente não cadastrado. Envie o comprovante de residência para gerar a procuração automaticamente.
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* State: waiting for docs */
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+                <p className="text-sm text-blue-700">
+                  A procuração será gerada automaticamente após todos os documentos serem recebidos.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

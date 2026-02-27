@@ -34,6 +34,6 @@ env:
   - variable: GLOBALPAY_PUB_KEY
     secret: GLOBALPAY_PUB_KEY
 
-  # ZapSign — uncomment once live credentials are ready
-  # - variable: ZAPSIGN_API_KEY
-  #   secret: ZAPSIGN_API_KEY
+  # ZapSign
+  - variable: ZAPSIGN_API_KEY
+    secret: ZAPSIGN_API_KEY
