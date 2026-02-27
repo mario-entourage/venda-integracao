@@ -108,20 +108,26 @@ export function StepDocumentacao({
     setProcessingMsg('Enviando documento…');
 
     try {
-      // 1. Upload to Storage (with 20 s timeout to prevent CORS hangs)
-      const path = `documents/${orderId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const storageRef = ref(storage, path);
-      const task = uploadBytesResumable(storageRef, file);
-      const uploadPromise = new Promise<void>((resolve, reject) => {
-        task.on('state_changed', null, reject, resolve);
-      });
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => {
-          task.cancel();
-          reject(new Error('Upload timed out — check network or CORS configuration.'));
-        }, 20_000),
-      );
-      await Promise.race([uploadPromise, timeout]);
+      // 1. Upload to Storage — non-fatal, same as step 1.
+      // If CORS or network blocks the upload, we still run the AI
+      // classification and update the document request status.
+      try {
+        const path = `documents/${orderId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const storageRef = ref(storage, path);
+        const task = uploadBytesResumable(storageRef, file);
+        const uploadPromise = new Promise<void>((resolve, reject) => {
+          task.on('state_changed', null, reject, resolve);
+        });
+        const uploadTimeout = new Promise<never>((_, reject) =>
+          setTimeout(() => {
+            task.cancel();
+            reject(new Error('Upload timed out'));
+          }, 20_000),
+        );
+        await Promise.race([uploadPromise, uploadTimeout]);
+      } catch (uploadErr) {
+        console.warn('[step3] Storage upload failed (continuing with AI):', uploadErr);
+      }
 
       setProcessingMsg('Classificando documento com IA…');
 
@@ -261,7 +267,8 @@ export function StepDocumentacao({
 
     } catch (err) {
       console.error('Document processing error:', err);
-      setProcessingMsg('Erro ao processar o documento. Tente novamente.');
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setProcessingMsg(`Erro: ${errMsg}`);
     } finally {
       setIsProcessing(false);
     }
