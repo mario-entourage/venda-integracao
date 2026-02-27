@@ -8,6 +8,8 @@ export interface PrescriptionExtraction {
   patientDocument: string | null;
   doctorName: string | null;
   doctorCrm: string | null;
+  /** Date printed on the prescription, formatted as YYYY-MM-DD, or null if not found. */
+  prescriptionDate: string | null;
   products: Array<{
     name: string;
     /** SKU from the known product catalog, or null if no match found. */
@@ -58,6 +60,7 @@ Esquema de resposta:
   "patientDocument": "CPF somente dígitos (11 dígitos) ou null",
   "doctorName": "nome completo do médico ou null",
   "doctorCrm": "CRM com estado (ex: 12345/SP) ou null",
+  "prescriptionDate": "data da receita no formato YYYY-MM-DD ou null",
   "products": [
     {
       "name": "nome ou descrição exata como aparece na receita",
@@ -95,6 +98,7 @@ Retorne APENAS o JSON válido.`,
         patientDocument: null,
         doctorName: null,
         doctorCrm: null,
+        prescriptionDate: null,
         products: [],
         _error: 'Extração falhou. Preencha os campos manualmente.',
       } satisfies PrescriptionExtraction,

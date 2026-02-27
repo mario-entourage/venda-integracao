@@ -7,6 +7,7 @@ export * from './order';
 export * from './document';
 export * from './payment';
 export * from './medical';
+export * from './prescription';
 export type {
   AddressFormValues,
   LoginFormValues,

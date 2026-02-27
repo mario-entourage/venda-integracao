@@ -90,6 +90,8 @@ export interface Step1State {
   doctorIsNew: boolean;
   prescriptionFile: File | null;
   prescriptionFileName: string;
+  /** Date printed on the prescription (YYYY-MM-DD), extracted by AI or null if not found. */
+  prescriptionDate: string;
   products: ProductLine[];
   anvisaOption: string;
 }
@@ -220,6 +222,11 @@ export function StepIdentificacao({
       if (data._error) { setExtractionMsg(data._error); return; }
 
       const updates: Partial<Step1State> = {};
+
+      // Capture prescription date if the AI found one
+      if (data.prescriptionDate) {
+        updates.prescriptionDate = data.prescriptionDate;
+      }
 
       if (data.patientName) {
         const matched = clients.find((c) => nameMatches(c.fullName, data.patientName!));

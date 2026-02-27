@@ -11,6 +11,7 @@ import { getActiveProductsQuery } from '@/services/products.service';
 import { createOrder } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
+import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
@@ -57,6 +58,7 @@ const INITIAL_STEP1: Step1State = {
   doctorIsNew: false,
   prescriptionFile: null,
   prescriptionFileName: '',
+  prescriptionDate: '',
   products: [],
   anvisaOption: 'regular',
 };
@@ -239,6 +241,26 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           }
         } catch (docErr) {
           console.warn('Document requests creation failed (continuing):', docErr);
+        }
+
+        // Save prescription record to `prescriptions` collection (non-fatal)
+        try {
+          await savePrescription(firestore, {
+            prescriptionDate: step1.prescriptionDate || null,
+            clientId: step1.clientId,
+            doctorId: step1.doctorId,
+            orderId,
+            prescriptionPath,
+            products: step1.products.map((p) => ({
+              productId: p.productId,
+              productName: p.productName,
+              quantity: p.quantity,
+              negotiatedTotalPrice: parseFloat((p.negotiatedPrice * p.quantity).toFixed(2)),
+            })),
+          });
+          console.log('[wizard] Prescription record saved.');
+        } catch (presErr) {
+          console.warn('Prescription record creation failed (continuing):', presErr);
         }
 
         setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
