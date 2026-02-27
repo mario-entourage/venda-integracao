@@ -274,15 +274,16 @@ export function StepDocumentacao({
     }
   }, [firestore, storage, user, orderId, requests, clientData, doctorData, clientId, doctorId, clientIsNew, doctorIsNew, clientName]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (!acceptedFiles[0]) return;
-    processDocument(acceptedFiles[0]);
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    for (const file of acceptedFiles) {
+      await processDocument(file);
+    }
   }, [processDocument]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
-    maxFiles: 1,
+    // no maxFiles limit — multiple files can be dropped or selected at once
     disabled: isProcessing,
   });
 
@@ -361,7 +362,7 @@ export function StepDocumentacao({
               </svg>
               <p className="text-sm font-semibold">Arrastar ou clicar para enviar</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                A IA identifica o tipo do documento automaticamente · PDF, JPG, PNG
+                Vários arquivos aceitos · A IA identifica o tipo automaticamente · PDF, JPG, PNG
               </p>
             </>
           )}
