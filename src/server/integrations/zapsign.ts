@@ -144,18 +144,12 @@ export async function createZapSignDocument(
 ): Promise<ZapSignDocumentResult> {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
-  const logoUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.entouragelab.com'}/logo.png`;
 
   const body = {
     name: `Procuração ANVISA — ${params.signerName}`,
     markdown_text: buildProcuracaoMarkdown(params),
     lang: 'pt-br',
-    brand_logo: logoUrl,
-    brand_name: 'Entourage PhytoLab',
-    brand_primary_color: '#0d9488',
     external_id: params.orderId,
-    // No automatic sending — link shown in UI only
-    disable_signer_emails: true,
     signers: [
       {
         name: params.signerName,
@@ -165,9 +159,6 @@ export async function createZapSignDocument(
         auth_mode: 'assinaturaTela',
         send_automatic_email: false,
         send_automatic_whatsapp: false,
-        lock_name: true,
-        lock_email: false,
-        lock_phone: false,
       },
     ],
   };

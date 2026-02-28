@@ -49,7 +49,9 @@ export async function generateProcuracao(
 
     const message =
       err instanceof ZapSignError
-        ? err.message
+        ? err.detail
+          ? `${err.message}: ${err.detail}`
+          : err.message
         : 'Erro inesperado ao gerar procuração.';
 
     return {
