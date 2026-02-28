@@ -40,6 +40,6 @@ env:
   - variable: ZAPSIGN_API_URL
     value: "https://api.zapsign.com.br"
   - variable: ZAPSIGN_SANDBOX
-    value: "true"
+    value: "false"
   - variable: ZAPSIGN_API_KEY
     secret: ZAPSIGN_API_KEY
