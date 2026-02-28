@@ -35,5 +35,9 @@ env:
     secret: GLOBALPAY_PUB_KEY
 
   # ZapSign
+  # Sandbox: https://sandbox.api.zapsign.com.br
+  # Production: https://api.zapsign.com.br
+  - variable: ZAPSIGN_API_URL
+    value: "https://sandbox.api.zapsign.com.br"
   - variable: ZAPSIGN_API_KEY
     secret: ZAPSIGN_API_KEY
