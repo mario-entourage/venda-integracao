@@ -145,10 +145,13 @@ export async function createZapSignDocument(
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
 
+  const sandbox = process.env.ZAPSIGN_SANDBOX === 'true';
+
   const body = {
     name: `Procuração ANVISA — ${params.signerName}`,
     markdown_text: buildProcuracaoMarkdown(params),
     lang: 'pt-br',
+    sandbox,
     external_id: params.orderId,
     signers: [
       {
