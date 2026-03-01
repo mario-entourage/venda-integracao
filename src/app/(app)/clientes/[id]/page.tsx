@@ -26,8 +26,6 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-const SEX_LABELS: Record<string, string> = { M: 'Masculino', F: 'Feminino', O: 'Outro' };
-
 export default function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const db = useFirestore();
@@ -72,9 +70,6 @@ export default function ClienteDetailPage() {
     email: client.email,
     phone: client.phone,
     birthDate: client.birthDate?.toDate(),
-    sex: client.sex,
-    motherName: client.motherName,
-    representativeId: client.representativeId,
     address: client.address ?? undefined,
   };
 
@@ -90,9 +85,6 @@ export default function ClienteDetailPage() {
         email: data.email || '',
         phone: data.phone || '',
         birthDate: data.birthDate ? Timestamp.fromDate(data.birthDate) : undefined,
-        sex: data.sex,
-        motherName: data.motherName || '',
-        representativeId: data.representativeId || '',
         address: data.address ?? undefined,
       });
       toast({ title: 'Cliente atualizado com sucesso.' });
@@ -162,8 +154,6 @@ export default function ClienteDetailPage() {
           />
           <InfoRow label="E-mail" value={client.email} />
           <InfoRow label="Celular" value={client.phone} />
-          <InfoRow label="Sexo" value={client.sex ? SEX_LABELS[client.sex] : undefined} />
-          <InfoRow label="Nome da Mae" value={client.motherName} />
           <InfoRow
             label="Status"
             value={

@@ -6,9 +6,8 @@ import { UserGroupType } from '@/types/enums';
  */
 export const USER_GROUP_IDS: Record<string, string> = {
   [UserGroupType.ADMIN]: 'admin',
-  [UserGroupType.CUSTOMER]: 'customer',
-  [UserGroupType.REPRESENTATIVE]: 'representative',
-  [UserGroupType.DOCTOR]: 'doctor',
+  [UserGroupType.USER]: 'user',
+  [UserGroupType.VIEW_ONLY]: 'view_only',
 };
 
 /**
@@ -17,7 +16,6 @@ export const USER_GROUP_IDS: Record<string, string> = {
  */
 export const USER_GROUP_OPTIONS = [
   { value: UserGroupType.ADMIN, label: 'Administrador' },
-  { value: UserGroupType.CUSTOMER, label: 'Cliente' },
-  { value: UserGroupType.REPRESENTATIVE, label: 'Representante' },
-  { value: UserGroupType.DOCTOR, label: 'Medico' },
+  { value: UserGroupType.USER, label: 'Usuário' },
+  { value: UserGroupType.VIEW_ONLY, label: 'Somente Visualização' },
 ] as const;

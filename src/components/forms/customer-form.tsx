@@ -21,13 +21,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select';
 import { AddressForm } from '@/components/forms/address-form';
 
 interface CustomerFormProps {
@@ -177,89 +170,26 @@ export function CustomerForm({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Birth Date */}
-              <FormField
-                control={form.control}
-                name="birthDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Data de Nascimento</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                        value={
-                          field.value instanceof Date
-                            ? field.value.toISOString().split('T')[0]
-                            : field.value ?? ''
-                        }
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          field.onChange(val ? new Date(val) : undefined);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Sex */}
-              <FormField
-                control={form.control}
-                name="sex"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sexo</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value ?? ''}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="M">Masculino</SelectItem>
-                        <SelectItem value="F">Feminino</SelectItem>
-                        <SelectItem value="O">Outro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Mother Name */}
+            {/* Birth Date */}
             <FormField
               control={form.control}
-              name="motherName"
+              name="birthDate"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Nome da Mae</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nome da mae" {...field} value={field.value ?? ''} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Representative ID */}
-            <FormField
-              control={form.control}
-              name="representativeId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Representante</FormLabel>
+                  <FormLabel>Data de Nascimento</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="ID do representante"
+                      type="date"
                       {...field}
-                      value={field.value ?? ''}
+                      value={
+                        field.value instanceof Date
+                          ? field.value.toISOString().split('T')[0]
+                          : field.value ?? ''
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        field.onChange(val ? new Date(val) : undefined);
+                      }}
                     />
                   </FormControl>
                   <FormMessage />

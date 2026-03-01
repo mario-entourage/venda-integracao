@@ -33,28 +33,6 @@ export function DoctorForm({
 
   const fields = (
     <div className="space-y-4">
-      <FormField
-        control={form.control}
-        name="document"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>CPF</FormLabel>
-            <FormControl>
-              <ReactInputMask
-                mask="999.999.999-99"
-                value={field.value ?? ''}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-              >
-                {(inputProps: React.ComponentProps<'input'>) => (
-                  <Input {...inputProps} ref={field.ref} placeholder="000.000.000-00" />
-                )}
-              </ReactInputMask>
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
       <div className="grid grid-cols-2 gap-4">
         <FormField control={form.control} name="firstName" render={({ field }) => (
           <FormItem><FormLabel>Nome</FormLabel><FormControl>

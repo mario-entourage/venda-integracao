@@ -1,9 +1,9 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
+  collection, doc, updateDoc, getDoc, getDocs,
   query, where, orderBy, serverTimestamp, writeBatch,
   Firestore, Query,
 } from 'firebase/firestore';
-import type { User, UserProfile, UserAddress, UserCreationFormValues } from '@/types';
+import type { User, UserProfile } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -21,54 +21,59 @@ export function getUserProfilesRef(db: Firestore, userId: string) {
   return collection(db, 'users', userId, 'profiles');
 }
 
-export function getUserAddressesRef(db: Firestore, userId: string) {
-  return collection(db, 'users', userId, 'addresses');
-}
-
 // ---------------------------------------------------------------------------
 // CRUD operations
 // ---------------------------------------------------------------------------
 
 /**
- * Atomically create a User document and its initial Profile sub-document
- * inside a single Firestore batch write.
+ * Ensure a user document exists for the given Firebase Auth UID.
  *
- * @returns The auto-generated user ID.
+ * Called on every login. If the user doc already exists the call is a no-op.
+ * On first login it atomically creates the User document and a default
+ * Profile sub-document, pre-populated with Caio's information.
+ *
+ * @returns true if a new user was created, false if it already existed.
  */
-export async function createUser(
+export async function ensureUser(
   db: Firestore,
-  data: UserCreationFormValues & { groupId: string },
-): Promise<string> {
+  uid: string,
+  email: string,
+): Promise<boolean> {
+  const userRef = doc(db, 'users', uid);
+  const snap = await getDoc(userRef);
+
+  if (snap.exists()) return false;
+
   const batch = writeBatch(db);
 
-  // Pre-generate the user document reference so we know the ID upfront.
-  const userRef = doc(getUsersRef(db));
-  const userId = userRef.id;
-
   batch.set(userRef, {
-    document: data.document,
-    groupId: data.groupId,
+    email,
+    groupId: 'user',
     active: true,
-    status: '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
-  // Profile lives in the users/{userId}/profiles subcollection.
-  const profileRef = doc(getUserProfilesRef(db, userId));
+  // Profile defaults to Caio's information.
+  const profileRef = doc(getUserProfilesRef(db, uid));
   batch.set(profileRef, {
-    firstName: data.firstName,
-    lastName: data.lastName || '',
-    fullName: `${data.firstName} ${data.lastName || ''}`.trim(),
-    email: data.email,
-    phone: data.phone || '',
-    userId,
+    fullName: 'Caio Santos Abreu',
+    email,
+    sex: null,
+    birthDate: null,
+    state: '',
+    city: '',
+    address: '',
+    documentNumber: '',
+    postalCode: '',
+    phone: '',
+    userId: uid,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
   await batch.commit();
-  return userId;
+  return true;
 }
 
 /**
@@ -139,23 +144,4 @@ export async function getUserProfiles(
 ): Promise<(UserProfile & { id: string })[]> {
   const snap = await getDocs(getUserProfilesRef(db, userId));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as UserProfile & { id: string });
-}
-
-/**
- * Add an address to a user's addresses subcollection.
- *
- * @returns The auto-generated address document ID.
- */
-export async function createUserAddress(
-  db: Firestore,
-  userId: string,
-  data: Omit<UserAddress, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
-): Promise<string> {
-  const ref = await addDoc(getUserAddressesRef(db, userId), {
-    ...data,
-    userId,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-  return ref.id;
 }

@@ -62,7 +62,6 @@ export default function MedicoDetailPage() {
 
   // Map Firestore Doctor back to DoctorFormValues for the edit form
   const defaultValues: Partial<DoctorFormValues> = {
-    document: doctor.document,
     firstName: doctor.firstName,
     lastName: doctor.lastName,
     email: doctor.email,
@@ -78,7 +77,6 @@ export default function MedicoDetailPage() {
     setSaving(true);
     try {
       await updateDoctor(db, id, {
-        document: data.document,
         firstName: data.firstName,
         lastName: data.lastName || '',
         fullName: `${data.firstName} ${data.lastName || ''}`.trim(),
@@ -144,7 +142,6 @@ export default function MedicoDetailPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <InfoRow label="CPF" value={<span className="font-mono">{doctor.document}</span>} />
           <InfoRow label="CRM" value={doctor.crm} />
           <InfoRow label="Especialidade" value={doctor.mainSpecialty} />
           <InfoRow label="UF" value={doctor.state} />

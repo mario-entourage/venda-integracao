@@ -24,9 +24,8 @@ export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
 
 export const USER_GROUP_LABELS: Record<UserGroupType, string> = {
   [UserGroupType.ADMIN]: 'Administrador',
-  [UserGroupType.REPRESENTATIVE]: 'Representante',
-  [UserGroupType.CUSTOMER]: 'Cliente',
-  [UserGroupType.DOCTOR]: 'Medico',
+  [UserGroupType.USER]: 'Usuário',
+  [UserGroupType.VIEW_ONLY]: 'Somente Visualização',
 };
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {

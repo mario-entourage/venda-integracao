@@ -11,9 +11,6 @@ export interface Client {
   email?: string;
   phone?: string;
   birthDate?: Timestamp;
-  sex?: 'M' | 'F' | 'O';
-  motherName?: string;
-  representativeId?: string;
   address?: ClientAddress;
   active: boolean;
   createdAt: Timestamp;

@@ -1,11 +1,12 @@
 'use client';
 
-import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
+import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useRef, useState, useEffect } from 'react';
 import { FirebaseApp } from 'firebase/app';
 import { Firestore, doc, onSnapshot } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseStorage } from 'firebase/storage';
-import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
+import { ensureUser } from '@/services/users.service';
 
 // Super-admins are hardcoded and always have admin access
 const SUPER_ADMIN_EMAILS = ['caio@entouragelab.com', 'mario@entouragelab.com'];
@@ -158,6 +159,21 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   const isAdmin = isSuperAdmin || isDynamicAdmin;
   const isAdminLoading = userAuthState.isUserLoading || isDynamicAdminLoading;
 
+  // Auto-create user document on first login
+  const hasEnsuredUser = useRef(false);
+  useEffect(() => {
+    if (
+      !firestore ||
+      !userAuthState.user?.uid ||
+      !userAuthState.user?.email ||
+      hasEnsuredUser.current
+    ) return;
+
+    hasEnsuredUser.current = true;
+    ensureUser(firestore, userAuthState.user.uid, userAuthState.user.email).catch((err) =>
+      console.error('[FirebaseProvider] ensureUser failed:', err),
+    );
+  }, [firestore, userAuthState.user?.uid, userAuthState.user?.email]);
 
   // Memoize the context value
   const contextValue = useMemo((): FirebaseContextState => {

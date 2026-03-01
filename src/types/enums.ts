@@ -1,8 +1,7 @@
 export enum UserGroupType {
   ADMIN = 'ADMIN',
-  REPRESENTATIVE = 'REPRESENTATIVE',
-  CUSTOMER = 'CUSTOMER',
-  DOCTOR = 'DOCTOR',
+  USER = 'USER',
+  VIEW_ONLY = 'VIEW_ONLY',
 }
 
 export enum OrderStatus {

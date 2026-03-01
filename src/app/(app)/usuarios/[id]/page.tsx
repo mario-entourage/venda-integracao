@@ -9,7 +9,6 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import {
   getUserRef,
   getUserProfilesRef,
-  getUserAddressesRef,
   softDeleteUser,
 } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
@@ -20,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { USER_GROUP_LABELS } from '@/lib/constants';
 import { UserGroupType } from '@/types/enums';
-import type { User, UserProfile, UserAddress } from '@/types';
+import type { User, UserProfile } from '@/types';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -41,11 +40,9 @@ export default function UsuarioDetailPage() {
 
   const userRef = useMemoFirebase(() => getUserRef(db, id), [db, id]);
   const profilesRef = useMemoFirebase(() => getUserProfilesRef(db, id), [db, id]);
-  const addressesRef = useMemoFirebase(() => getUserAddressesRef(db, id), [db, id]);
 
   const { data: userData, isLoading } = useDoc<User>(userRef);
   const { data: profiles } = useCollection<UserProfile>(profilesRef);
-  const { data: addresses } = useCollection<UserAddress>(addressesRef);
 
   const profile = profiles?.[0];
 
@@ -101,7 +98,7 @@ export default function UsuarioDetailPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={profile?.fullName || userData.document} />
+      <PageHeader title={profile?.fullName || userData.email} />
 
       {/* User core data */}
       <Card>
@@ -109,7 +106,7 @@ export default function UsuarioDetailPage() {
           <CardTitle>Dados do Usuario</CardTitle>
         </CardHeader>
         <CardContent>
-          <InfoRow label="CPF / CNPJ" value={<span className="font-mono">{userData.document}</span>} />
+          <InfoRow label="Email" value={userData.email} />
           <InfoRow
             label="Grupo"
             value={USER_GROUP_LABELS[userData.groupId as UserGroupType] || userData.groupId}
@@ -122,7 +119,6 @@ export default function UsuarioDetailPage() {
               </Badge>
             }
           />
-          {userData.sex && <InfoRow label="Sexo" value={userData.sex} />}
         </CardContent>
       </Card>
 
@@ -136,29 +132,6 @@ export default function UsuarioDetailPage() {
             <InfoRow label="Nome Completo" value={profile.fullName} />
             <InfoRow label="Email" value={profile.email || '—'} />
             <InfoRow label="Telefone" value={profile.phone || '—'} />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Addresses */}
-      {addresses && addresses.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Enderecos ({addresses.length})</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {addresses.map((addr, i) => (
-              <div key={addr.id} className={i > 0 ? 'pt-4 border-t' : ''}>
-                <p className="text-sm leading-relaxed">
-                  {addr.street}, {addr.number}
-                  {addr.complement ? ` — ${addr.complement}` : ''}
-                  <br />
-                  {addr.neighborhood} · {addr.city} / {addr.state}
-                  <br />
-                  <span className="font-mono text-muted-foreground">CEP {addr.postalCode}</span>
-                </p>
-              </div>
-            ))}
           </CardContent>
         </Card>
       )}

@@ -31,7 +31,6 @@ export async function createDoctor(
   data: DoctorFormValues,
 ): Promise<string> {
   const ref = await addDoc(getDoctorsRef(db), {
-    document: data.document,
     firstName: data.firstName,
     lastName: data.lastName || '',
     fullName: `${data.firstName} ${data.lastName || ''}`.trim(),

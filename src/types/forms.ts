@@ -26,24 +26,11 @@ export const customerSchema = z.object({
   email: z.string().email('Email invalido').optional().or(z.literal('')),
   phone: z.string().optional(),
   birthDate: z.date().optional(),
-  sex: z.enum(['M', 'F', 'O']).optional(),
-  motherName: z.string().optional(),
-  representativeId: z.string().optional(),
   address: addressSchema.optional(),
 });
 export type CustomerFormValues = z.infer<typeof customerSchema>;
 
-export const representativeSchema = z.object({
-  document: z.string().min(11, 'CPF/CNPJ obrigatorio'),
-  firstName: z.string().min(1, 'Nome obrigatorio'),
-  lastName: z.string().optional(),
-  email: z.string().email('Email invalido'),
-  phone: z.string().optional(),
-});
-export type RepresentativeFormValues = z.infer<typeof representativeSchema>;
-
 export const doctorSchema = z.object({
-  document: z.string().min(11, 'CPF obrigatorio'),
   firstName: z.string().min(1, 'Nome obrigatorio'),
   lastName: z.string().optional(),
   email: z.string().email('Email invalido').optional().or(z.literal('')),
@@ -86,13 +73,3 @@ export const orderSchema = z.object({
 });
 export type OrderFormValues = z.infer<typeof orderSchema>;
 
-export const userCreationSchema = z.object({
-  document: z.string().min(11, 'CPF/CNPJ obrigatorio'),
-  firstName: z.string().min(1, 'Nome obrigatorio'),
-  lastName: z.string().optional(),
-  email: z.string().email('Email invalido'),
-  phone: z.string().optional(),
-  groupId: z.string().min(1, 'Grupo obrigatorio'),
-  password: z.string().min(8, 'Senha deve ter pelo menos 8 caracteres'),
-});
-export type UserCreationFormValues = z.infer<typeof userCreationSchema>;

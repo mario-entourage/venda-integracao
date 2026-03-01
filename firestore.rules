@@ -22,23 +22,14 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn() && isEntourageDomain();
-      allow create, update: if isAdmin();
+      allow create: if isSignedIn() && isEntourageDomain() && request.auth.uid == userId;
+      allow update: if isAdmin();
       allow delete: if false;
     }
 
     match /users/{userId}/profiles/{profileId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow write: if isAdmin() || request.auth.uid == userId;
-    }
-
-    match /users/{userId}/addresses/{addressId} {
-      allow read: if isSignedIn() && isEntourageDomain();
-      allow write: if isAdmin() || request.auth.uid == userId;
-    }
-
-    match /userGroups/{groupId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
     }
 
     match /clients/{clientId} {

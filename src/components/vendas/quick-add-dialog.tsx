@@ -109,9 +109,6 @@ export function QuickAddClientDialog({
         email:           data.email        ?? '',
         phone:           data.phone        ?? '',
         birthDate:       birthTimestamp,
-        sex:             null,
-        motherName:      '',
-        representativeId:'',
         address,
         active:          true,
         createdAt:       serverTimestamp(),
@@ -352,7 +349,6 @@ export function QuickAddDoctorDialog({
       const fullName = `${data.firstName} ${data.lastName ?? ''}`.trim();
 
       const ref = await addDoc(collection(firestore, 'doctors'), {
-        document:      '',
         firstName:     data.firstName,
         lastName:      data.lastName    ?? '',
         fullName,
