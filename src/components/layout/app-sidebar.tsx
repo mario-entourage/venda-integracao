@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
+  Shield, Upload,
 } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
 import {
@@ -39,6 +40,12 @@ const documentNavItems = [
 
 const paymentNavItems = [
   { href: '/checkout', icon: CreditCard, label: 'Pagamentos' },
+];
+
+const anvisaNavItems = [
+  { href: '/anvisa', icon: Shield, label: 'Solicitacoes' },
+  { href: '/anvisa/nova', icon: Upload, label: 'Nova Solicitacao' },
+  { href: '/anvisa/perfil', icon: User, label: 'Perfil ANVISA' },
 ];
 
 const adminNavItems = [
@@ -88,6 +95,7 @@ export function AppSidebar() {
         <NavGroup label="Produtos & Estoque" items={productNavItems} pathname={pathname} />
         <NavGroup label="Documentos" items={documentNavItems} pathname={pathname} />
         <NavGroup label="Financeiro" items={paymentNavItems} pathname={pathname} />
+        <NavGroup label="ANVISA" items={anvisaNavItems} pathname={pathname} />
 
         {isAdmin && (
           <NavGroup label="Administracao" items={adminNavItems} pathname={pathname} />

@@ -8,6 +8,7 @@ export * from './document';
 export * from './payment';
 export * from './medical';
 export * from './prescription';
+export * from './anvisa';
 export type {
   AddressFormValues,
   LoginFormValues,
