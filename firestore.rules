@@ -71,6 +71,28 @@ service cloud.firestore {
       allow write: if isSignedIn() && isEntourageDomain();
     }
 
+    // ── Collection-group rules (required for collectionGroup() queries) ──────
+    // The single-segment wildcard above covers direct subcollection reads, but
+    // Firestore collection-group queries need a {path=**} recursive rule so the
+    // engine can evaluate the rule for documents at any depth.
+
+    match /{path=**}/payments/{docId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+    }
+
+    match /{path=**}/shipping/{docId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+    }
+
+    // ── Prescriptions ────────────────────────────────────────────────────────
+
+    match /prescriptions/{docId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create: if isSignedIn() && isEntourageDomain();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
     match /documents/{docId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow write: if isSignedIn() && isEntourageDomain();
