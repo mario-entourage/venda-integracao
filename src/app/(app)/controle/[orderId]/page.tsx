@@ -128,24 +128,6 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleMarkAsPaidAndSigned = async () => {
-    if (!firestore || !user) return;
-    setIsUpdating(true);
-    setUpdateError(null);
-    try {
-      await updateOrder(firestore, orderId, {
-        status: OrderStatus.PAID,
-        zapsignStatus: 'signed',
-        updatedById: user.uid,
-      });
-    } catch (err) {
-      console.error('[OrderDetailPage] mark paid+signed error:', err);
-      setUpdateError('Erro ao atualizar status.');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
   const handleMarkAsSigned = async () => {
     if (!firestore || !user) return;
     setIsUpdating(true);
@@ -208,8 +190,8 @@ export default function OrderDetailPage() {
   const canMarkAsPaid = ![
     OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.CANCELLED,
   ].includes(order.status as OrderStatus);
-  // Already paid but ZapSign contract not yet marked signed
-  const canMarkAsSigned = order.status === OrderStatus.PAID && order.zapsignStatus !== 'signed';
+  // ZapSign contract not yet marked signed (independent of payment status)
+  const canMarkAsSigned = order.zapsignStatus !== 'signed' && order.status !== OrderStatus.CANCELLED;
   // Show the manual payment section at all
   const showPaymentActions = canMarkAsPaid || canMarkAsSigned;
 
@@ -340,31 +322,22 @@ export default function OrderDetailPage() {
       {showPaymentActions && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Atualizar Pagamento</CardTitle>
+            <CardTitle className="text-base">Atualizar Status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Marque manualmente o status de pagamento deste pedido.
+              Marque manualmente o status de pagamento ou contrato deste pedido.
             </p>
             <div className="flex flex-wrap gap-3">
               {canMarkAsPaid && (
-                <>
-                  <Button
-                    variant="outline"
-                    className="border-green-300 text-green-700 hover:bg-green-50"
-                    disabled={isUpdating}
-                    onClick={handleMarkAsPaid}
-                  >
-                    {isUpdating ? 'Atualizando…' : '✓ Marcar como Pago'}
-                  </Button>
-                  <Button
-                    className="bg-green-600 hover:bg-green-700"
-                    disabled={isUpdating}
-                    onClick={handleMarkAsPaidAndSigned}
-                  >
-                    {isUpdating ? 'Atualizando…' : '✓ Pago e Contrato Assinado'}
-                  </Button>
-                </>
+                <Button
+                  variant="outline"
+                  className="border-green-300 text-green-700 hover:bg-green-50"
+                  disabled={isUpdating}
+                  onClick={handleMarkAsPaid}
+                >
+                  {isUpdating ? 'Atualizando…' : '✓ Marcar como Pago'}
+                </Button>
               )}
               {canMarkAsSigned && (
                 <Button
@@ -373,7 +346,7 @@ export default function OrderDetailPage() {
                   disabled={isUpdating}
                   onClick={handleMarkAsSigned}
                 >
-                  {isUpdating ? 'Atualizando…' : '✍ Marcar Contrato como Assinado'}
+                  {isUpdating ? 'Atualizando…' : '✍ Marcar como Assinado'}
                 </Button>
               )}
             </div>
