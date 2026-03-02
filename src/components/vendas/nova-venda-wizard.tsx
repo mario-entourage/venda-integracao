@@ -49,6 +49,8 @@ interface WizardState {
   selectedRepresentanteId: string;
   selectedRepresentanteName: string;
   selectedRepresentanteCode: string;
+  // Procuração ZapSign toggle (selected in step 2)
+  needsProcuracao: boolean;
 }
 
 const INITIAL_STEP1: Step1State = {
@@ -77,6 +79,7 @@ const INITIAL_STATE: WizardState = {
   selectedRepresentanteId: '',
   selectedRepresentanteName: 'Venda Direta',
   selectedRepresentanteCode: 'DIRECT',
+  needsProcuracao: false,
 };
 
 const STEPS = [
@@ -408,6 +411,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             representantes={representantes ?? []}
             selectedRepresentanteId={state.selectedRepresentanteId}
             onRepresentanteChange={handleRepresentanteChange}
+            needsProcuracao={state.needsProcuracao}
+            onNeedsProcuracaoChange={(v) => setState((prev) => ({ ...prev, needsProcuracao: v }))}
           />
         )}
 
@@ -420,6 +425,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             doctorId={state.step1.doctorId}
             clientIsNew={state.step1.clientIsNew}
             doctorIsNew={state.step1.doctorIsNew}
+            needsProcuracao={state.needsProcuracao}
           />
         )}
       </StepWizard>

@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
@@ -36,6 +37,10 @@ interface StepPagamentoProps {
   selectedRepresentanteId: string;
   /** Called when the user picks or creates a representante */
   onRepresentanteChange: (id: string, name: string, code: string) => void;
+  /** Whether procuração ZapSign should be generated */
+  needsProcuracao: boolean;
+  /** Called when the user toggles the procuração switch */
+  onNeedsProcuracaoChange: (value: boolean) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -53,6 +58,8 @@ export function StepPagamento({
   representantes,
   selectedRepresentanteId,
   onRepresentanteChange,
+  needsProcuracao,
+  onNeedsProcuracaoChange,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -338,6 +345,29 @@ export function StepPagamento({
           </p>
         )}
       </div>
+
+      {/* Procuração ZapSign toggle — shown only after payment link is generated */}
+      {paymentUrl && (
+        <div className="space-y-3 border-t pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Procuração ZapSign</h3>
+              <p className="text-xs text-muted-foreground">
+                Gerar procuração ANVISA para assinatura via ZapSign?
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                {needsProcuracao ? 'SIM' : 'NÃO'}
+              </span>
+              <Switch
+                checked={needsProcuracao}
+                onCheckedChange={onNeedsProcuracaoChange}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Representante selector — shown only after payment link is generated */}
       {paymentUrl && (

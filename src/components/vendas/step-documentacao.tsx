@@ -66,10 +66,12 @@ interface StepDocumentacaoProps {
   doctorId: string;
   clientIsNew: boolean;
   doctorIsNew: boolean;
+  /** Whether procuração ZapSign should be generated (toggled in Pagamento step) */
+  needsProcuracao?: boolean;
 }
 
 export function StepDocumentacao({
-  orderId, anvisaOption, clientId, clientName, doctorId, clientIsNew, doctorIsNew,
+  orderId, anvisaOption, clientId, clientName, doctorId, clientIsNew, doctorIsNew, needsProcuracao = false,
 }: StepDocumentacaoProps) {
   const { firestore, storage, user } = useFirebase();
 
@@ -117,6 +119,7 @@ export function StepDocumentacao({
   // ── auto-trigger ZapSign procuração ───────────────────────────────────────
   useEffect(() => {
     if (
+      !needsProcuracao ||
       !allReceived ||
       anvisaOption === 'exempt' ||
       !orderId ||
@@ -170,7 +173,7 @@ export function StepDocumentacao({
     };
 
     trigger();
-  }, [allReceived, anvisaOption, orderId, firestore, orderData?.zapsignDocId, clientData]);
+  }, [needsProcuracao, allReceived, anvisaOption, orderId, firestore, orderData?.zapsignDocId, clientData]);
 
   // ── process uploaded document ─────────────────────────────────────────────
   const processDocument = useCallback(async (file: File) => {
@@ -485,8 +488,8 @@ export function StepDocumentacao({
         </div>
       )}
 
-      {/* ZapSign procuração */}
-      {anvisaOption !== 'exempt' && (
+      {/* ZapSign procuração — only shown when user opted in via the Pagamento step */}
+      {needsProcuracao && anvisaOption !== 'exempt' && (
         <div className="space-y-2">
           <p className="text-sm font-semibold">Procuração ANVISA ({anvisaOption === 'exceptional' ? 'Excepcional' : 'Regular'})</p>
 

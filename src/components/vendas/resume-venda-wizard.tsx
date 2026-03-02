@@ -163,6 +163,8 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             representantes={[]}
             selectedRepresentanteId=""
             onRepresentanteChange={() => {}}
+            needsProcuracao={false}
+            onNeedsProcuracaoChange={() => {}}
           />
         )}
 
@@ -175,6 +177,7 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             doctorId={doctor?.userId ?? ''}
             clientIsNew={false}
             doctorIsNew={false}
+            needsProcuracao={false}
           />
         )}
       </StepWizard>
