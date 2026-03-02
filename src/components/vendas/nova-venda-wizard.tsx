@@ -8,7 +8,8 @@ import { useCollection } from '@/firebase';
 import { getActiveClientsQuery } from '@/services/clients.service';
 import { getActiveDoctorsQuery } from '@/services/doctors.service';
 import { getActiveProductsQuery } from '@/services/products.service';
-import { createOrder } from '@/services/orders.service';
+import { getActiveRepresentantesQuery } from '@/services/representantes.service';
+import { createOrder, updateOrderRepresentative } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
 import { savePrescription } from '@/services/prescriptions.service';
@@ -17,7 +18,7 @@ import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
 import { StepDocumentacao } from './step-documentacao';
 import { PostWizardDialog } from './post-wizard-dialog';
-import type { Client, Doctor, Product } from '@/types';
+import type { Client, Doctor, Product, Representante } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,10 @@ interface WizardState {
   // Step 2
   paymentUrl: string;
   gpOrderId: string;
+  // Representative (selected in step 2, optional)
+  selectedRepresentanteId: string;
+  selectedRepresentanteName: string;
+  selectedRepresentanteCode: string;
 }
 
 const INITIAL_STEP1: Step1State = {
@@ -69,6 +74,9 @@ const INITIAL_STATE: WizardState = {
   orderAmount: 0,
   paymentUrl: '',
   gpOrderId: '',
+  selectedRepresentanteId: '',
+  selectedRepresentanteName: 'Venda Direta',
+  selectedRepresentanteCode: 'DIRECT',
 };
 
 const STEPS = [
@@ -100,10 +108,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     () => (firestore ? getActiveProductsQuery(firestore) : null),
     [firestore],
   );
+  const representantesQ = useMemoFirebase(
+    () => (firestore ? getActiveRepresentantesQuery(firestore) : null),
+    [firestore],
+  );
 
   const { data: clients } = useCollection<Client>(clientsQ);
   const { data: doctors } = useCollection<Doctor>(doctorsQ);
   const { data: products } = useCollection<Product>(productsQ);
+  const { data: representantes } = useCollection<Representante>(representantesQ);
 
   // ── wizard state ────────────────────────────────────────────────────────
   const [state, setState] = useState<WizardState>(INITIAL_STATE);
@@ -188,7 +201,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           amount,
         });
 
-        // Create order
+        // Create order (with default "Venda Direta" representative — can be updated in step 2)
         const orderId = await createOrder(
           firestore,
           {
@@ -280,6 +293,29 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     setCurrentStep(newStep);
   };
 
+  // ── representante selection ─────────────────────────────────────────────
+  const handleRepresentanteChange = useCallback(
+    async (id: string, name: string, code: string) => {
+      setState((prev) => ({
+        ...prev,
+        selectedRepresentanteId: id,
+        selectedRepresentanteName: name,
+        selectedRepresentanteCode: code,
+      }));
+
+      // Persist to Firestore immediately (non-fatal)
+      if (firestore && state.orderId) {
+        try {
+          await updateOrderRepresentative(firestore, state.orderId, { name, code, userId: id });
+          console.log('[wizard] Representative updated:', name, code);
+        } catch (err) {
+          console.warn('[wizard] Representative update failed (non-fatal):', err);
+        }
+      }
+    },
+    [firestore, state.orderId],
+  );
+
   // ── completion (step 2 → finalize) ─────────────────────────────────────
   const handleComplete = async () => {
     if (!state.orderId || !firestore || !user) return;
@@ -369,6 +405,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             onPaymentGenerated={(paymentUrl, gpOrderId) =>
               setState((prev) => ({ ...prev, paymentUrl, gpOrderId }))
             }
+            representantes={representantes ?? []}
+            selectedRepresentanteId={state.selectedRepresentanteId}
+            onRepresentanteChange={handleRepresentanteChange}
           />
         )}
 

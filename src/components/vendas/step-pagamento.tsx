@@ -4,9 +4,18 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
+import type { Representante } from '@/types/representante';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -20,6 +29,12 @@ interface StepPagamentoProps {
   paymentUrl: string;
   gpOrderId: string;
   onPaymentGenerated: (paymentUrl: string, gpOrderId: string) => void;
+  /** List of active representantes to select from */
+  representantes: Representante[];
+  /** Currently selected representante ID */
+  selectedRepresentanteId: string;
+  /** Called when the user picks a representante */
+  onRepresentanteChange: (id: string, name: string, code: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -34,6 +49,9 @@ export function StepPagamento({
   paymentUrl,
   gpOrderId,
   onPaymentGenerated,
+  representantes,
+  selectedRepresentanteId,
+  onRepresentanteChange,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -308,6 +326,44 @@ export function StepPagamento({
           </p>
         )}
       </div>
+
+      {/* Representante selector — shown only after payment link is generated */}
+      {paymentUrl && (
+        <div className="space-y-3 border-t pt-4">
+          <h3 className="text-sm font-semibold">Representante</h3>
+          <p className="text-xs text-muted-foreground">
+            Opcional. Associe esta venda a um representante.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor="representante-select">Selecionar Representante</Label>
+            <Select
+              value={selectedRepresentanteId || '__none__'}
+              onValueChange={(val) => {
+                if (val === '__none__') {
+                  onRepresentanteChange('', 'Venda Direta', 'DIRECT');
+                  return;
+                }
+                const rep = representantes.find((r) => r.id === val);
+                if (rep) {
+                  onRepresentanteChange(rep.id, rep.name, rep.code);
+                }
+              }}
+            >
+              <SelectTrigger id="representante-select">
+                <SelectValue placeholder="Nenhum (Venda Direta)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
+                {representantes.map((rep) => (
+                  <SelectItem key={rep.id} value={rep.id}>
+                    {rep.name} — {rep.code}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

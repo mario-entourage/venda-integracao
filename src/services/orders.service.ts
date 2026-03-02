@@ -273,3 +273,24 @@ export async function getOrderSubcollectionDocs<T>(
   const snap = await getDocs(ref);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T & { id: string });
 }
+
+/**
+ * Update the representative subcollection document for an existing order.
+ * Modifies the first (and typically only) document in the subcollection.
+ */
+export async function updateOrderRepresentative(
+  db: Firestore,
+  orderId: string,
+  representative: { name: string; code: string; userId: string },
+): Promise<void> {
+  const repRef = collection(db, 'orders', orderId, 'representative');
+  const snap = await getDocs(repRef);
+  if (!snap.empty) {
+    await updateDoc(snap.docs[0].ref, {
+      name: representative.name,
+      code: representative.code,
+      userId: representative.userId,
+      updatedAt: serverTimestamp(),
+    });
+  }
+}

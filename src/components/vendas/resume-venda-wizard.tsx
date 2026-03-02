@@ -160,6 +160,9 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
               setPaymentUrl(url);
               setGpOrderId(gpId);
             }}
+            representantes={[]}
+            selectedRepresentanteId=""
+            onRepresentanteChange={() => {}}
           />
         )}
 

@@ -44,6 +44,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /representantes/{representanteId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
     match /products/{productId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow write: if isAdmin();
