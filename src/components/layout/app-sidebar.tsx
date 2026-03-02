@@ -7,7 +7,6 @@ import {
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
   Shield, Upload, Truck,
 } from 'lucide-react';
-import { useUser } from '@/firebase/provider';
 import {
   Sidebar,
   SidebarContent,
@@ -46,7 +45,7 @@ const paymentNavItems = [
 const anvisaNavItems = [
   { href: '/anvisa', icon: Shield, label: 'Solicitacoes' },
   { href: '/anvisa/nova', icon: Upload, label: 'Nova Solicitacao' },
-  { href: '/anvisa/perfil', icon: User, label: 'Perfil ANVISA' },
+  { href: '/anvisa/perfil', icon: User, label: 'Modelo Solicitante' },
 ];
 
 const adminNavItems = [
@@ -81,7 +80,6 @@ function NavGroup({ label, items, pathname }: { label: string; items: typeof ord
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { isAdmin } = useUser();
 
   return (
     <Sidebar>
@@ -98,9 +96,7 @@ export function AppSidebar() {
         <NavGroup label="Financeiro" items={paymentNavItems} pathname={pathname} />
         <NavGroup label="ANVISA" items={anvisaNavItems} pathname={pathname} />
 
-        {isAdmin && (
-          <NavGroup label="Administracao" items={adminNavItems} pathname={pathname} />
-        )}
+        <NavGroup label="Administracao" items={adminNavItems} pathname={pathname} />
       </SidebarContent>
 
       <SidebarFooter className="border-t">

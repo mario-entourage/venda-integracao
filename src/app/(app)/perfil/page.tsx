@@ -8,15 +8,19 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { getUserRef, getUserProfilesRef } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { USER_GROUP_LABELS } from '@/lib/constants';
-import { UserGroupType } from '@/types/enums';
+import { BRAZILIAN_STATES } from '@/lib/constants';
 import type { User, UserProfile } from '@/types';
 
 export default function PerfilPage() {
@@ -26,16 +30,18 @@ export default function PerfilPage() {
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
   const [editFullName, setEditFullName] = useState('');
-  const [editEmail, setEditEmail] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [editSex, setEditSex] = useState('');
-  const [editBirthDate, setEditBirthDate] = useState('');
-  const [editState, setEditState] = useState('');
+  const [editCpf, setEditCpf] = useState('');
+  const [editStreetName, setEditStreetName] = useState('');
+  const [editStreetNumber, setEditStreetNumber] = useState('');
+  const [editComplemento, setEditComplemento] = useState('');
+  const [editBairro, setEditBairro] = useState('');
   const [editCity, setEditCity] = useState('');
-  const [editAddress, setEditAddress] = useState('');
-  const [editDocumentNumber, setEditDocumentNumber] = useState('');
+  const [editState, setEditState] = useState('');
   const [editPostalCode, setEditPostalCode] = useState('');
+  const [editBirthDate, setEditBirthDate] = useState('');
 
   const userRef = useMemoFirebase(
     () => (user?.uid ? getUserRef(db, user.uid) : null),
@@ -52,25 +58,22 @@ export default function PerfilPage() {
   const profile = profiles?.[0];
   const isLoading = isUserLoading || userDocLoading || profilesLoading;
 
-  const initials = user?.displayName
-    ? user.displayName.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()
-    : user?.email?.[0]?.toUpperCase() || '?';
-
   const handleEditStart = () => {
     setEditFullName(profile?.fullName || '');
-    setEditEmail(profile?.email || '');
     setEditPhone(profile?.phone || '');
-    setEditSex(profile?.sex || '');
+    setEditCpf(profile?.cpf || '');
+    setEditStreetName(profile?.streetName || '');
+    setEditStreetNumber(profile?.streetNumber || '');
+    setEditComplemento(profile?.complemento || '');
+    setEditBairro(profile?.bairro || '');
+    setEditCity(profile?.city || '');
+    setEditState(profile?.state || '');
+    setEditPostalCode(profile?.postalCode || '');
     setEditBirthDate(
       profile?.birthDate
         ? profile.birthDate.toDate().toISOString().slice(0, 10)
         : '',
     );
-    setEditState(profile?.state || '');
-    setEditCity(profile?.city || '');
-    setEditAddress(profile?.address || '');
-    setEditDocumentNumber(profile?.documentNumber || '');
-    setEditPostalCode(profile?.postalCode || '');
     setEditing(true);
   };
 
@@ -81,15 +84,16 @@ export default function PerfilPage() {
       const profileRef = doc(db, 'users', user.uid, 'profiles', profile.id);
       await updateDoc(profileRef, {
         fullName: editFullName,
-        email: editEmail,
         phone: editPhone,
-        sex: editSex || null,
-        birthDate: editBirthDate ? new Date(editBirthDate) : null,
-        state: editState,
+        cpf: editCpf,
+        streetName: editStreetName,
+        streetNumber: editStreetNumber,
+        complemento: editComplemento || null,
+        bairro: editBairro,
         city: editCity,
-        address: editAddress,
-        documentNumber: editDocumentNumber,
+        state: editState,
         postalCode: editPostalCode,
+        birthDate: editBirthDate ? new Date(editBirthDate) : null,
         updatedAt: serverTimestamp(),
       });
       toast({ title: 'Perfil atualizado com sucesso.' });
@@ -108,12 +112,10 @@ export default function PerfilPage() {
         <PageHeader title="Meu Perfil" />
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <Skeleton className="h-20 w-20 rounded-full" />
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-4 w-56" />
-              </div>
+            <div className="space-y-4">
+              {[...Array(6)].map((_, i) => (
+                <Skeleton key={i} className="h-10 w-full" />
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -125,30 +127,6 @@ export default function PerfilPage() {
     <div className="space-y-6">
       <PageHeader title="Meu Perfil" />
 
-      {/* Identity card */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Avatar className="h-20 w-20">
-              <AvatarImage src={user?.photoURL || undefined} />
-              <AvatarFallback className="text-xl">{initials}</AvatarFallback>
-            </Avatar>
-            <div className="space-y-1">
-              <p className="text-xl font-semibold">
-                {profile?.fullName || user?.displayName || 'Usuario'}
-              </p>
-              <p className="text-sm text-muted-foreground">{user?.email}</p>
-              {userData?.groupId && (
-                <Badge variant="secondary">
-                  {USER_GROUP_LABELS[userData.groupId as UserGroupType] || userData.groupId}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Editable profile fields */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Dados do Perfil</CardTitle>
@@ -168,6 +146,13 @@ export default function PerfilPage() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Email - uneditable */}
+          <div className="space-y-1.5">
+            <Label>Email</Label>
+            <p className="text-sm text-muted-foreground">{user?.email || '—'}</p>
+          </div>
+
+          {/* Nome Completo */}
           <div className="space-y-1.5">
             <Label>Nome Completo</Label>
             {editing ? (
@@ -181,20 +166,9 @@ export default function PerfilPage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            {/* Celular */}
             <div className="space-y-1.5">
-              <Label>Email</Label>
-              {editing ? (
-                <Input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                />
-              ) : (
-                <p className="text-sm">{profile?.email || user?.email || '—'}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Telefone</Label>
+              <Label>Celular</Label>
               {editing ? (
                 <Input
                   value={editPhone}
@@ -205,53 +179,79 @@ export default function PerfilPage() {
                 <p className="text-sm">{profile?.phone || '—'}</p>
               )}
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
+            {/* CPF */}
             <div className="space-y-1.5">
-              <Label>Sexo</Label>
+              <Label>CPF</Label>
               {editing ? (
                 <Input
-                  value={editSex}
-                  onChange={(e) => setEditSex(e.target.value)}
-                  placeholder="M / F"
+                  value={editCpf}
+                  onChange={(e) => setEditCpf(e.target.value)}
+                  placeholder="000.000.000-00"
                 />
               ) : (
-                <p className="text-sm">{profile?.sex || '—'}</p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label>Data de Nascimento</Label>
-              {editing ? (
-                <Input
-                  type="date"
-                  value={editBirthDate}
-                  onChange={(e) => setEditBirthDate(e.target.value)}
-                />
-              ) : (
-                <p className="text-sm">
-                  {profile?.birthDate
-                    ? profile.birthDate.toDate().toLocaleDateString('pt-BR')
-                    : '—'}
-                </p>
+                <p className="text-sm">{profile?.cpf || '—'}</p>
               )}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            {/* Nome da Rua */}
             <div className="space-y-1.5">
-              <Label>Estado</Label>
+              <Label>Nome da Rua</Label>
               {editing ? (
                 <Input
-                  value={editState}
-                  onChange={(e) => setEditState(e.target.value)}
-                  placeholder="UF"
-                  maxLength={2}
+                  value={editStreetName}
+                  onChange={(e) => setEditStreetName(e.target.value)}
                 />
               ) : (
-                <p className="text-sm">{profile?.state || '—'}</p>
+                <p className="text-sm">{profile?.streetName || '—'}</p>
               )}
             </div>
+
+            {/* Numero */}
+            <div className="space-y-1.5">
+              <Label>Numero</Label>
+              {editing ? (
+                <Input
+                  value={editStreetNumber}
+                  onChange={(e) => setEditStreetNumber(e.target.value)}
+                />
+              ) : (
+                <p className="text-sm">{profile?.streetNumber || '—'}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Complemento */}
+          <div className="space-y-1.5">
+            <Label>Complemento <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+            {editing ? (
+              <Input
+                value={editComplemento}
+                onChange={(e) => setEditComplemento(e.target.value)}
+                placeholder="Apto, Bloco, etc."
+              />
+            ) : (
+              <p className="text-sm">{profile?.complemento || '—'}</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {/* Bairro */}
+            <div className="space-y-1.5">
+              <Label>Bairro</Label>
+              {editing ? (
+                <Input
+                  value={editBairro}
+                  onChange={(e) => setEditBairro(e.target.value)}
+                />
+              ) : (
+                <p className="text-sm">{profile?.bairro || '—'}</p>
+              )}
+            </div>
+
+            {/* Cidade */}
             <div className="space-y-1.5">
               <Label>Cidade</Label>
               {editing ? (
@@ -265,30 +265,29 @@ export default function PerfilPage() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Endereco</Label>
-            {editing ? (
-              <Input
-                value={editAddress}
-                onChange={(e) => setEditAddress(e.target.value)}
-              />
-            ) : (
-              <p className="text-sm">{profile?.address || '—'}</p>
-            )}
-          </div>
-
           <div className="grid grid-cols-2 gap-4">
+            {/* Estado */}
             <div className="space-y-1.5">
-              <Label>Documento de Identificacao</Label>
+              <Label>Estado</Label>
               {editing ? (
-                <Input
-                  value={editDocumentNumber}
-                  onChange={(e) => setEditDocumentNumber(e.target.value)}
-                />
+                <Select value={editState} onValueChange={setEditState}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {BRAZILIAN_STATES.map((uf) => (
+                      <SelectItem key={uf} value={uf}>
+                        {uf}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : (
-                <p className="text-sm">{profile?.documentNumber || '—'}</p>
+                <p className="text-sm">{profile?.state || '—'}</p>
               )}
             </div>
+
+            {/* CEP */}
             <div className="space-y-1.5">
               <Label>CEP</Label>
               {editing ? (
@@ -301,6 +300,24 @@ export default function PerfilPage() {
                 <p className="text-sm">{profile?.postalCode || '—'}</p>
               )}
             </div>
+          </div>
+
+          {/* Data de Nascimento */}
+          <div className="space-y-1.5">
+            <Label>Data de Nascimento</Label>
+            {editing ? (
+              <Input
+                type="date"
+                value={editBirthDate}
+                onChange={(e) => setEditBirthDate(e.target.value)}
+              />
+            ) : (
+              <p className="text-sm">
+                {profile?.birthDate
+                  ? profile.birthDate.toDate().toLocaleDateString('pt-BR')
+                  : '—'}
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

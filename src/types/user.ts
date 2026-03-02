@@ -7,6 +7,7 @@ export interface User {
   /** Role: 'admin' | 'user' | 'view_only' */
   groupId: string;
   active: boolean;
+  lastLogin?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   removedAt?: Timestamp;
@@ -35,6 +36,16 @@ export interface UserProfile {
   postalCode?: string;
   /** Celular */
   phone?: string;
+  /** CPF */
+  cpf?: string;
+  /** Nome da Rua */
+  streetName?: string;
+  /** Número */
+  streetNumber?: string;
+  /** Complemento */
+  complemento?: string;
+  /** Bairro */
+  bairro?: string;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

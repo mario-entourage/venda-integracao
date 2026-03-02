@@ -42,7 +42,11 @@ export async function ensureUser(
   const userRef = doc(db, 'users', uid);
   const snap = await getDoc(userRef);
 
-  if (snap.exists()) return false;
+  if (snap.exists()) {
+    // Always update lastLogin on every sign-in
+    await updateDoc(userRef, { lastLogin: serverTimestamp() });
+    return false;
+  }
 
   const batch = writeBatch(db);
 
@@ -50,6 +54,7 @@ export async function ensureUser(
     email,
     groupId: 'user',
     active: true,
+    lastLogin: serverTimestamp(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });

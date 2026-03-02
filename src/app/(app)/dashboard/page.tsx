@@ -2,18 +2,19 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, query, where } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getOrdersQuery, getOrdersByCreatorQuery } from '@/services/orders.service';
 import { getUsersRef } from '@/services/users.service';
-import { ANVISA_COLLECTIONS } from '@/lib/anvisa-paths';
 import { OrderStatus } from '@/types/enums';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/types';
-import type { PatientRequest, AnvisaRequestStatus } from '@/types/anvisa';
+import type { Prescription } from '@/types/prescription';
+import type { Payment } from '@/types/payment';
+import type { ShippingRecord } from '@/types/shipping';
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -52,6 +53,22 @@ function revenueForPeriod(orders: Order[], start: Date, end: Date): number {
     .reduce((sum, o) => sum + (o.amount ?? 0), 0);
 }
 
+/** Check whether a Firestore Timestamp falls within the current calendar month. */
+function tsInCurrentMonth(ts: unknown): boolean {
+  if (!ts) return false;
+  const t = ts as { seconds?: number; toDate?: () => Date };
+  let date: Date;
+  if (typeof t.toDate === 'function') {
+    date = t.toDate();
+  } else if (t.seconds != null) {
+    date = new Date(t.seconds * 1000);
+  } else {
+    return false;
+  }
+  const now = new Date();
+  return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+}
+
 // ─── status config ────────────────────────────────────────────────────────────
 
 const ORDER_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -64,14 +81,6 @@ const ORDER_STATUS_CONFIG: Record<string, { label: string; className: string }> 
   shipped:            { label: 'Enviado',        className: 'border-purple-300 text-purple-700 bg-purple-50' },
   delivered:          { label: 'Entregue',       className: 'border-green-400 text-green-800 bg-green-100' },
   cancelled:          { label: 'Cancelado',      className: 'border-red-300 text-red-600 bg-red-50' },
-};
-
-const ANVISA_STATUS_CONFIG: Record<AnvisaRequestStatus, { label: string; className: string }> = {
-  PENDENTE:     { label: 'Pendente',      className: 'border-yellow-300 text-yellow-700 bg-yellow-50' },
-  EM_AJUSTE:    { label: 'Em ajuste',    className: 'border-blue-300 text-blue-700 bg-blue-50' },
-  EM_AUTOMACAO: { label: 'Em automação', className: 'border-purple-300 text-purple-700 bg-purple-50' },
-  CONCLUIDO:    { label: 'Concluído',    className: 'border-green-300 text-green-700 bg-green-50' },
-  ERRO:         { label: 'Erro',         className: 'border-red-300 text-red-600 bg-red-50' },
 };
 
 // ─── sub-components ──────────────────────────────────────────────────────────
@@ -220,19 +229,31 @@ function AdminDashboard() {
   const { data: activeUsers, isLoading: usersLoading } =
     useCollection<{ id: string }>(usersQ);
 
-  // ANVISA requests (non-deleted)
-  const anvisaQ = useMemoFirebase(
-    () =>
-      firestore
-        ? query(
-            collection(firestore, ANVISA_COLLECTIONS.requests),
-            where('softDeleted', '==', false),
-          )
-        : null,
+  // ── Auxiliary queries for current-month filtering ──────────────────────────
+
+  // Prescriptions (top-level collection, linked to orders via orderId)
+  const prescriptionsQ = useMemoFirebase(
+    () => (firestore ? query(collection(firestore, 'prescriptions')) : null),
     [firestore],
   );
-  const { data: anvisaRequests, isLoading: anvisaLoading } =
-    useCollection<PatientRequest>(anvisaQ);
+  const { data: allPrescriptions, isLoading: prescriptionsLoading } =
+    useCollection<Prescription>(prescriptionsQ);
+
+  // Payments (subcollection group across all orders)
+  const paymentsGroupQ = useMemoFirebase(
+    () => (firestore ? collectionGroup(firestore, 'payments') : null),
+    [firestore],
+  );
+  const { data: allPayments, isLoading: paymentsLoading } =
+    useCollection<Payment>(paymentsGroupQ);
+
+  // Shipping records (subcollection group across all orders)
+  const shippingGroupQ = useMemoFirebase(
+    () => (firestore ? collectionGroup(firestore, 'shipping') : null),
+    [firestore],
+  );
+  const { data: allShipping, isLoading: shippingLoading } =
+    useCollection<ShippingRecord>(shippingGroupQ);
 
   // ── derived stats ──────────────────────────────────────────────────────────
   const activeOrders = useMemo(
@@ -257,24 +278,81 @@ function AdminDashboard() {
     [activeOrders],
   );
 
+  // ── Build lookup maps for current-month filtering ─────────────────────────
+
+  const prescriptionsByOrderId = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const p of allPrescriptions ?? []) {
+      if (p.orderId) map.set(p.orderId, p.prescriptionDate);
+    }
+    return map;
+  }, [allPrescriptions]);
+
+  const paymentsByOrderId = useMemo(() => {
+    const map = new Map<string, Payment[]>();
+    for (const p of allPayments ?? []) {
+      if (!p.orderId) continue;
+      if (!map.has(p.orderId)) map.set(p.orderId, []);
+      map.get(p.orderId)!.push(p);
+    }
+    return map;
+  }, [allPayments]);
+
+  const shippingByOrderId = useMemo(() => {
+    const map = new Map<string, ShippingRecord[]>();
+    for (const s of allShipping ?? []) {
+      if (!s.orderId) continue;
+      if (!map.has(s.orderId)) map.set(s.orderId, []);
+      map.get(s.orderId)!.push(s);
+    }
+    return map;
+  }, [allShipping]);
+
+  // ── Filter orders relevant to the current month ───────────────────────────
+
+  const currentMonthOrders = useMemo(() => {
+    const now = new Date();
+    const yearMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    return activeOrders.filter((order) => {
+      // 1. The Pedido was started in the current month
+      if (tsInCurrentMonth(order.createdAt)) return true;
+
+      // 2. The Pedido is associated with a prescription written in the current month
+      const rxDate = prescriptionsByOrderId.get(order.id);
+      if (rxDate && rxDate.startsWith(yearMonthPrefix)) return true;
+
+      // 3. Payment was made in the current month
+      const payments = paymentsByOrderId.get(order.id);
+      if (payments?.some((p) => tsInCurrentMonth(p.paymentDate))) return true;
+
+      // 4. The ZapSign authorization was signed in the current month
+      if (order.zapsignStatus === 'signed' && tsInCurrentMonth(order.updatedAt)) return true;
+
+      // 5. The ANVISA Solicitação was submitted in the current month
+      //    (No direct link between anvisa_requests and orders — skipped)
+
+      // 6. The Data do Envio was in the current month
+      const shipments = shippingByOrderId.get(order.id);
+      if (shipments?.some((s) => s.sendDate && s.sendDate.startsWith(yearMonthPrefix))) return true;
+
+      // 7. The Previsão de Entrega is in the current month
+      //    (Field does not exist in the data model — skipped)
+
+      return false;
+    });
+  }, [activeOrders, prescriptionsByOrderId, paymentsByOrderId, shippingByOrderId]);
+
+  // ── Status counts from current-month filtered orders ──────────────────────
+
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const status of Object.values(OrderStatus)) counts[status] = 0;
-    for (const o of activeOrders) {
+    for (const o of currentMonthOrders) {
       if (counts[o.status] !== undefined) counts[o.status]++;
     }
     return counts;
-  }, [activeOrders]);
-
-  const anvisaCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      PENDENTE: 0, EM_AJUSTE: 0, EM_AUTOMACAO: 0, CONCLUIDO: 0, ERRO: 0,
-    };
-    for (const r of anvisaRequests ?? []) {
-      if (counts[r.status] !== undefined) counts[r.status]++;
-    }
-    return counts;
-  }, [anvisaRequests]);
+  }, [currentMonthOrders]);
 
   const recentOrders = useMemo(() => activeOrders.slice(0, 5), [activeOrders]);
 
@@ -282,6 +360,14 @@ function AdminDashboard() {
   const thisMonthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthName = lastMonthDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+  // Combined loading state for the status section
+  const statusSectionLoading = ordersLoading || prescriptionsLoading || paymentsLoading || shippingLoading;
+
+  // Only show statuses that have at least one order
+  const visibleStatuses = Object.entries(ORDER_STATUS_CONFIG).filter(
+    ([status]) => (statusCounts[status] ?? 0) > 0,
+  );
 
   return (
     <div className="space-y-6">
@@ -312,50 +398,42 @@ function AdminDashboard() {
         />
       </div>
 
-      {/* ── Row 2: Orders by status ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Pedidos por Status</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
-            {Object.entries(ORDER_STATUS_CONFIG).map(([status, cfg]) => (
-              <StatusCountCard
-                key={status}
-                label={cfg.label}
-                count={statusCounts[status] ?? 0}
-                className={cfg.className}
-                loading={ordersLoading}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      {/* ── Row 2: Orders by status (current month only, non-empty statuses) ── */}
+      {(statusSectionLoading || visibleStatuses.length > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pedidos por Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {statusSectionLoading ? (
+              <div className="grid gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
+                {Object.entries(ORDER_STATUS_CONFIG).map(([status, cfg]) => (
+                  <StatusCountCard
+                    key={status}
+                    label={cfg.label}
+                    count={0}
+                    className={cfg.className}
+                    loading
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
+                {visibleStatuses.map(([status, cfg]) => (
+                  <StatusCountCard
+                    key={status}
+                    label={cfg.label}
+                    count={statusCounts[status] ?? 0}
+                    className={cfg.className}
+                  />
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-      {/* ── Row 3: ANVISA ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Solicitações ANVISA</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2 grid-cols-3 sm:grid-cols-5">
-            {(Object.keys(ANVISA_STATUS_CONFIG) as AnvisaRequestStatus[]).map((status) => {
-              const cfg = ANVISA_STATUS_CONFIG[status];
-              return (
-                <StatusCountCard
-                  key={status}
-                  label={cfg.label}
-                  count={anvisaCounts[status] ?? 0}
-                  className={cfg.className}
-                  loading={anvisaLoading}
-                />
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Row 4: Recent orders ── */}
+      {/* ── Row 3: Recent orders ── */}
       <RecentOrdersTable orders={recentOrders} loading={ordersLoading} />
     </div>
   );
