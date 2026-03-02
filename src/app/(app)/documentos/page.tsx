@@ -1,20 +1,180 @@
 'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { query, where } from 'firebase/firestore';
+import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase';
+import { getDocumentsRef } from '@/services/documents.service';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import type { DocumentRecord } from '@/types';
+
+// ─── type labels ─────────────────────────────────────────────────────────────
+
+const DOC_TYPE_LABELS: Record<string, { label: string; className: string }> = {
+  prescription:         { label: 'Prescrição',             className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  identity:             { label: 'Identidade',             className: 'border-slate-300 text-slate-600 bg-slate-50' },
+  medical_report:       { label: 'Laudo Médico',           className: 'border-teal-300 text-teal-700 bg-teal-50' },
+  proof_of_address:     { label: 'Comprov. de Endereço',  className: 'border-amber-300 text-amber-700 bg-amber-50' },
+  invoice:              { label: 'Nota Fiscal',            className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  anvisa_authorization: { label: 'Autorização ANVISA',    className: 'border-green-300 text-green-700 bg-green-50' },
+};
+
+function docTypeConfig(type: string) {
+  return DOC_TYPE_LABELS[type] ?? { label: type || '—', className: 'border-muted text-muted-foreground bg-muted/30' };
+}
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+const fmtDate = (ts: unknown) => {
+  const t = ts as { seconds?: number } | null | undefined;
+  if (!t?.seconds) return '—';
+  return new Date(t.seconds * 1000).toLocaleDateString('pt-BR');
+};
+
+function sortByCreatedAtDesc(docs: DocumentRecord[]): DocumentRecord[] {
+  return [...docs].sort((a, b) => {
+    const aS = (a.createdAt as unknown as { seconds: number })?.seconds ?? 0;
+    const bS = (b.createdAt as unknown as { seconds: number })?.seconds ?? 0;
+    return bS - aS;
+  });
+}
+
+// ─── component ───────────────────────────────────────────────────────────────
 
 export default function DocumentosPage() {
+  const router = useRouter();
+  const { firestore, user, isAdmin } = useFirebase();
+
+  // Admin → all documents; User → only their own
+  const docsQ = useMemoFirebase(
+    () => {
+      if (!firestore || !user) return null;
+      if (isAdmin) return getDocumentsRef(firestore);
+      return query(getDocumentsRef(firestore), where('userId', '==', user.uid));
+    },
+    [firestore, user, isAdmin],
+  );
+
+  const { data: rawDocs, isLoading } = useCollection<DocumentRecord>(docsQ);
+
+  const docs = useMemo(
+    () => sortByCreatedAtDesc(rawDocs ?? []),
+    [rawDocs],
+  );
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Documentos</h1>
-        <p className="text-muted-foreground">Gestao de documentos e autorizacoes ANVISA.</p>
+        <h1 className="font-headline text-2xl font-bold">Documentos</h1>
+        <p className="text-muted-foreground">
+          {isAdmin
+            ? 'Todos os documentos processados na plataforma.'
+            : 'Documentos que você enviou.'}
+        </p>
       </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Documentos</CardTitle>
+          <CardTitle className="text-base">
+            {isAdmin ? 'Todos os Documentos' : 'Meus Documentos'}
+          </CardTitle>
+          {!isLoading && (
+            <CardDescription>
+              {docs.length} documento{docs.length !== 1 ? 's' : ''} encontrado{docs.length !== 1 ? 's' : ''}
+            </CardDescription>
+          )}
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Nenhum documento encontrado.</p>
+        <CardContent className="px-0">
+          {isLoading ? (
+            <div className="space-y-2 px-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-12 rounded bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : docs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <svg
+                className="mb-3 h-10 w-10 text-muted-foreground/40"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1}
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                />
+              </svg>
+              <p className="text-sm font-medium text-muted-foreground">Nenhum documento encontrado</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Os documentos enviados durante o fluxo de vendas aparecerão aqui.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b">
+                    <th className="pb-2 pl-6 text-left font-medium text-muted-foreground">Tipo</th>
+                    <th className="pb-2 text-left font-medium text-muted-foreground">Cliente</th>
+                    {isAdmin && (
+                      <th className="pb-2 text-left font-medium text-muted-foreground hidden md:table-cell">
+                        Pedido
+                      </th>
+                    )}
+                    <th className="pb-2 pr-6 text-right font-medium text-muted-foreground">
+                      Data de Envio
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {docs.map((doc) => {
+                    const cfg = docTypeConfig(doc.type);
+                    return (
+                      <tr
+                        key={doc.id}
+                        className="border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors"
+                        onClick={() => router.push(`/documentos/${doc.id}`)}
+                      >
+                        <td className="py-3 pl-6">
+                          <Badge variant="outline" className={cfg.className}>
+                            {cfg.label}
+                          </Badge>
+                        </td>
+                        <td className="py-3 font-medium">
+                          {doc.holder || <span className="text-muted-foreground">—</span>}
+                        </td>
+                        {isAdmin && (
+                          <td className="py-3 hidden md:table-cell">
+                            {doc.orderId ? (
+                              <span
+                                className="font-mono text-xs text-primary hover:underline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/controle/${doc.orderId}`);
+                                }}
+                              >
+                                #{(doc.orderId as string).slice(0, 8).toUpperCase()}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
+                          </td>
+                        )}
+                        <td className="py-3 pr-6 text-right text-muted-foreground">
+                          {fmtDate(doc.createdAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
