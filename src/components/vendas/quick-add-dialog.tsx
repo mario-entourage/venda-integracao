@@ -288,6 +288,121 @@ export function QuickAddClientDialog({
   );
 }
 
+// ─── Representante dialog ───────────────────────────────────────────────────────
+
+const representanteQuickSchema = z.object({
+  name: z.string().min(1, 'Nome obrigatório'),
+  code: z.string().min(1, 'Código obrigatório'),
+  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
+  phone: z.string().optional(),
+});
+
+type RepresentanteQuickValues = z.infer<typeof representanteQuickSchema>;
+
+interface QuickAddRepresentanteDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (representanteId: string, name: string, code: string) => void;
+}
+
+export function QuickAddRepresentanteDialog({
+  open,
+  onClose,
+  onCreated,
+}: QuickAddRepresentanteDialogProps) {
+  const { firestore } = useFirebase();
+  const { toast } = useToast();
+
+  const form = useForm<RepresentanteQuickValues>({
+    resolver: zodResolver(representanteQuickSchema),
+    defaultValues: { name: '', code: '', email: '', phone: '' },
+  });
+
+  useEffect(() => {
+    if (open) form.reset({ name: '', code: '', email: '', phone: '' });
+  }, [open, form]);
+
+  const { formState: { isSubmitting } } = form;
+
+  const handleSubmit = async (data: RepresentanteQuickValues) => {
+    if (!firestore) return;
+    try {
+      const ref = await addDoc(collection(firestore, 'representantes'), {
+        name: data.name.trim(),
+        code: data.code.trim().toUpperCase(),
+        email: data.email ?? '',
+        phone: data.phone ?? '',
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      toast({ title: 'Representante cadastrado com sucesso.' });
+      onCreated(ref.id, data.name.trim(), data.code.trim().toUpperCase());
+      form.reset();
+      onClose();
+    } catch (err) {
+      console.error('Error creating representante:', err);
+      toast({ title: 'Erro ao cadastrar representante.', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { form.reset(); onClose(); } }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Cadastrar Novo Representante</DialogTitle>
+          <DialogDescription>
+            Preencha os dados do representante. Campos marcados com * são obrigatórios.
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 pt-1">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField control={form.control} name="name" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Nome <span className="text-red-500">*</span></FormLabel>
+                  <FormControl><Input placeholder="João Silva" {...field} value={field.value ?? ''} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="code" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Código <span className="text-red-500">*</span></FormLabel>
+                  <FormControl><Input placeholder="REP001" {...field} value={field.value ?? ''} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField control={form.control} name="email" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl><Input type="email" placeholder="rep@exemplo.com" {...field} value={field.value ?? ''} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="phone" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Telefone</FormLabel>
+                  <FormControl><Input placeholder="(11) 99999-9999" {...field} value={field.value ?? ''} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              {isSubmitting ? 'Cadastrando…' : 'Cadastrar e Selecionar'}
+            </Button>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Doctor dialog ─────────────────────────────────────────────────────────────
 
 const doctorQuickSchema = z.object({

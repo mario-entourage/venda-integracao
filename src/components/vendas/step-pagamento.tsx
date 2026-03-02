@@ -15,6 +15,7 @@ import {
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
+import { QuickAddRepresentanteDialog } from './quick-add-dialog';
 import type { Representante } from '@/types/representante';
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -33,7 +34,7 @@ interface StepPagamentoProps {
   representantes: Representante[];
   /** Currently selected representante ID */
   selectedRepresentanteId: string;
-  /** Called when the user picks a representante */
+  /** Called when the user picks or creates a representante */
   onRepresentanteChange: (id: string, name: string, code: string) => void;
 }
 
@@ -58,6 +59,7 @@ export function StepPagamento({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
+  const [showAddRepresentante, setShowAddRepresentante] = useState(false);
   const hasGenerated = useRef(false);
 
   // Auto-generate on mount (or when orderId becomes available)
@@ -149,6 +151,16 @@ export function StepPagamento({
 
   return (
     <div className="space-y-6">
+      {/* Quick-add representante dialog */}
+      <QuickAddRepresentanteDialog
+        open={showAddRepresentante}
+        onClose={() => setShowAddRepresentante(false)}
+        onCreated={(id, name, code) => {
+          onRepresentanteChange(id, name, code);
+          setShowAddRepresentante(false);
+        }}
+      />
+
       {/* Order summary */}
       <Card className="bg-muted/30">
         <CardContent className="pt-5 space-y-2">
@@ -330,10 +342,33 @@ export function StepPagamento({
       {/* Representante selector — shown only after payment link is generated */}
       {paymentUrl && (
         <div className="space-y-3 border-t pt-4">
-          <h3 className="text-sm font-semibold">Representante</h3>
-          <p className="text-xs text-muted-foreground">
-            Opcional. Associe esta venda a um representante.
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Representante</h3>
+              <p className="text-xs text-muted-foreground">
+                Opcional. Associe esta venda a um representante.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1"
+              onClick={() => setShowAddRepresentante(true)}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Novo Representante
+            </Button>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="representante-select">Selecionar Representante</Label>
             <Select
