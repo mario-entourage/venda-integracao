@@ -18,6 +18,7 @@ export interface Order {
   documentsComplete: boolean;
   tristarShipmentId?: string;
   prescriptionDocId?: string;
+  softDeleted?: boolean;
   createdById: string;
   createdAt: Timestamp;
   updatedById?: string;

@@ -1,12 +1,33 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { Trash2, Loader2, MoreHorizontal } from 'lucide-react';
+import { writeBatch } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
-import { getOrdersQuery } from '@/services/orders.service';
+import { getOrdersQuery, getOrderRef, updateOrder } from '@/services/orders.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/types';
 
@@ -40,8 +61,16 @@ interface VendasEmAndamentoProps {
 
 export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
   const router = useRouter();
-  const { firestore } = useFirebase();
+  const { firestore, user, isAdmin } = useFirebase();
+  const { toast } = useToast();
 
+  // ── selection state ─────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // ── data ────────────────────────────────────────────────────────────────────
   const ordersQ = useMemoFirebase(
     () => (firestore ? getOrdersQuery(firestore) : null),
     [firestore],
@@ -49,8 +78,85 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQ);
 
-  const activeOrders = (orders ?? []).filter((o) => o.status !== 'cancelled');
+  // exclude cancelled and soft-deleted
+  const activeOrders = (orders ?? []).filter(
+    (o) => o.status !== 'cancelled' && !o.softDeleted,
+  );
 
+  // ── selection helpers ───────────────────────────────────────────────────────
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === activeOrders.length && activeOrders.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(activeOrders.map((o) => o.id)));
+    }
+  };
+
+  // ── soft-delete (single) ────────────────────────────────────────────────────
+  const handleSoftDelete = useCallback(
+    async (order: Order) => {
+      if (!firestore || !user) return;
+      setIsDeleting(true);
+      try {
+        await updateOrder(firestore, order.id, {
+          softDeleted: true,
+          updatedById: user.uid,
+        });
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(order.id);
+          return next;
+        });
+        toast({
+          title: 'Venda excluída',
+          description: `Pedido #${order.id.slice(0, 8).toUpperCase()} movido para a lixeira.`,
+        });
+      } catch (err) {
+        console.error('[VendasEmAndamento] soft-delete error:', err);
+        toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível excluir a venda.' });
+      } finally {
+        setIsDeleting(false);
+        setDeleteTarget(null);
+      }
+    },
+    [firestore, user, toast],
+  );
+
+  // ── soft-delete (batch) ─────────────────────────────────────────────────────
+  const handleBatchDelete = useCallback(async () => {
+    if (!firestore || !user || selectedIds.size === 0) return;
+    setIsDeleting(true);
+    try {
+      const batch = writeBatch(firestore);
+      for (const id of selectedIds) {
+        const ref = getOrderRef(firestore, id);
+        batch.update(ref, { softDeleted: true, updatedById: user.uid });
+      }
+      await batch.commit();
+      toast({
+        title: 'Vendas excluídas',
+        description: `${selectedIds.size} venda(s) movida(s) para a lixeira.`,
+      });
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error('[VendasEmAndamento] batch-delete error:', err);
+      toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível excluir as vendas.' });
+    } finally {
+      setIsDeleting(false);
+      setShowBatchDeleteDialog(false);
+    }
+  }, [firestore, user, selectedIds, toast]);
+
+  // ── loading skeleton ────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -61,6 +167,7 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     );
   }
 
+  // ── empty state ─────────────────────────────────────────────────────────────
   if (activeOrders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/25 px-6 py-16 text-center">
@@ -80,7 +187,7 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
         </svg>
         <p className="text-sm font-medium text-muted-foreground">Nenhuma venda em andamento</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Clique em "Nova venda" para iniciar um pedido.
+          Clique em &ldquo;Nova venda&rdquo; para iniciar um pedido.
         </p>
         <Button className="mt-4" onClick={onNewVenda}>
           + Nova venda
@@ -89,62 +196,196 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     );
   }
 
+  // ── order list ──────────────────────────────────────────────────────────────
+  const allSelected = selectedIds.size === activeOrders.length;
+
   return (
-    <div className="space-y-2">
-      {activeOrders.map((order) => {
-        const statusCfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
-        return (
-          <button
-            key={order.id}
-            type="button"
-            className="w-full rounded-lg border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => router.push(`/controle/${order.id}`)}
+    <>
+      {/* ── Action bar ── */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2.5">
+          {isAdmin && (
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={toggleSelectAll}
+              aria-label="Selecionar todos os pedidos"
+            />
+          )}
+          <span className="text-sm text-muted-foreground">
+            {activeOrders.length} pedido(s)
+          </span>
+        </div>
+
+        {isAdmin && selectedIds.size > 0 && (
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-8 gap-1.5"
+            onClick={() => setShowBatchDeleteDialog(true)}
+            disabled={isDeleting}
           >
-            <div className="flex items-center gap-3">
-              {/* Order ID */}
-              <div className="flex-shrink-0 w-20">
-                <p className="text-xs font-mono text-muted-foreground">
-                  #{order.id.slice(0, 8).toUpperCase()}
-                </p>
-              </div>
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Excluir ({selectedIds.size})</span>
+          </Button>
+        )}
+      </div>
 
-              {/* Status */}
-              <div className="flex-shrink-0 w-36">
-                <Badge
-                  variant="outline"
-                  className={cn('text-xs', statusCfg.className)}
-                >
-                  {statusCfg.label}
-                </Badge>
-              </div>
+      {/* ── Rows ── */}
+      <div className="space-y-2">
+        {activeOrders.map((order) => {
+          const statusCfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+          const isSelected = selectedIds.has(order.id);
 
-              {/* Amount */}
-              <div className="flex-shrink-0 w-28 text-right">
-                <p className="text-sm font-semibold">{fmtBRL(order.amount)}</p>
-              </div>
+          return (
+            <div
+              key={order.id}
+              className={cn(
+                'flex items-center gap-2 rounded-lg border bg-card px-4 py-3 transition-colors',
+                isSelected && 'bg-muted/50',
+              )}
+            >
+              {/* Checkbox (admin only) */}
+              {isAdmin && (
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => toggleSelect(order.id)}
+                  aria-label={`Selecionar pedido ${order.id.slice(0, 8).toUpperCase()}`}
+                  className="flex-shrink-0"
+                />
+              )}
 
-              {/* Date */}
-              <div className="flex-shrink-0 ml-auto text-right">
-                <p className="text-xs text-muted-foreground">
-                  {fmtDate(order.createdAt as unknown as { seconds: number })}
-                </p>
-              </div>
-
-              {/* Chevron */}
-              <svg
-                className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
+              {/* Clickable area → navigate to detail */}
+              <button
+                type="button"
+                className="flex flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded min-w-0"
+                onClick={() => router.push(`/controle/${order.id}`)}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-              </svg>
+                {/* Order ID */}
+                <div className="flex-shrink-0 w-20">
+                  <p className="text-xs font-mono text-muted-foreground">
+                    #{order.id.slice(0, 8).toUpperCase()}
+                  </p>
+                </div>
+
+                {/* Status */}
+                <div className="flex-shrink-0 w-36">
+                  <Badge variant="outline" className={cn('text-xs', statusCfg.className)}>
+                    {statusCfg.label}
+                  </Badge>
+                </div>
+
+                {/* Amount */}
+                <div className="flex-shrink-0 w-28 text-right">
+                  <p className="text-sm font-semibold">{fmtBRL(order.amount)}</p>
+                </div>
+
+                {/* Date */}
+                <div className="flex-shrink-0 ml-auto text-right">
+                  <p className="text-xs text-muted-foreground">
+                    {fmtDate(order.createdAt as unknown as { seconds: number })}
+                  </p>
+                </div>
+
+                {/* Chevron */}
+                <svg
+                  className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth={2}
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                </svg>
+              </button>
+
+              {/* Per-row actions (admin only) */}
+              {isAdmin && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 flex-shrink-0"
+                      aria-label="Ações do pedido"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
+                    <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
+                      Ver detalhes
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteTarget(order)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Excluir
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
-          </button>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+
+      {/* ── Single-delete confirmation dialog ── */}
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir venda?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O pedido{' '}
+              <strong>#{deleteTarget?.id.slice(0, 8).toUpperCase()}</strong> será
+              movido para a lixeira.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={() => deleteTarget && handleSoftDelete(deleteTarget)}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Batch-delete confirmation dialog ── */}
+      <AlertDialog
+        open={showBatchDeleteDialog}
+        onOpenChange={(open) => { if (!open) setShowBatchDeleteDialog(false); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir {selectedIds.size} venda(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              As vendas selecionadas serão movidas para a lixeira. Esta ação pode
+              ser revertida por um administrador.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={handleBatchDelete}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Excluir {selectedIds.size} venda(s)
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
