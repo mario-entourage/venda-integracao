@@ -54,6 +54,10 @@ function isOcrReady(document: DocumentBase): boolean {
   if (document.ocrTextChunks && document.ocrTextChunks.length > 0 && document.ocrTextChunks[0].length > 0) {
     return true;
   }
+  // If ocrStatus is not set or still 'pending', the Cloud Function either hasn't
+  // been deployed or hasn't processed the document yet. Proceed with Gemini
+  // extraction directly from the file URL — ocrText is optional.
+  if (!document.ocrStatus || document.ocrStatus === 'pending') return true;
   return false;
 }
 
