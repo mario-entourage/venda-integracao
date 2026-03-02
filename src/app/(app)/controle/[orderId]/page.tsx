@@ -8,11 +8,13 @@ import {
   getOrderRef,
   getOrderSubcollectionRef,
   updateOrderStatus,
+  updateOrder,
 } from '@/services/orders.service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { OrderStatus } from '@/types';
 import type { Order, OrderCustomer, OrderDoctor } from '@/types';
 
 // ─── local types ──────────────────────────────────────────────────────────────
@@ -108,6 +110,59 @@ export default function OrderDetailPage() {
       });
   }, [firestore, orderId]);
 
+  // ── manual status override ───────────────────────────────────────────────────
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  const handleMarkAsPaid = async () => {
+    if (!firestore || !user) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      await updateOrderStatus(firestore, orderId, 'paid', user.uid);
+    } catch (err) {
+      console.error('[OrderDetailPage] mark paid error:', err);
+      setUpdateError('Erro ao atualizar status.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleMarkAsPaidAndSigned = async () => {
+    if (!firestore || !user) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      await updateOrder(firestore, orderId, {
+        status: OrderStatus.PAID,
+        zapsignStatus: 'signed',
+        updatedById: user.uid,
+      });
+    } catch (err) {
+      console.error('[OrderDetailPage] mark paid+signed error:', err);
+      setUpdateError('Erro ao atualizar status.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleMarkAsSigned = async () => {
+    if (!firestore || !user) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      await updateOrder(firestore, orderId, {
+        zapsignStatus: 'signed',
+        updatedById: user.uid,
+      });
+    } catch (err) {
+      console.error('[OrderDetailPage] mark signed error:', err);
+      setUpdateError('Erro ao atualizar status.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // ── cancel logic ────────────────────────────────────────────────────────────
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -148,6 +203,15 @@ export default function OrderDetailPage() {
 
   const statusCfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
   const isPending = order.status === 'pending';
+
+  // Can manually advance to "Pago" — any status before paid / final states
+  const canMarkAsPaid = ![
+    OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.CANCELLED,
+  ].includes(order.status as OrderStatus);
+  // Already paid but ZapSign contract not yet marked signed
+  const canMarkAsSigned = order.status === OrderStatus.PAID && order.zapsignStatus !== 'signed';
+  // Show the manual payment section at all
+  const showPaymentActions = canMarkAsPaid || canMarkAsSigned;
 
   return (
     <div className="space-y-6">
@@ -271,6 +335,54 @@ export default function OrderDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── Manual payment status override ── */}
+      {showPaymentActions && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Atualizar Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Marque manualmente o status de pagamento deste pedido.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {canMarkAsPaid && (
+                <>
+                  <Button
+                    variant="outline"
+                    className="border-green-300 text-green-700 hover:bg-green-50"
+                    disabled={isUpdating}
+                    onClick={handleMarkAsPaid}
+                  >
+                    {isUpdating ? 'Atualizando…' : '✓ Marcar como Pago'}
+                  </Button>
+                  <Button
+                    className="bg-green-600 hover:bg-green-700"
+                    disabled={isUpdating}
+                    onClick={handleMarkAsPaidAndSigned}
+                  >
+                    {isUpdating ? 'Atualizando…' : '✓ Pago e Contrato Assinado'}
+                  </Button>
+                </>
+              )}
+              {canMarkAsSigned && (
+                <Button
+                  variant="outline"
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  disabled={isUpdating}
+                  onClick={handleMarkAsSigned}
+                >
+                  {isUpdating ? 'Atualizando…' : '✍ Marcar Contrato como Assinado'}
+                </Button>
+              )}
+            </div>
+            {updateError && (
+              <p className="text-sm text-destructive">{updateError}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Actions (pending only) ── */}
       {isPending && (

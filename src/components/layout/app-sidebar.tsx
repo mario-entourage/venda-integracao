@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload,
+  Shield, Upload, Truck,
 } from 'lucide-react';
 import { useUser } from '@/firebase/provider';
 import {
@@ -24,6 +24,7 @@ import {
 const orderNavItems = [
   { href: '/dashboard', icon: Home, label: 'Dashboard' },
   { href: '/remessas', icon: Send, label: 'Vendas' },
+  { href: '/envio', icon: Truck, label: 'Envio' },
   { href: '/controle', icon: ClipboardList, label: 'Controle' },
   { href: '/clientes', icon: Users, label: 'Clientes' },
   { href: '/representantes', icon: UserCheck, label: 'Representantes' },

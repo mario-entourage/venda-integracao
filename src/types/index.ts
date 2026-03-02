@@ -9,6 +9,7 @@ export * from './payment';
 export * from './medical';
 export * from './prescription';
 export * from './anvisa';
+export * from './shipping';
 export type {
   AddressFormValues,
   LoginFormValues,
