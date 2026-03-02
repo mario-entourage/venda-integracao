@@ -43,3 +43,11 @@ env:
     value: "false"
   - variable: ZAPSIGN_API_KEY
     secret: ZAPSIGN_API_KEY
+
+  # TriStar Express shipping
+  # Sandbox: https://sandbox.tristarexpress.com/v1/
+  # Production: https://api.tristarexpress.com/v1/
+  - variable: TRISTAR_API_URL
+    value: "https://sandbox.tristarexpress.com/v1/"
+  - variable: TRISTAR_API_KEY
+    secret: TRISTAR_API_KEY
