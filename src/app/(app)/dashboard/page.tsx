@@ -1,43 +1,450 @@
+'use client';
+
+import React, { useMemo } from 'react';
+import Link from 'next/link';
+import { collection, query, where } from 'firebase/firestore';
+import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase';
+import { getOrdersQuery, getOrdersByCreatorQuery } from '@/services/orders.service';
+import { getUsersRef } from '@/services/users.service';
+import { ANVISA_COLLECTIONS } from '@/lib/anvisa-paths';
+import { OrderStatus } from '@/types/enums';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import type { Order } from '@/types';
+import type { PatientRequest, AnvisaRequestStatus } from '@/types/anvisa';
+
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+const fmtBRL = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+const fmtDate = (ts: unknown) => {
+  const t = ts as { seconds?: number } | null | undefined;
+  if (!t?.seconds) return '—';
+  return new Date(t.seconds * 1000).toLocaleDateString('pt-BR');
+};
+
+const REVENUE_STATUSES = new Set<string>([
+  OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED,
+]);
+
+function getMonthBounds(monthOffset: number) {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function orderCreatedAt(order: Order): Date {
+  const ts = order.createdAt as unknown as { seconds: number };
+  return new Date(ts.seconds * 1000);
+}
+
+function revenueForPeriod(orders: Order[], start: Date, end: Date): number {
+  return orders
+    .filter((o) => {
+      if (!REVENUE_STATUSES.has(o.status) || o.softDeleted) return false;
+      const d = orderCreatedAt(o);
+      return d >= start && d <= end;
+    })
+    .reduce((sum, o) => sum + (o.amount ?? 0), 0);
+}
+
+// ─── status config ────────────────────────────────────────────────────────────
+
+const ORDER_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  pending:            { label: 'Pendente',       className: 'border-slate-300 text-slate-600 bg-slate-50' },
+  processing:         { label: 'Em andamento',   className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  awaiting_documents: { label: 'Aguard. docs',   className: 'border-amber-300 text-amber-700 bg-amber-50' },
+  documents_complete: { label: 'Docs OK',        className: 'border-teal-300 text-teal-700 bg-teal-50' },
+  awaiting_payment:   { label: 'Aguard. pagto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  paid:               { label: 'Pago',           className: 'border-green-300 text-green-700 bg-green-50' },
+  shipped:            { label: 'Enviado',        className: 'border-purple-300 text-purple-700 bg-purple-50' },
+  delivered:          { label: 'Entregue',       className: 'border-green-400 text-green-800 bg-green-100' },
+  cancelled:          { label: 'Cancelado',      className: 'border-red-300 text-red-600 bg-red-50' },
+};
+
+const ANVISA_STATUS_CONFIG: Record<AnvisaRequestStatus, { label: string; className: string }> = {
+  PENDENTE:     { label: 'Pendente',      className: 'border-yellow-300 text-yellow-700 bg-yellow-50' },
+  EM_AJUSTE:    { label: 'Em ajuste',    className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  EM_AUTOMACAO: { label: 'Em automação', className: 'border-purple-300 text-purple-700 bg-purple-50' },
+  CONCLUIDO:    { label: 'Concluído',    className: 'border-green-300 text-green-700 bg-green-50' },
+  ERRO:         { label: 'Erro',         className: 'border-red-300 text-red-600 bg-red-50' },
+};
+
+// ─── sub-components ──────────────────────────────────────────────────────────
+
+function StatCard({
+  title,
+  value,
+  sub,
+  loading,
+}: {
+  title: string;
+  value: string;
+  sub?: string;
+  loading?: boolean;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-1">
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="h-8 w-24 rounded bg-muted animate-pulse" />
+        ) : (
+          <>
+            <p className="text-2xl font-bold">{value}</p>
+            {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusCountCard({
+  label,
+  count,
+  className,
+  loading,
+}: {
+  label: string;
+  count: number;
+  className: string;
+  loading?: boolean;
+}) {
+  return (
+    <div className={cn('rounded-lg border px-3 py-2.5 flex items-center justify-between gap-2', className)}>
+      <span className="text-xs font-medium leading-tight">{label}</span>
+      {loading ? (
+        <div className="h-5 w-6 rounded bg-current opacity-20 animate-pulse flex-shrink-0" />
+      ) : (
+        <span className="text-sm font-bold flex-shrink-0">{count}</span>
+      )}
+    </div>
+  );
+}
+
+function RecentOrdersTable({
+  orders,
+  loading,
+  emptyText = 'Nenhum pedido encontrado.',
+}: {
+  orders: Order[];
+  loading: boolean;
+  emptyText?: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Pedidos Recentes</CardTitle>
+      </CardHeader>
+      <CardContent className="px-0">
+        {loading ? (
+          <div className="space-y-2 px-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-10 rounded bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : orders.length === 0 ? (
+          <p className="px-6 text-sm text-muted-foreground">{emptyText}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="pb-2 pl-6 text-left font-medium text-muted-foreground w-28">ID</th>
+                  <th className="pb-2 text-left font-medium text-muted-foreground">Status</th>
+                  <th className="pb-2 text-right font-medium text-muted-foreground w-32">Valor</th>
+                  <th className="pb-2 pr-6 text-right font-medium text-muted-foreground w-28">Data</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => {
+                  const cfg = ORDER_STATUS_CONFIG[order.status] ?? ORDER_STATUS_CONFIG.pending;
+                  return (
+                    <tr key={order.id} className="border-b last:border-0 hover:bg-muted/40">
+                      <td className="py-2.5 pl-6">
+                        <Link
+                          href={`/controle/${order.id}`}
+                          className="font-mono text-xs text-primary hover:underline"
+                        >
+                          #{order.id.slice(0, 8).toUpperCase()}
+                        </Link>
+                      </td>
+                      <td className="py-2.5">
+                        <Badge variant="outline" className={cn('text-xs', cfg.className)}>
+                          {cfg.label}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 text-right font-medium">{fmtBRL(order.amount ?? 0)}</td>
+                      <td className="py-2.5 pr-6 text-right text-muted-foreground">
+                        {fmtDate(order.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── admin dashboard ──────────────────────────────────────────────────────────
+
+function AdminDashboard() {
+  const { firestore } = useFirebase();
+
+  // All orders (real-time)
+  const allOrdersQ = useMemoFirebase(
+    () => (firestore ? getOrdersQuery(firestore) : null),
+    [firestore],
+  );
+  const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(allOrdersQ);
+
+  // Active users count
+  const usersQ = useMemoFirebase(
+    () =>
+      firestore
+        ? query(getUsersRef(firestore), where('active', '==', true))
+        : null,
+    [firestore],
+  );
+  const { data: activeUsers, isLoading: usersLoading } =
+    useCollection<{ id: string }>(usersQ);
+
+  // ANVISA requests (non-deleted)
+  const anvisaQ = useMemoFirebase(
+    () =>
+      firestore
+        ? query(
+            collection(firestore, ANVISA_COLLECTIONS.requests),
+            where('softDeleted', '==', false),
+          )
+        : null,
+    [firestore],
+  );
+  const { data: anvisaRequests, isLoading: anvisaLoading } =
+    useCollection<PatientRequest>(anvisaQ);
+
+  // ── derived stats ──────────────────────────────────────────────────────────
+  const activeOrders = useMemo(
+    () => (allOrders ?? []).filter((o) => !o.softDeleted),
+    [allOrders],
+  );
+
+  const { start: thisStart, end: thisEnd } = useMemo(() => getMonthBounds(0), []);
+  const { start: lastStart, end: lastEnd } = useMemo(() => getMonthBounds(-1), []);
+
+  const thisMonthRevenue = useMemo(
+    () => revenueForPeriod(activeOrders, thisStart, thisEnd),
+    [activeOrders, thisStart, thisEnd],
+  );
+  const lastMonthRevenue = useMemo(
+    () => revenueForPeriod(activeOrders, lastStart, lastEnd),
+    [activeOrders, lastStart, lastEnd],
+  );
+
+  const pendingCount = useMemo(
+    () => activeOrders.filter((o) => o.status === OrderStatus.PENDING).length,
+    [activeOrders],
+  );
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const status of Object.values(OrderStatus)) counts[status] = 0;
+    for (const o of activeOrders) {
+      if (counts[o.status] !== undefined) counts[o.status]++;
+    }
+    return counts;
+  }, [activeOrders]);
+
+  const anvisaCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      PENDENTE: 0, EM_AJUSTE: 0, EM_AUTOMACAO: 0, CONCLUIDO: 0, ERRO: 0,
+    };
+    for (const r of anvisaRequests ?? []) {
+      if (counts[r.status] !== undefined) counts[r.status]++;
+    }
+    return counts;
+  }, [anvisaRequests]);
+
+  const recentOrders = useMemo(() => activeOrders.slice(0, 5), [activeOrders]);
+
+  const now = new Date();
+  const thisMonthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthName = lastMonthDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Row 1: Key metrics ── */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Faturamento (Mês Atual)"
+          value={fmtBRL(thisMonthRevenue)}
+          sub={thisMonthName}
+          loading={ordersLoading}
+        />
+        <StatCard
+          title="Faturamento (Mês Anterior)"
+          value={fmtBRL(lastMonthRevenue)}
+          sub={lastMonthName}
+          loading={ordersLoading}
+        />
+        <StatCard
+          title="Pedidos Pendentes"
+          value={String(pendingCount)}
+          loading={ordersLoading}
+        />
+        <StatCard
+          title="Usuários Ativos"
+          value={String(activeUsers?.length ?? 0)}
+          loading={usersLoading}
+        />
+      </div>
+
+      {/* ── Row 2: Orders by status ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Pedidos por Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
+            {Object.entries(ORDER_STATUS_CONFIG).map(([status, cfg]) => (
+              <StatusCountCard
+                key={status}
+                label={cfg.label}
+                count={statusCounts[status] ?? 0}
+                className={cfg.className}
+                loading={ordersLoading}
+              />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Row 3: ANVISA ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Solicitações ANVISA</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2 grid-cols-3 sm:grid-cols-5">
+            {(Object.keys(ANVISA_STATUS_CONFIG) as AnvisaRequestStatus[]).map((status) => {
+              const cfg = ANVISA_STATUS_CONFIG[status];
+              return (
+                <StatusCountCard
+                  key={status}
+                  label={cfg.label}
+                  count={anvisaCounts[status] ?? 0}
+                  className={cfg.className}
+                  loading={anvisaLoading}
+                />
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Row 4: Recent orders ── */}
+      <RecentOrdersTable orders={recentOrders} loading={ordersLoading} />
+    </div>
+  );
+}
+
+// ─── user dashboard ───────────────────────────────────────────────────────────
+
+function UserDashboard() {
+  const { firestore, user } = useFirebase();
+
+  const myOrdersQ = useMemoFirebase(
+    () => (firestore && user ? getOrdersByCreatorQuery(firestore, user.uid) : null),
+    [firestore, user],
+  );
+  const { data: myOrders, isLoading } = useCollection<Order>(myOrdersQ);
+
+  const activeOrders = useMemo(
+    () => (myOrders ?? []).filter((o) => !o.softDeleted && o.status !== OrderStatus.CANCELLED),
+    [myOrders],
+  );
+
+  const awaitingPayment = useMemo(
+    () => activeOrders.filter((o) => o.status === OrderStatus.AWAITING_PAYMENT).length,
+    [activeOrders],
+  );
+
+  const delivered = useMemo(
+    () => (myOrders ?? []).filter((o) => o.status === OrderStatus.DELIVERED).length,
+    [myOrders],
+  );
+
+  const { start: thisStart, end: thisEnd } = useMemo(() => getMonthBounds(0), []);
+  const thisMonthRevenue = useMemo(
+    () => revenueForPeriod(activeOrders, thisStart, thisEnd),
+    [activeOrders, thisStart, thisEnd],
+  );
+
+  const recentOrders = useMemo(() => (myOrders ?? []).slice(0, 5), [myOrders]);
+
+  const now = new Date();
+  const thisMonthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Row 1: My metrics ── */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Pedidos Ativos"
+          value={String(activeOrders.length)}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Aguardando Pagamento"
+          value={String(awaitingPayment)}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Faturamento (Mês Atual)"
+          value={fmtBRL(thisMonthRevenue)}
+          sub={thisMonthName}
+          loading={isLoading}
+        />
+        <StatCard
+          title="Entregues"
+          value={String(delivered)}
+          loading={isLoading}
+        />
+      </div>
+
+      {/* ── Row 2: My recent orders ── */}
+      <RecentOrdersTable
+        orders={recentOrders}
+        loading={isLoading}
+        emptyText="Nenhum pedido encontrado. Inicie uma nova venda em Vendas."
+      />
+    </div>
+  );
+}
+
+// ─── page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const { isAdmin } = useFirebase();
+
   return (
     <div className="space-y-6">
       <h1 className="font-headline text-2xl font-bold">Dashboard</h1>
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pedidos Pendentes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">—</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Faturamento Mensal</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">—</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Clientes Ativos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">—</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Remessas em Transito</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">—</p>
-          </CardContent>
-        </Card>
-      </div>
+      {isAdmin ? <AdminDashboard /> : <UserDashboard />}
     </div>
   );
 }
