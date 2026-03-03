@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp, query, where, orderBy } from 'firebase/firestore';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -16,9 +16,13 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
-import { useFirebase } from '@/firebase/provider';
+import { SearchableSelect } from '@/components/shared/searchable-select';
+import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase';
+import { getUsersRef } from '@/services/users.service';
 import { useToast } from '@/hooks/use-toast';
 import { BRAZILIAN_STATES } from '@/lib/constants';
+import type { User } from '@/types';
 
 // ─── Client dialog ─────────────────────────────────────────────────────────────
 
@@ -295,6 +299,7 @@ const representanteQuickSchema = z.object({
   code: z.string().min(1, 'Código obrigatório'),
   email: z.string().email('E-mail inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
+  userId: z.string().optional(),
 });
 
 type RepresentanteQuickValues = z.infer<typeof representanteQuickSchema>;
@@ -313,13 +318,29 @@ export function QuickAddRepresentanteDialog({
   const { firestore } = useFirebase();
   const { toast } = useToast();
 
+  // ── Fetch active users for optional linking ──
+  const usersQ = useMemoFirebase(
+    () => firestore ? query(getUsersRef(firestore), where('active', '==', true), orderBy('email', 'asc')) : null,
+    [firestore],
+  );
+  const { data: users } = useCollection<User>(usersQ);
+
+  const userOptions = useMemo(
+    () => (users ?? []).map((u) => ({
+      value: u.id,
+      label: u.email,
+      sublabel: u.groupId === 'admin' ? 'Admin' : undefined,
+    })),
+    [users],
+  );
+
   const form = useForm<RepresentanteQuickValues>({
     resolver: zodResolver(representanteQuickSchema),
-    defaultValues: { name: '', code: '', email: '', phone: '' },
+    defaultValues: { name: '', code: '', email: '', phone: '', userId: '' },
   });
 
   useEffect(() => {
-    if (open) form.reset({ name: '', code: '', email: '', phone: '' });
+    if (open) form.reset({ name: '', code: '', email: '', phone: '', userId: '' });
   }, [open, form]);
 
   const { formState: { isSubmitting } } = form;
@@ -332,6 +353,7 @@ export function QuickAddRepresentanteDialog({
         code: data.code.trim().toUpperCase(),
         email: data.email ?? '',
         phone: data.phone ?? '',
+        userId: data.userId ?? '',
         active: true,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -392,6 +414,35 @@ export function QuickAddRepresentanteDialog({
                 </FormItem>
               )} />
             </div>
+
+            {/* ── Vincular a Usuário (opcional) ── */}
+            <FormField control={form.control} name="userId" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Vincular a um Usuário (opcional)</FormLabel>
+                <FormControl>
+                  <SearchableSelect
+                    options={userOptions}
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    placeholder="Nenhum — sem vínculo"
+                    searchPlaceholder="Buscar por email…"
+                    emptyMessage="Nenhum usuário encontrado"
+                  />
+                </FormControl>
+                {field.value && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground h-auto p-0"
+                    onClick={() => field.onChange('')}
+                  >
+                    Remover vínculo
+                  </Button>
+                )}
+                <FormMessage />
+              </FormItem>
+            )} />
 
             <Button type="submit" disabled={isSubmitting} className="w-full">
               {isSubmitting ? 'Cadastrando…' : 'Cadastrar e Selecionar'}

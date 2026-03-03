@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck,
+  Shield, Upload, Truck, HelpCircle,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -50,6 +50,10 @@ const anvisaNavItems = [
 
 const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
+];
+
+const helpNavItems = [
+  { href: '/ajuda', icon: HelpCircle, label: 'Ajuda' },
 ];
 
 const userNavItems = [
@@ -97,6 +101,7 @@ export function AppSidebar() {
         <NavGroup label="ANVISA" items={anvisaNavItems} pathname={pathname} />
 
         <NavGroup label="Administracao" items={adminNavItems} pathname={pathname} />
+        <NavGroup label="Suporte" items={helpNavItems} pathname={pathname} />
       </SidebarContent>
 
       <SidebarFooter className="border-t">

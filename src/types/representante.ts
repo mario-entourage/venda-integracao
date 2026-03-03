@@ -7,6 +7,8 @@ export interface Representante {
   code: string;
   email?: string;
   phone?: string;
+  /** Optional link to a user in the `users` collection */
+  userId?: string;
   active: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;

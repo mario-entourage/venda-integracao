@@ -3,14 +3,18 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { query, where, orderBy } from 'firebase/firestore';
 import { useFirebase, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
+import { useCollection } from '@/firebase';
 import {
   getRepresentanteRef,
   updateRepresentante,
   softDeleteRepresentante,
 } from '@/services/representantes.service';
+import { getUsersRef } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
+import { SearchableSelect } from '@/components/shared/searchable-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import type { Representante } from '@/types/representante';
+import type { User } from '@/types';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -45,7 +50,21 @@ export default function RepresentanteDetailPage() {
     code: '',
     email: '',
     phone: '',
+    userId: '',
   });
+
+  // ── Fetch active users for optional linking ──
+  const usersQ = useMemoFirebase(
+    () => db ? query(getUsersRef(db), where('active', '==', true), orderBy('email', 'asc')) : null,
+    [db],
+  );
+  const { data: users } = useCollection<User>(usersQ);
+
+  const userOptions = (users ?? []).map((u) => ({
+    value: u.id,
+    label: u.email,
+    sublabel: u.groupId === 'admin' ? 'Admin' : undefined,
+  }));
 
   const representanteRef = useMemoFirebase(
     () => getRepresentanteRef(db, id),
@@ -85,6 +104,7 @@ export default function RepresentanteDetailPage() {
       code: representante.code,
       email: representante.email || '',
       phone: representante.phone || '',
+      userId: representante.userId || '',
     });
     setEditing(true);
   };
@@ -106,6 +126,7 @@ export default function RepresentanteDetailPage() {
         code: form.code.trim().toUpperCase(),
         email: form.email.trim(),
         phone: form.phone.trim(),
+        userId: form.userId || '',
       });
       toast({ title: 'Representante atualizado com sucesso.' });
       setEditing(false);
@@ -184,6 +205,30 @@ export default function RepresentanteDetailPage() {
                 </div>
               </div>
 
+              {/* ── Vincular a Usuário (opcional) ── */}
+              <div className="space-y-2">
+                <Label>Vincular a um Usuário (opcional)</Label>
+                <SearchableSelect
+                  options={userOptions}
+                  value={form.userId}
+                  onChange={(v) => setForm((prev) => ({ ...prev, userId: v }))}
+                  placeholder="Nenhum — sem vínculo"
+                  searchPlaceholder="Buscar por email…"
+                  emptyMessage="Nenhum usuário encontrado"
+                />
+                {form.userId && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-xs text-muted-foreground"
+                    onClick={() => setForm((prev) => ({ ...prev, userId: '' }))}
+                  >
+                    Remover vínculo
+                  </Button>
+                )}
+              </div>
+
               <div className="flex justify-end pt-2">
                 <Button type="submit" disabled={saving}>
                   {saving ? 'Salvando…' : 'Salvar Alterações'}
@@ -213,6 +258,14 @@ export default function RepresentanteDetailPage() {
           <InfoRow label="Código" value={representante.code} />
           <InfoRow label="Email" value={representante.email} />
           <InfoRow label="Telefone" value={representante.phone} />
+          <InfoRow
+            label="Usuário Vinculado"
+            value={
+              representante.userId
+                ? (users ?? []).find((u) => u.id === representante.userId)?.email ?? representante.userId
+                : null
+            }
+          />
           <InfoRow
             label="Status"
             value={

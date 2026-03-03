@@ -3,14 +3,19 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirestore } from '@/firebase/provider';
+import { query, orderBy, where } from 'firebase/firestore';
+import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase';
 import { createRepresentante } from '@/services/representantes.service';
+import { getUsersRef } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
+import { SearchableSelect } from '@/components/shared/searchable-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import type { User } from '@/types';
 
 export default function NovoRepresentantePage() {
   const db = useFirestore();
@@ -18,11 +23,25 @@ export default function NovoRepresentantePage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
+  // ── Fetch active users for optional linking ──
+  const usersQ = useMemoFirebase(
+    () => db ? query(getUsersRef(db), where('active', '==', true), orderBy('email', 'asc')) : null,
+    [db],
+  );
+  const { data: users } = useCollection<User>(usersQ);
+
+  const userOptions = (users ?? []).map((u) => ({
+    value: u.id,
+    label: u.email,
+    sublabel: u.groupId === 'admin' ? 'Admin' : undefined,
+  }));
+
   const [form, setForm] = useState({
     name: '',
     code: '',
     email: '',
     phone: '',
+    userId: '',
   });
 
   const handleChange = (field: keyof typeof form) => (
@@ -42,6 +61,7 @@ export default function NovoRepresentantePage() {
         code: form.code.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
+        userId: form.userId || undefined,
       });
       toast({ title: 'Representante cadastrado com sucesso.' });
       router.push('/representantes');
@@ -108,6 +128,30 @@ export default function NovoRepresentantePage() {
                   onChange={handleChange('phone')}
                 />
               </div>
+            </div>
+
+            {/* ── Vincular a um Usuário (opcional) ── */}
+            <div className="space-y-2">
+              <Label>Vincular a um Usuário (opcional)</Label>
+              <SearchableSelect
+                options={userOptions}
+                value={form.userId}
+                onChange={(v) => setForm((prev) => ({ ...prev, userId: v }))}
+                placeholder="Nenhum — sem vínculo"
+                searchPlaceholder="Buscar por email…"
+                emptyMessage="Nenhum usuário encontrado"
+              />
+              {form.userId && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground"
+                  onClick={() => setForm((prev) => ({ ...prev, userId: '' }))}
+                >
+                  Remover vínculo
+                </Button>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">

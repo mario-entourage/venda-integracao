@@ -113,6 +113,17 @@ export async function softDeleteUser(
 }
 
 /**
+ * Return a Firestore query for all active users, ordered by email ascending.
+ */
+export function getActiveUsersQuery(db: Firestore): Query {
+  return query(
+    getUsersRef(db),
+    where('active', '==', true),
+    orderBy('email', 'asc'),
+  );
+}
+
+/**
  * Return a Firestore query for active users in a specific group,
  * ordered by creation date descending.
  */
