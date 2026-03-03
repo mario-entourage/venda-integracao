@@ -27,6 +27,28 @@ export interface Order {
   createdAt: Timestamp;
   updatedById?: string;
   updatedAt: Timestamp;
+
+  // ── Controle module — editable fields ──────────────────────────────────
+  /** Nº Invoice (Correção / Duplicata) */
+  invoiceCorrecao?: string;
+  /** Meio de pagamento (Global Pays, Infinity Pays, PIX, Brazil Pays) */
+  meioPagamento?: string;
+  /** Status do orçamento */
+  statusOrcamento?: string;
+  /** Lead (Primeira compra, Recompra, etc.) */
+  lead?: string;
+  /** Forma de envio (Loggi, TriStar, SEDEX, etc.) */
+  formaEnvio?: string;
+  /** Lote / batch number */
+  lote?: string;
+  /** Data do envio (YYYY-MM-DD) */
+  dataEnvio?: string;
+  /** Previsão de entrega (YYYY-MM-DD) */
+  previsaoEntrega?: string;
+  /** Código de rastreio */
+  codigoRastreio?: string;
+  /** Status do envio */
+  statusEnvio?: string;
 }
 
 export interface OrderCustomer {
@@ -63,6 +85,8 @@ export interface OrderProduct {
   id: string;
   orderId: string;
   stockProductId: string;
+  /** Product name from catalog (stored at order creation) */
+  productName?: string;
   quantity: number;
   price: number;
   discount: number;

@@ -244,6 +244,23 @@ export function getOrdersQuery(db: Firestore, status?: string): Query {
 }
 
 /**
+ * Build a Firestore query for orders created within a date range.
+ * Used by the Controle module for date-filtered views.
+ */
+export function getOrdersByDateRangeQuery(
+  db: Firestore,
+  from: Date,
+  to: Date,
+): Query {
+  return query(
+    getOrdersRef(db),
+    where('createdAt', '>=', Timestamp.fromDate(from)),
+    where('createdAt', '<=', Timestamp.fromDate(to)),
+    orderBy('createdAt', 'desc'),
+  );
+}
+
+/**
  * Return orders created by a specific user, ordered by creation date desc.
  */
 export function getOrdersByCreatorQuery(db: Firestore, createdById: string): Query {
