@@ -150,6 +150,8 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
           <StepPagamento
             orderId={orderId}
             orderAmount={order?.amount ?? 0}
+            currency={order?.currency || 'BRL'}
+            exchangeRate={order?.exchangeRate}
             clientName={customer?.name ?? ''}
             clientPhone=""
             clientDocument={customer?.document ?? ''}

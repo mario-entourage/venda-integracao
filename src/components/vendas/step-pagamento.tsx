@@ -24,6 +24,10 @@ import type { Representante } from '@/types/representante';
 interface StepPagamentoProps {
   orderId: string;
   orderAmount: number;
+  /** Currency for the payment link (default: 'BRL') */
+  currency?: string;
+  /** Exchange rate used (for display in the summary) */
+  exchangeRate?: number;
   clientName: string;
   clientPhone: string;
   clientDocument: string;
@@ -48,6 +52,8 @@ interface StepPagamentoProps {
 export function StepPagamento({
   orderId,
   orderAmount,
+  currency = 'BRL',
+  exchangeRate,
   clientName,
   clientPhone,
   clientDocument,
@@ -81,7 +87,7 @@ export function StepPagamento({
         const result = await generatePaymentLink(
           orderId,
           orderAmount,
-          'USD',
+          currency,
           clientName || undefined,
           clientPhone || undefined,
           clientEmail || undefined,
@@ -102,7 +108,7 @@ export function StepPagamento({
 
           await createPaymentLink(firestore, orderId, {
             amount: orderAmount,
-            currency: 'USD',
+            currency,
             referenceId: result.gpOrderId,
             paymentUrl: result.paymentUrl,
             provider: 'globalpay',
@@ -122,7 +128,7 @@ export function StepPagamento({
     };
 
     generate();
-  }, [orderId, orderAmount, paymentUrl, onPaymentGenerated, clientName, clientPhone, clientEmail, clientDocument, firestore]);
+  }, [orderId, orderAmount, currency, paymentUrl, onPaymentGenerated, clientName, clientPhone, clientEmail, clientDocument, firestore]);
 
   const handleRetry = () => {
     hasGenerated.current = false;
@@ -148,8 +154,8 @@ export function StepPagamento({
     setWhatsappSent(true);
   };
 
-  const fmtUSD = (v: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
+  const fmtAmount = (v: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: currency || 'BRL' }).format(v);
 
   const maskedPhone =
     clientPhone && clientPhone.length >= 4
@@ -181,7 +187,7 @@ export function StepPagamento({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Valor total</span>
-            <span className="text-xl font-bold text-primary">{fmtUSD(orderAmount)}</span>
+            <span className="text-xl font-bold text-primary">{fmtAmount(orderAmount)}</span>
           </div>
         </CardContent>
       </Card>

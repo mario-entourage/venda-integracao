@@ -102,12 +102,18 @@ interface StepIdentificacaoProps {
   clients: Client[];
   doctors: Doctor[];
   allProducts: Product[];
+  /** PTAX midpoint rate (BRL per 1 USD) */
+  exchangeRate: number;
+  exchangeRateLoading: boolean;
+  exchangeRateError: string | null;
+  exchangeRateDate: string;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
 
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
+  exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -159,9 +165,11 @@ export function StepIdentificacao({
   const handleProductSelect = (lineId: string, productId: string) => {
     const product = allProducts.find((p) => p.id === productId);
     if (product) {
+      const brlPrice = parseFloat((product.price * exchangeRate).toFixed(2));
       updateLine(lineId, {
         productId, productName: product.name,
-        listPrice: product.price, negotiatedPrice: product.price,
+        listPrice: product.price,          // USD from catalog
+        negotiatedPrice: brlPrice,         // BRL default
         discount: 0, aiHintName: undefined,
       });
     } else {
@@ -169,37 +177,40 @@ export function StepIdentificacao({
     }
   };
 
-  const handleNegotiatedPriceChange = (lineId: string, negotiatedPrice: number) => {
+  const handleNegotiatedPriceChange = (lineId: string, negotiatedPriceBRL: number) => {
     const line = state.products.find((l) => l.id === lineId);
     if (!line) return;
-    const discount = line.listPrice > 0
-      ? Math.max(0, Math.min(100, ((line.listPrice - negotiatedPrice) / line.listPrice) * 100))
+    const listPriceBRL = line.listPrice * exchangeRate;
+    const discount = listPriceBRL > 0
+      ? Math.max(0, Math.min(100, ((listPriceBRL - negotiatedPriceBRL) / listPriceBRL) * 100))
       : 0;
-    updateLine(lineId, { negotiatedPrice, discount });
+    updateLine(lineId, { negotiatedPrice: negotiatedPriceBRL, discount });
   };
 
   /**
-   * When the user edits the negotiated TOTAL for a line, back-calculate the
-   * unit price by dividing by qty and rounding DOWN to the nearest cent.
-   * Then recompute the discount from that unit price.
+   * When the user edits the negotiated TOTAL (BRL) for a line, back-calculate
+   * the unit price by dividing by qty and rounding DOWN to the nearest cent.
+   * Then recompute the discount from that unit price vs the BRL list price.
    */
   const handleNegotiatedTotalChange = (lineId: string, total: number) => {
     const line = state.products.find((l) => l.id === lineId);
     if (!line) return;
     const qty = Math.max(1, line.quantity);
     // Floor to nearest cent: never let fractional cents inflate the unit price
-    const unitPrice = Math.floor((Math.max(0, total) / qty) * 100) / 100;
-    const discount = line.listPrice > 0
-      ? Math.max(0, Math.min(100, ((line.listPrice - unitPrice) / line.listPrice) * 100))
+    const unitPriceBRL = Math.floor((Math.max(0, total) / qty) * 100) / 100;
+    const listPriceBRL = line.listPrice * exchangeRate;
+    const discount = listPriceBRL > 0
+      ? Math.max(0, Math.min(100, ((listPriceBRL - unitPriceBRL) / listPriceBRL) * 100))
       : 0;
-    updateLine(lineId, { negotiatedPrice: unitPrice, discount });
+    updateLine(lineId, { negotiatedPrice: unitPriceBRL, discount });
   };
 
   const handleDiscountChange = (lineId: string, discount: number) => {
     const line = state.products.find((l) => l.id === lineId);
     if (!line) return;
     const clampedDiscount = Math.max(0, Math.min(100, discount));
-    const negotiatedPrice = line.listPrice * (1 - clampedDiscount / 100);
+    const listPriceBRL = line.listPrice * exchangeRate;
+    const negotiatedPrice = parseFloat((listPriceBRL * (1 - clampedDiscount / 100)).toFixed(2));
     updateLine(lineId, { discount: clampedDiscount, negotiatedPrice });
   };
 
@@ -267,10 +278,11 @@ export function StepIdentificacao({
             null;
 
           if (matched) {
+            const brlPrice = parseFloat((matched.price * exchangeRate).toFixed(2));
             return {
               id: crypto.randomUUID(), productId: matched.id, productName: matched.name,
               quantity: ap.quantity ?? 1, listPrice: matched.price,
-              negotiatedPrice: matched.price, discount: 0,
+              negotiatedPrice: brlPrice, discount: 0,
             };
           }
           return {
@@ -292,7 +304,7 @@ export function StepIdentificacao({
     } finally {
       setIsExtracting(false);
     }
-  }, [clients, doctors, allProducts, onChange]);
+  }, [clients, doctors, allProducts, onChange, exchangeRate]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
@@ -306,6 +318,9 @@ export function StepIdentificacao({
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
     maxFiles: 1, disabled: isExtracting,
   });
+
+  const fmtBRL = (v: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
   const fmtUSD = (v: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(v);
@@ -471,6 +486,25 @@ export function StepIdentificacao({
       <div className="space-y-3">
         <Label className="text-sm font-semibold">Produtos <span className="text-red-500">*</span></Label>
 
+        {/* Exchange rate banner */}
+        {exchangeRateLoading && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent flex-shrink-0" />
+            Carregando cotação PTAX…
+          </div>
+        )}
+        {exchangeRateError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {exchangeRateError}
+          </div>
+        )}
+        {exchangeRate > 0 && !exchangeRateLoading && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+            <span>Cotação PTAX: <strong>1 USD = {exchangeRate.toFixed(4)} BRL</strong></span>
+            <span className="text-blue-500">({exchangeRateDate})</span>
+          </div>
+        )}
+
         {state.products.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center">
             <p className="text-sm text-muted-foreground">Envie uma receita acima para preencher os produtos automaticamente.</p>
@@ -512,9 +546,11 @@ export function StepIdentificacao({
                 <Input type="number" min={1} value={line.quantity}
                   onChange={(e) => updateLine(line.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
                   className="text-center px-1" />
-                {/* List price (read-only) */}
-                <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
-                  {line.listPrice > 0 ? line.listPrice.toFixed(2) : '—'}
+                {/* List price in BRL (read-only — converted from USD catalog price) */}
+                <div className="flex flex-col items-center justify-center rounded-md border bg-muted/40 px-1 py-1 text-center text-muted-foreground h-9" title={line.listPrice > 0 ? `${fmtUSD(line.listPrice)}` : undefined}>
+                  {line.listPrice > 0 ? (
+                    <span className="text-xs leading-tight">{fmtBRL(line.listPrice * exchangeRate)}</span>
+                  ) : '—'}
                 </div>
                 {/* Negotiated UNIT price — changing this recalculates total & discount */}
                 <Input type="number" min={0} step="0.01"
@@ -565,7 +601,7 @@ export function StepIdentificacao({
             {/* Total */}
             <div className="flex justify-end border-t pt-3 pr-2">
               <p className="text-sm font-medium">
-                Total: <span className="text-base font-bold text-primary">{fmtUSD(orderTotal)}</span>
+                Total: <span className="text-base font-bold text-primary">{fmtBRL(orderTotal)}</span>
               </p>
             </div>
           </div>

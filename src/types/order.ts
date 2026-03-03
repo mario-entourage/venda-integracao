@@ -9,6 +9,10 @@ export interface Order {
   currency: string;
   amount: number;
   discount: number;
+  /** PTAX midpoint exchange rate (BRL per 1 USD) used at order creation */
+  exchangeRate?: number;
+  /** Date the PTAX rate was quoted (YYYY-MM-DD) */
+  exchangeRateDate?: string;
   type: OrderType;
   anvisaOption?: AnvisaOption;
   anvisaStatus?: string;

@@ -54,6 +54,12 @@ export interface CreateOrderData {
   }>;
   currency?: string;
   discount?: number;
+  /** Pre-calculated total in the order's currency. If provided, skips server-side recalculation. */
+  amountOverride?: number;
+  /** PTAX midpoint exchange rate (BRL per 1 USD) at order creation time */
+  exchangeRate?: number;
+  /** Date the PTAX rate was quoted (YYYY-MM-DD) */
+  exchangeRateDate?: string;
   legalGuardian?: boolean;
   anvisaOption?: string;
   type?: string;
@@ -83,7 +89,8 @@ export async function createOrder(
   const orderId = doc(collection(db, 'orders')).id;
 
   // Phase 2 -- Calculate the order total.
-  const amount = orderData.products.reduce((sum, p) => {
+  // If the caller pre-computed the BRL total (using an exchange rate), use it directly.
+  const amount = orderData.amountOverride ?? orderData.products.reduce((sum, p) => {
     const lineTotal = p.price * p.quantity * (1 - (p.discount || 0) / 100);
     return sum + lineTotal;
   }, 0);
@@ -104,6 +111,8 @@ export async function createOrder(
     anvisaStatus: '',
     zapsignDocId: '',
     zapsignStatus: '',
+    exchangeRate: orderData.exchangeRate || null,
+    exchangeRateDate: orderData.exchangeRateDate || null,
     documentsComplete: false,
     tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',

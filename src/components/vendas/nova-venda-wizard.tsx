@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -18,6 +18,7 @@ import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
 import { StepDocumentacao } from './step-documentacao';
 import { PostWizardDialog } from './post-wizard-dialog';
+import { getPtaxRate } from '@/server/actions/ptax.actions';
 import type { Client, Doctor, Product, Representante } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -51,6 +52,11 @@ interface WizardState {
   selectedRepresentanteCode: string;
   // Procuração ZapSign toggle (selected in step 2)
   needsProcuracao: boolean;
+  // PTAX exchange rate (fetched once on mount)
+  exchangeRate: number;
+  exchangeRateDate: string;
+  exchangeRateLoading: boolean;
+  exchangeRateError: string | null;
 }
 
 const INITIAL_STEP1: Step1State = {
@@ -80,6 +86,10 @@ const INITIAL_STATE: WizardState = {
   selectedRepresentanteName: 'Venda Direta',
   selectedRepresentanteCode: 'DIRECT',
   needsProcuracao: false,
+  exchangeRate: 0,
+  exchangeRateDate: '',
+  exchangeRateLoading: true,
+  exchangeRateError: null,
 };
 
 const STEPS = [
@@ -129,6 +139,30 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   // Post-completion dialog: shown when one or both entities were quick-added
   const [showPostDialog, setShowPostDialog] = useState(false);
   const [completedOrderId, setCompletedOrderId] = useState('');
+
+  // ── fetch PTAX exchange rate on mount ────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    getPtaxRate().then((result) => {
+      if (cancelled) return;
+      if (result.error || result.midRate === 0) {
+        setState((prev) => ({
+          ...prev,
+          exchangeRateLoading: false,
+          exchangeRateError: result.error || 'Cotação PTAX indisponível.',
+        }));
+      } else {
+        setState((prev) => ({
+          ...prev,
+          exchangeRate: result.midRate,
+          exchangeRateDate: result.queryDate,
+          exchangeRateLoading: false,
+          exchangeRateError: null,
+        }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const updateStep1 = useCallback((changes: Partial<Step1State>) => {
     setState((prev) => ({ ...prev, step1: { ...prev.step1, ...changes } }));
@@ -226,10 +260,14 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             products: step1.products.map((p) => ({
               stockProductId: p.productId,
               quantity: p.quantity,
-              price: p.listPrice,
+              price: p.listPrice,      // USD list price from catalog (for auditing)
               discount: p.discount,
               productName: p.productName,
             })),
+            currency: 'BRL',
+            amountOverride: amount,    // BRL total (negotiated prices are already in BRL)
+            exchangeRate: state.exchangeRate,
+            exchangeRateDate: state.exchangeRateDate,
             anvisaOption: step1.anvisaOption as 'regular' | 'exceptional' | 'exempt',
             prescriptionDocId: prescriptionPath,
           },
@@ -351,7 +389,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   // ── step can-advance logic ──────────────────────────────────────────────
   const canAdvance = (() => {
     if (isSubmitting) return false;
-    if (currentStep === 0) return step1Valid;
+    if (currentStep === 0) return step1Valid && state.exchangeRate > 0;
     if (currentStep === 1) return state.paymentUrl !== '';
     return true; // step 2 — always allow finalize
   })();
@@ -392,6 +430,10 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             clients={clients ?? []}
             doctors={doctors ?? []}
             allProducts={products ?? []}
+            exchangeRate={state.exchangeRate}
+            exchangeRateLoading={state.exchangeRateLoading}
+            exchangeRateError={state.exchangeRateError}
+            exchangeRateDate={state.exchangeRateDate}
           />
         )}
 
@@ -399,6 +441,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           <StepPagamento
             orderId={state.orderId}
             orderAmount={state.orderAmount}
+            currency="BRL"
+            exchangeRate={state.exchangeRate}
             clientName={state.step1.clientName}
             clientPhone={state.step1.clientPhone}
             clientDocument={state.step1.clientDocument}
