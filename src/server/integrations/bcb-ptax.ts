@@ -75,25 +75,33 @@ function toIsoDate(date: Date): string {
 // ─── main export ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch the latest PTAX USD → BRL rate from the BCB.
+ * Fetch a PTAX USD → BRL rate from the BCB.
  *
- * If today's rate is not yet published (weekends, holidays, early morning
- * before ~13:00 BRT), it walks backwards day-by-day until it finds one,
- * up to `maxRetries` attempts.
+ * If the target date's rate is not published (weekends, holidays, early
+ * morning before ~13:00 BRT), it walks backwards day-by-day until it
+ * finds one, up to `maxRetries` attempts.
  *
- * Results are cached for 30 minutes in-memory.
+ * When fetching for today (no `targetDate`), results are cached 30 min.
+ * Historical lookups bypass the cache.
  *
- * @param maxRetries  Maximum days to look back (default 7, handles long
- *                    holiday stretches like Carnival).
+ * @param targetDate  The date to fetch the rate for (defaults to today).
+ * @param maxRetries  Maximum days to look back (default 7).
  */
-export async function fetchPtaxRate(maxRetries = 7): Promise<PtaxQuote> {
-  // Return cached value if still fresh
-  if (ptaxCache && Date.now() - ptaxCache.fetchedAt < CACHE_TTL_MS) {
+export async function fetchPtaxRate(
+  targetDate?: Date,
+  maxRetries = 7,
+): Promise<PtaxQuote> {
+  const isToday = !targetDate;
+
+  // Return cached value if fetching "today" and cache is fresh
+  if (isToday && ptaxCache && Date.now() - ptaxCache.fetchedAt < CACHE_TTL_MS) {
     return ptaxCache.quote;
   }
 
+  const startDate = targetDate ?? new Date();
+
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const date = new Date();
+    const date = new Date(startDate);
     date.setDate(date.getDate() - attempt);
 
     const bcbDate = formatBcbDate(date);
@@ -137,8 +145,10 @@ export async function fetchPtaxRate(maxRetries = 7): Promise<PtaxQuote> {
         queryDate: toIsoDate(date),
       };
 
-      // Cache the result
-      ptaxCache = { quote, fetchedAt: Date.now() };
+      // Cache only "today" lookups
+      if (isToday) {
+        ptaxCache = { quote, fetchedAt: Date.now() };
+      }
       return quote;
     } catch (err) {
       console.warn(`[bcb-ptax] Fetch error for ${bcbDate}:`, err);

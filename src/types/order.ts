@@ -49,6 +49,10 @@ export interface Order {
   codigoRastreio?: string;
   /** Status do envio */
   statusEnvio?: string;
+  /** Data do orçamento — payment link creation date (YYYY-MM-DD) */
+  dataOrcamento?: string;
+  /** Batch import ID for CSV deduplication */
+  batchImportId?: string;
 }
 
 export interface OrderCustomer {

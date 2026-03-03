@@ -264,7 +264,7 @@ function InlineDateInput({
 // ---------------------------------------------------------------------------
 
 export default function ControlePage() {
-  const { firestore, user } = useFirebase();
+  const { firestore, user, isAdmin } = useFirebase();
   const { toast } = useToast();
 
   // Date filter state
@@ -490,6 +490,7 @@ export default function ControlePage() {
       <PageHeader
         title="Controle de Pedidos"
         description="Visão geral com edição inline de todos os pedidos"
+        action={isAdmin ? { label: 'Importar CSV', href: '/controle/importar' } : undefined}
       />
 
       {/* ── Date filter ──────────────────────────────────────────────── */}

@@ -42,3 +42,31 @@ export async function getPtaxRate(): Promise<{
     };
   }
 }
+
+/**
+ * Fetch the PTAX rate for a specific historical date.
+ * Used by CSV bulk import to auto-fill exchange rates.
+ *
+ * @param dateStr  Date in YYYY-MM-DD format.
+ */
+export async function getPtaxRateForDate(dateStr: string): Promise<{
+  midRate: number;
+  queryDate: string;
+  error?: string;
+}> {
+  try {
+    const date = new Date(dateStr + 'T12:00:00');
+    if (isNaN(date.getTime())) {
+      return { midRate: 0, queryDate: '', error: 'Data inválida.' };
+    }
+    const quote = await fetchPtaxRate(date);
+    return { midRate: quote.midRate, queryDate: quote.queryDate };
+  } catch (err) {
+    console.error('[getPtaxRateForDate] Error:', err);
+    const message =
+      err instanceof PtaxError
+        ? err.message
+        : 'Erro ao buscar cotação PTAX.';
+    return { midRate: 0, queryDate: '', error: message };
+  }
+}
