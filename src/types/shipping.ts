@@ -6,7 +6,7 @@ import type { OrderShipping } from './order';
 
 export type ShippingMethod = 'TRISTAR' | 'LOCAL_MAIL' | 'MOTOBOY';
 
-export type ManualShippingStatus = 'pending' | 'sent' | 'delivered' | 'returned';
+export type ManualShippingStatus = 'pending' | 'sent' | 'received' | 'lost' | 'suspended' | 'returned';
 
 // ---------------------------------------------------------------------------
 // TriStar item types (from API documentation)

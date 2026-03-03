@@ -40,10 +40,12 @@ function AddressBlock({ address }: { address: ShippingAddress | null }) {
 }
 
 const STATUS_LABELS: { value: ManualShippingStatus; label: string }[] = [
-  { value: 'pending', label: 'Pendente' },
-  { value: 'sent', label: 'Enviado' },
-  { value: 'delivered', label: 'Entregue' },
-  { value: 'returned', label: 'Devolvido' },
+  { value: 'pending', label: 'Envio Pendiente' },
+  { value: 'sent', label: 'Envio Realizado' },
+  { value: 'received', label: 'Recebido' },
+  { value: 'lost', label: 'Extraviado' },
+  { value: 'suspended', label: 'Entrega Suspensa' },
+  { value: 'returned', label: 'Devolvido ao Remetente' },
 ];
 
 export function LocalMailDialog({
