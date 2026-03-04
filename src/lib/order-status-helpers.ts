@@ -89,13 +89,9 @@ export function getGranularStatus(order: Order): GranularStatus {
     missing.push('ANVISA');
   }
 
-  // Missing Procuracao — only relevant when ANVISA is needed
-  if (needsAnvisa) {
-    if (!order.zapsignDocId) {
-      missing.push('Procuracao');
-    } else if (order.zapsignStatus !== 'signed') {
-      missing.push('Procuracao (assinatura)');
-    }
+  // Missing Procuracao — only if a Procuração doc was created but not yet signed
+  if (order.zapsignDocId && order.zapsignStatus !== 'signed') {
+    missing.push('Procuracao (assinatura)');
   }
 
   // Missing Comprovante de Vinculo — doc exists but not yet signed
