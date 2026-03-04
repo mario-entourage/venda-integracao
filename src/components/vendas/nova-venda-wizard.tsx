@@ -51,8 +51,10 @@ interface WizardState {
   selectedRepresentanteName: string;
   // ZapSign toggles (selected in step 2 — Pagamento)
   needsProcuracao: boolean;
-  needsPowerOfAttorney: boolean;
   needsComprovanteVinculo: boolean;
+  // Comprovante de Vínculo — Signatário info
+  cvSignatarioName: string;
+  cvSignatarioCpf: string;
   // Frete (entered in step 2 — Pagamento)
   frete: number;
   // PTAX exchange rate (fetched once on mount)
@@ -89,8 +91,9 @@ const INITIAL_STATE: WizardState = {
   selectedRepresentanteId: '',
   selectedRepresentanteName: 'Venda Direta',
   needsProcuracao: false,
-  needsPowerOfAttorney: false,
   needsComprovanteVinculo: false,
+  cvSignatarioName: '',
+  cvSignatarioCpf: '',
   frete: 0,
   exchangeRate: 0,
   exchangeRateDate: '',
@@ -465,10 +468,12 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
             needsProcuracao={state.needsProcuracao}
             onNeedsProcuracaoChange={(v) => setState((prev) => ({ ...prev, needsProcuracao: v }))}
-            needsPowerOfAttorney={state.needsPowerOfAttorney}
-            onNeedsPowerOfAttorneyChange={(v) => setState((prev) => ({ ...prev, needsPowerOfAttorney: v }))}
             needsComprovanteVinculo={state.needsComprovanteVinculo}
             onNeedsComprovanteVinculoChange={(v) => setState((prev) => ({ ...prev, needsComprovanteVinculo: v }))}
+            cvSignatarioName={state.cvSignatarioName}
+            onCvSignatarioNameChange={(v) => setState((prev) => ({ ...prev, cvSignatarioName: v }))}
+            cvSignatarioCpf={state.cvSignatarioCpf}
+            onCvSignatarioCpfChange={(v) => setState((prev) => ({ ...prev, cvSignatarioCpf: v }))}
           />
         )}
 
@@ -482,8 +487,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             clientIsNew={state.step1.clientIsNew}
             doctorIsNew={state.step1.doctorIsNew}
             needsProcuracao={state.needsProcuracao}
-            needsPowerOfAttorney={state.needsPowerOfAttorney}
             needsComprovanteVinculo={state.needsComprovanteVinculo}
+            cvSignatarioName={state.cvSignatarioName}
+            cvSignatarioCpf={state.cvSignatarioCpf}
           />
         )}
       </StepWizard>

@@ -167,10 +167,12 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             onNeedsProcuracaoChange={() => {}}
             frete={0}
             onFreteChange={() => {}}
-            needsPowerOfAttorney={false}
-            onNeedsPowerOfAttorneyChange={() => {}}
             needsComprovanteVinculo={false}
             onNeedsComprovanteVinculoChange={() => {}}
+            cvSignatarioName=""
+            onCvSignatarioNameChange={() => {}}
+            cvSignatarioCpf=""
+            onCvSignatarioCpfChange={() => {}}
           />
         )}
 

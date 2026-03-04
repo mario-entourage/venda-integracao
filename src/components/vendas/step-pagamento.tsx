@@ -41,12 +41,15 @@ interface StepPagamentoProps {
   /** Whether procuração ZapSign should be generated */
   needsProcuracao: boolean;
   onNeedsProcuracaoChange: (value: boolean) => void;
-  /** Whether Power of Attorney ZapSign should be generated */
-  needsPowerOfAttorney: boolean;
-  onNeedsPowerOfAttorneyChange: (value: boolean) => void;
   /** Whether Comprovante de Vínculo ZapSign should be generated */
   needsComprovanteVinculo: boolean;
   onNeedsComprovanteVinculoChange: (value: boolean) => void;
+  /** Signatário name for Comprovante de Vínculo */
+  cvSignatarioName: string;
+  onCvSignatarioNameChange: (value: string) => void;
+  /** Signatário CPF for Comprovante de Vínculo */
+  cvSignatarioCpf: string;
+  onCvSignatarioCpfChange: (value: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -68,10 +71,12 @@ export function StepPagamento({
   allowedPaymentMethods,
   needsProcuracao,
   onNeedsProcuracaoChange,
-  needsPowerOfAttorney,
-  onNeedsPowerOfAttorneyChange,
   needsComprovanteVinculo,
   onNeedsComprovanteVinculoChange,
+  cvSignatarioName,
+  onCvSignatarioNameChange,
+  cvSignatarioCpf,
+  onCvSignatarioCpfChange,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -407,18 +412,6 @@ export function StepPagamento({
             </div>
           </div>
 
-          {/* Power of Attorney toggle */}
-          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-            <div>
-              <p className="text-sm font-medium">Power of Attorney</p>
-              <p className="text-xs text-muted-foreground">Gerar Power of Attorney para assinatura via ZapSign?</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{needsPowerOfAttorney ? 'SIM' : 'NÃO'}</span>
-              <Switch checked={needsPowerOfAttorney} onCheckedChange={onNeedsPowerOfAttorneyChange} />
-            </div>
-          </div>
-
           {/* Comprovante de Vínculo toggle */}
           <div className="flex items-center justify-between rounded-lg border px-4 py-3">
             <div>
@@ -430,6 +423,35 @@ export function StepPagamento({
               <Switch checked={needsComprovanteVinculo} onCheckedChange={onNeedsComprovanteVinculoChange} />
             </div>
           </div>
+
+          {/* Signatário fields — shown when Comprovante is enabled */}
+          {needsComprovanteVinculo && (
+            <div className="rounded-lg border px-4 py-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Dados do Signatário (quem assina o comprovante)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="cv-signatario-name" className="text-sm">Nome Completo do Signatário</Label>
+                  <Input
+                    id="cv-signatario-name"
+                    placeholder="Nome do signatário"
+                    value={cvSignatarioName}
+                    onChange={(e) => onCvSignatarioNameChange(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="cv-signatario-cpf" className="text-sm">CPF do Signatário</Label>
+                  <Input
+                    id="cv-signatario-cpf"
+                    placeholder="000.000.000-00"
+                    value={cvSignatarioCpf}
+                    onChange={(e) => onCvSignatarioCpfChange(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

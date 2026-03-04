@@ -29,6 +29,11 @@ export interface CreateProcuracaoParams {
     state: string;
     postalCode: string;
   };
+  /** For Comprovante de Vínculo: the client (patient) whose address is being declared */
+  clientInfo?: {
+    name: string;
+    cpf: string;
+  };
 }
 
 export interface ZapSignDocumentResult {
@@ -137,69 +142,24 @@ Eu, **${params.signerName}**, portador do CPF nº **${cpf}**, residente à ${add
 CPF: **${cpf}**`;
 }
 
-// ─── Power of Attorney markdown template ─────────────────────────────────────
-
-export function buildPowerOfAttorneyMarkdown(params: CreateProcuracaoParams): string {
-  const cpf = formatCpf(params.signerCpf);
-  const addr = params.signerAddress;
-  const cep = formatCep(addr.postalCode);
-  const addressLine = [
-    `${addr.street}, ${addr.number}`,
-    addr.complement || '',
-    `- ${addr.neighborhood}`,
-    `- ${addr.city}/${addr.state}`,
-    `- Cep: ${cep}`,
-  ].filter(Boolean).join(' ');
-
-  const logoUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.entouragelab.com'}/logo.png`;
-  const date = formatDatePtBr();
-
-  // Placeholder template — replace with actual content when provided
-  return `![Entourage PhytoLab](${logoUrl})
-
-# POWER OF ATTORNEY
-
-I, **${params.signerName}**, holder of CPF nº **${cpf}**, residing at ${addressLine}, hereby appoint and constitute as my attorney-in-fact Mr. Caio Santos Abreu, holder of CPF nº 025.289.547-94, to act on my behalf for all purposes related to the importation of cannabis-based products, including but not limited to: customs clearance, regulatory filings with ANVISA and other competent authorities, and all ancillary acts necessary to complete the importation process.
-
-This Power of Attorney is valid for 1 (one) year or until all acts necessary for its purpose have been completed, whichever comes first.
-
-**${addr.city}**, **${date}**
-
----
-
-&nbsp;
-
-&nbsp;
-
-&nbsp;
-
-**${params.signerName}**
-CPF: **${cpf}**`;
-}
-
 // ─── Comprovante de Vínculo markdown template ────────────────────────────────
 
 export function buildComprovanteVinculoMarkdown(params: CreateProcuracaoParams): string {
-  const cpf = formatCpf(params.signerCpf);
+  const signerCpf = formatCpf(params.signerCpf);
+  const clientCpf = params.clientInfo ? formatCpf(params.clientInfo.cpf) : signerCpf;
+  const clientName = params.clientInfo?.name || params.signerName;
   const addr = params.signerAddress;
   const cep = formatCep(addr.postalCode);
-  const addressLine = [
-    `${addr.street}, ${addr.number}`,
-    addr.complement || '',
-    `- ${addr.neighborhood}`,
-    `- ${addr.city}/${addr.state}`,
-    `- Cep: ${cep}`,
-  ].filter(Boolean).join(' ');
+  const complement = addr.complement ? `, ${addr.complement}` : '';
 
   const logoUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://app.entouragelab.com'}/logo.png`;
   const date = formatDatePtBr();
 
-  // Placeholder template — replace with actual content when provided
   return `![Entourage PhytoLab](${logoUrl})
 
 # COMPROVANTE DE VÍNCULO
 
-Eu, **${params.signerName}**, portador do CPF nº **${cpf}**, residente à ${addressLine}, declaro para os devidos fins que mantenho vínculo com a Entourage PhytoLab para fins de importação de produtos à base de cannabis, conforme regulamentação vigente da ANVISA (RDC nº 660/2022).
+Eu, **${params.signerName}**, portador(a) do CPF **${signerCpf}**, por meio desta, informo que **${clientName}**, portador(a) do CPF **${clientCpf}**, reside na ${addr.street}, ${addr.number}${complement}, ${addr.neighborhood}, ${addr.city} - ${addr.state}, CEP ${cep}.
 
 **${addr.city}**, **${date}**
 
@@ -211,24 +171,21 @@ Eu, **${params.signerName}**, portador do CPF nº **${cpf}**, residente à ${add
 
 &nbsp;
 
-**${params.signerName}**
-CPF: **${cpf}**`;
+CPF **${signerCpf}**`;
 }
 
 // ─── API call ────────────────────────────────────────────────────────────────
 
 /** Document type determines the title and markdown template */
-export type ZapSignDocType = 'procuracao' | 'power_of_attorney' | 'comprovante_vinculo';
+export type ZapSignDocType = 'procuracao' | 'comprovante_vinculo';
 
 const DOC_TYPE_TITLES: Record<ZapSignDocType, string> = {
   procuracao: 'Procuração ANVISA',
-  power_of_attorney: 'Power of Attorney',
   comprovante_vinculo: 'Comprovante de Vínculo',
 };
 
 const DOC_TYPE_BUILDERS: Record<ZapSignDocType, (params: CreateProcuracaoParams) => string> = {
   procuracao: buildProcuracaoMarkdown,
-  power_of_attorney: buildPowerOfAttorneyMarkdown,
   comprovante_vinculo: buildComprovanteVinculoMarkdown,
 };
 

@@ -13,7 +13,7 @@ import { getDoctorRef } from '@/services/doctors.service';
 import { updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateClient } from '@/services/clients.service';
 import { updateDoctor } from '@/services/doctors.service';
-import { generateProcuracao, generatePowerOfAttorney, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
+import { generateProcuracao, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
 import { ImageViewer } from '@/components/shared/image-viewer';
@@ -129,15 +129,18 @@ interface StepDocumentacaoProps {
   doctorIsNew: boolean;
   /** Whether procuração ZapSign should be generated (toggled in Pagamento step) */
   needsProcuracao?: boolean;
-  /** Whether Power of Attorney ZapSign should be generated */
-  needsPowerOfAttorney?: boolean;
   /** Whether Comprovante de Vínculo ZapSign should be generated */
   needsComprovanteVinculo?: boolean;
+  /** Signatário name for Comprovante de Vínculo */
+  cvSignatarioName?: string;
+  /** Signatário CPF for Comprovante de Vínculo */
+  cvSignatarioCpf?: string;
 }
 
 export function StepDocumentacao({
   orderId, anvisaOption, clientId, clientName, doctorId, clientIsNew, doctorIsNew,
-  needsProcuracao = false, needsPowerOfAttorney = false, needsComprovanteVinculo = false,
+  needsProcuracao = false, needsComprovanteVinculo = false,
+  cvSignatarioName = '', cvSignatarioCpf = '',
 }: StepDocumentacaoProps) {
   const { firestore, storage, user } = useFirebase();
 
@@ -196,12 +199,6 @@ export function StepDocumentacao({
   const [zapsignLoading, setZapsignLoading] = useState(false);
   const [zapsignError, setZapsignError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-
-  // ZapSign state — Power of Attorney
-  const hasTriggeredPoa = useRef(false);
-  const [poaLoading, setPoaLoading] = useState(false);
-  const [poaError, setPoaError] = useState<string | null>(null);
-  const [copiedPoaLink, setCopiedPoaLink] = useState(false);
 
   // ZapSign state — Comprovante de Vínculo
   const hasTriggeredCv = useRef(false);
@@ -283,57 +280,6 @@ export function StepDocumentacao({
     trigger();
   }, [needsProcuracao, allReceived, anvisaOption, orderId, firestore, orderData?.zapsignDocId, clientData]);
 
-  // ── auto-trigger ZapSign Power of Attorney ─────────────────────────────────
-  useEffect(() => {
-    if (
-      !needsPowerOfAttorney ||
-      !allReceived ||
-      !orderId ||
-      !firestore ||
-      orderData?.zapsignPoaDocId ||
-      hasTriggeredPoa.current ||
-      !clientData?.address ||
-      !clientData?.document
-    ) return;
-
-    hasTriggeredPoa.current = true;
-
-    const trigger = async () => {
-      setPoaLoading(true);
-      setPoaError(null);
-      try {
-        const addr = clientData.address!;
-        const result = await generatePowerOfAttorney(
-          orderId,
-          clientData.fullName,
-          clientData.document,
-          clientData.email || undefined,
-          clientData.phone || undefined,
-          {
-            street: addr.street, number: addr.number, complement: addr.complement,
-            neighborhood: addr.neighborhood, city: addr.city, state: addr.state, postalCode: addr.postalCode,
-          },
-        );
-        if (result.error || !result.signUrl) {
-          throw new Error(result.error || 'Link de assinatura não retornado.');
-        }
-        await updateOrder(firestore, orderId, {
-          zapsignPoaDocId: result.docId,
-          zapsignPoaStatus: result.status,
-          zapsignPoaSignUrl: result.signUrl,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Erro ao gerar Power of Attorney.';
-        setPoaError(msg);
-        hasTriggeredPoa.current = false;
-      } finally {
-        setPoaLoading(false);
-      }
-    };
-
-    trigger();
-  }, [needsPowerOfAttorney, allReceived, orderId, firestore, orderData?.zapsignPoaDocId, clientData]);
-
   // ── auto-trigger ZapSign Comprovante de Vínculo ────────────────────────────
   useEffect(() => {
     if (
@@ -344,7 +290,9 @@ export function StepDocumentacao({
       orderData?.zapsignCvDocId ||
       hasTriggeredCv.current ||
       !clientData?.address ||
-      !clientData?.document
+      !clientData?.document ||
+      !cvSignatarioName ||
+      !cvSignatarioCpf
     ) return;
 
     hasTriggeredCv.current = true;
@@ -356,14 +304,16 @@ export function StepDocumentacao({
         const addr = clientData.address!;
         const result = await generateComprovanteVinculo(
           orderId,
-          clientData.fullName,
-          clientData.document,
+          cvSignatarioName,
+          cvSignatarioCpf,
           clientData.email || undefined,
           clientData.phone || undefined,
           {
             street: addr.street, number: addr.number, complement: addr.complement,
             neighborhood: addr.neighborhood, city: addr.city, state: addr.state, postalCode: addr.postalCode,
           },
+          clientData.fullName,
+          clientData.document,
         );
         if (result.error || !result.signUrl) {
           throw new Error(result.error || 'Link de assinatura não retornado.');
@@ -383,7 +333,7 @@ export function StepDocumentacao({
     };
 
     trigger();
-  }, [needsComprovanteVinculo, allReceived, orderId, firestore, orderData?.zapsignCvDocId, clientData]);
+  }, [needsComprovanteVinculo, allReceived, orderId, firestore, orderData?.zapsignCvDocId, clientData, cvSignatarioName, cvSignatarioCpf]);
 
   // ── process uploaded document ─────────────────────────────────────────────
   const processDocument = useCallback(async (file: File) => {
@@ -984,71 +934,6 @@ export function StepDocumentacao({
                 <p className="text-sm text-blue-700">
                   A procuração será gerada automaticamente após todos os documentos serem recebidos.
                 </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ZapSign Power of Attorney */}
-      {needsPowerOfAttorney && (
-        <div className="space-y-2">
-          <p className="text-sm font-semibold">Power of Attorney</p>
-          {orderData?.zapsignPoaSignUrl ? (
-            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-green-600 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-                <p className="text-sm font-medium text-green-700">Power of Attorney gerado</p>
-                <Badge variant="outline" className="ml-auto border-green-300 text-green-700 bg-green-50 text-xs">
-                  {orderData.zapsignPoaStatus === 'signed' ? 'Assinado' : 'Pendente'}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input readOnly value={orderData.zapsignPoaSignUrl} className="h-8 text-xs bg-white" onFocus={(e) => e.target.select()} />
-                <Button type="button" variant="outline" size="sm" className="shrink-0 h-8"
-                  onClick={() => { navigator.clipboard.writeText(orderData.zapsignPoaSignUrl!); setCopiedPoaLink(true); setTimeout(() => setCopiedPoaLink(false), 2000); }}>
-                  {copiedPoaLink ? 'Copiado!' : 'Copiar'}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" asChild>
-                  <a href={orderData.zapsignPoaSignUrl} target="_blank" rel="noopener noreferrer">Abrir link de assinatura</a>
-                </Button>
-              </div>
-            </div>
-          ) : poaLoading ? (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-              <div className="flex items-center gap-3">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent shrink-0" />
-                <p className="text-sm text-blue-700">Gerando Power of Attorney no ZapSign…</p>
-              </div>
-            </div>
-          ) : poaError ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2">
-              <p className="text-sm text-red-700">{poaError}</p>
-              <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
-                onClick={() => { hasTriggeredPoa.current = false; setPoaError(null); }}>
-                Tentar novamente
-              </Button>
-            </div>
-          ) : allReceived && !clientData?.address ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-              <div className="flex items-start gap-2">
-                <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                <p className="text-sm text-amber-700">Endereço do paciente não cadastrado. Envie o comprovante de residência.</p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-              <div className="flex items-start gap-2">
-                <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                </svg>
-                <p className="text-sm text-blue-700">O Power of Attorney será gerado automaticamente após todos os documentos serem recebidos.</p>
               </div>
             </div>
           )}

@@ -128,7 +128,7 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleMarkAsSigned = async (field: 'zapsignStatus' | 'zapsignPoaStatus' | 'zapsignCvStatus') => {
+  const handleMarkAsSigned = async (field: 'zapsignStatus' | 'zapsignCvStatus') => {
     if (!firestore || !user) return;
     setIsUpdating(true);
     setUpdateError(null);
@@ -193,10 +193,9 @@ export default function OrderDetailPage() {
   const isCancelledOrder = order.status === OrderStatus.CANCELLED;
   // Per-doc-type signing flags
   const canMarkProcuracaoSigned = !isCancelledOrder && !!order.zapsignDocId && order.zapsignStatus !== 'signed';
-  const canMarkPoaSigned = !isCancelledOrder && !!order.zapsignPoaDocId && order.zapsignPoaStatus !== 'signed';
   const canMarkCvSigned = !isCancelledOrder && !!order.zapsignCvDocId && order.zapsignCvStatus !== 'signed';
   // Show the manual status section at all
-  const showPaymentActions = canMarkAsPaid || canMarkProcuracaoSigned || canMarkPoaSigned || canMarkCvSigned;
+  const showPaymentActions = canMarkAsPaid || canMarkProcuracaoSigned || canMarkCvSigned;
 
   return (
     <div className="space-y-6">
@@ -350,16 +349,6 @@ export default function OrderDetailPage() {
                   onClick={() => handleMarkAsSigned('zapsignStatus')}
                 >
                   {isUpdating ? 'Atualizando…' : '✍ Procuracao Assinada'}
-                </Button>
-              )}
-              {canMarkPoaSigned && (
-                <Button
-                  variant="outline"
-                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
-                  disabled={isUpdating}
-                  onClick={() => handleMarkAsSigned('zapsignPoaStatus')}
-                >
-                  {isUpdating ? 'Atualizando…' : '✍ Power of Attorney Assinado'}
                 </Button>
               )}
               {canMarkCvSigned && (

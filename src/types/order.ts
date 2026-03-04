@@ -19,10 +19,6 @@ export interface Order {
   zapsignDocId?: string;
   zapsignStatus?: string;
   zapsignSignUrl?: string;
-  /** Power of Attorney ZapSign document */
-  zapsignPoaDocId?: string;
-  zapsignPoaStatus?: string;
-  zapsignPoaSignUrl?: string;
   /** Comprovante de Vínculo ZapSign document */
   zapsignCvDocId?: string;
   zapsignCvStatus?: string;

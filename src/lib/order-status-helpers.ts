@@ -98,11 +98,6 @@ export function getGranularStatus(order: Order): GranularStatus {
     }
   }
 
-  // Missing Power of Attorney — doc exists but not yet signed
-  if (order.zapsignPoaDocId && order.zapsignPoaStatus !== 'signed') {
-    missing.push('Power of Attorney');
-  }
-
   // Missing Comprovante de Vinculo — doc exists but not yet signed
   if (order.zapsignCvDocId && order.zapsignCvStatus !== 'signed') {
     missing.push('Comprovante');
