@@ -89,11 +89,13 @@ export function getGranularStatus(order: Order): GranularStatus {
     missing.push('ANVISA');
   }
 
-  // Missing Procuracao — needs ANVISA and no ZapSign doc created, or not yet signed
-  if (needsAnvisa && !order.zapsignDocId) {
-    missing.push('Procuracao');
-  } else if (order.zapsignDocId && order.zapsignStatus !== 'signed') {
-    missing.push('Procuracao (assinatura)');
+  // Missing Procuracao — only relevant when ANVISA is needed
+  if (needsAnvisa) {
+    if (!order.zapsignDocId) {
+      missing.push('Procuracao');
+    } else if (order.zapsignStatus !== 'signed') {
+      missing.push('Procuracao (assinatura)');
+    }
   }
 
   // Missing Power of Attorney — doc exists but not yet signed
