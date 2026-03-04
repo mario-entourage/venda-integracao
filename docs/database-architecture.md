@@ -1,0 +1,276 @@
+# Database Architecture
+
+> Firestore document database — Entourage PhytoLab Sales Integration Platform
+
+## Design principles
+
+| Principle | How it is applied |
+|---|---|
+| **Single primary key** | Every order and its prescription share the same Firestore document ID (the *Receita ID*). One key identifies the order across every collection and subcollection. |
+| **Denormalized subcollections** | Order-scoped data (customer, doctor, products, payments, etc.) lives in subcollections under the order document. This is standard Firestore design — it keeps reads fast, writes atomic, and security rules simple. |
+| **Atomic batch writes** | The entire order tree (root document + subcollections) is created in a single `writeBatch` commit, guaranteeing all-or-nothing consistency. |
+| **Soft deletes** | Records use `active` / `softDeleted` flags rather than physical deletion, preserving audit trails. |
+| **Timestamp bookkeeping** | Every document carries `createdAt` and `updatedAt` server timestamps for auditability. |
+| **Composite indexes for queries** | All list views that filter + sort use declared composite indexes, keeping query performance O(log n). |
+
+---
+
+## Collections
+
+### 1. `orders/{receitaId}`
+
+The central collection. Each document represents one sales order. The document ID is the **Receita ID** — the same ID used in the `prescriptions` collection, creating a 1:1 mapping.
+
+| Field | Type | Description |
+|---|---|---|
+| `status` | `OrderStatus` enum | pending, processing, awaiting_documents, documents_complete, awaiting_payment, paid, shipped, delivered, cancelled |
+| `invoice` | string | Invoice / payment reference number |
+| `type` | `OrderType` enum | sale, return, exchange |
+| `currency` | string | BRL or USD |
+| `amount` | number | Total order value |
+| `discount` | number | Discount percentage |
+| `exchangeRate` | number? | PTAX midpoint rate (BRL per 1 USD) at order creation |
+| `exchangeRateDate` | string? | YYYY-MM-DD when rate was quoted |
+| `legalGuardian` | boolean | Whether order is placed by a legal guardian |
+| `anvisaOption` | `AnvisaOption`? | regular, exceptional, exempt |
+| `anvisaStatus` | string? | ANVISA request status |
+| `zapsignDocId` | string? | ZapSign Procuração document token |
+| `zapsignStatus` | string? | Procuração signing status |
+| `zapsignSignUrl` | string? | Procuração signing URL |
+| `zapsignCvDocId` | string? | ZapSign Comprovante de Vínculo token |
+| `zapsignCvStatus` | string? | Comprovante signing status |
+| `zapsignCvSignUrl` | string? | Comprovante signing URL |
+| `allowedPaymentMethods` | object? | `{ creditCard, debitCard, boleto, pix }` flags |
+| `frete` | number? | Shipping cost (BRL) |
+| `documentsComplete` | boolean | All required documents received |
+| `tristarShipmentId` | string? | TriStar shipment reference |
+| `prescriptionDocId` | string? | Firebase Storage path to prescription image |
+| `softDeleted` | boolean? | Soft-delete flag |
+| `createdById` | string | Auth UID of creator |
+| `updatedById` | string? | Auth UID of last updater |
+| `createdAt` | Timestamp | Server timestamp |
+| `updatedAt` | Timestamp | Server timestamp |
+| `invoiceCorrecao` | string? | Correction / duplicate invoice number |
+| `meioPagamento` | string? | Payment method used |
+| `statusOrcamento` | string? | Quote status |
+| `lead` | string? | Lead type (first purchase, repurchase, etc.) |
+| `formaEnvio` | string? | Shipping carrier / method |
+| `lote` | string? | Batch number |
+| `dataEnvio` | string? | Ship date (YYYY-MM-DD) |
+| `previsaoEntrega` | string? | Estimated delivery (YYYY-MM-DD) |
+| `codigoRastreio` | string? | Tracking code |
+| `statusEnvio` | string? | Shipping status |
+| `dataOrcamento` | string? | Quote date (YYYY-MM-DD) |
+| `batchImportId` | string? | CSV import deduplication key |
+
+**Subcollections:**
+
+| Subcollection | Cardinality | Purpose |
+|---|---|---|
+| `customer` | 1 doc | Patient name, CPF, linked `userId` |
+| `representative` | 1 doc | Sales rep name, linked `userId` |
+| `doctor` | 1 doc | Doctor name, CRM, linked `userId` |
+| `products` | N docs | Line items: `stockProductId`, `productName`, `quantity`, `price`, `discount` |
+| `shipping` | 0–1 doc | Address, tracking, carrier info, TriStar fields |
+| `documentRequests` | N docs | Required document checklist: type, status, `receivedAt` |
+| `payments` | N docs | Payment records: provider, amount, status |
+| `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey` |
+
+**Indexes:** `(status ASC, createdAt DESC)`, `(createdById ASC, createdAt DESC)`
+
+---
+
+### 2. `prescriptions/{receitaId}`
+
+One-to-one with orders — shares the same document ID.
+
+| Field | Type | Description |
+|---|---|---|
+| `prescriptionDate` | string? | Date from the physical prescription (YYYY-MM-DD) |
+| `uploadDate` | string | ISO 8601 when the wizard submitted |
+| `clientId` | string | FK → `clients` |
+| `doctorId` | string | FK → `doctors` |
+| `orderId` | string | Same as the document ID |
+| `prescriptionPath` | string | Firebase Storage path |
+| `products` | array | `{ productId, productName, quantity, negotiatedTotalPrice }` |
+| `createdAt` | Timestamp | Server timestamp |
+
+---
+
+### 3. `clients/{clientId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `document` | string | CPF or CNPJ |
+| `rg` | string? | Identity document number |
+| `firstName`, `lastName`, `fullName` | string | Name parts + denormalized full name |
+| `email`, `phone` | string? | Contact |
+| `birthDate` | Timestamp? | Date of birth |
+| `address` | object? | `{ postal, street, number, complement, neighborhood, city, state, country }` |
+| `active` | boolean | Soft-delete flag |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+**Index:** `(active ASC, fullName ASC)`
+
+---
+
+### 4. `doctors/{doctorId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `firstName`, `lastName`, `fullName` | string | Name |
+| `crm` | string | Medical license number |
+| `mainSpecialty` | string? | Specialty |
+| `state`, `city` | string? | Registration location |
+| `email`, `phone`, `mobilePhone` | string? | Contact |
+| `active` | boolean | Soft-delete flag |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+**Index:** `(active ASC, fullName ASC)`
+
+---
+
+### 5. `representantes/{representanteId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Full name |
+| `email`, `phone` | string? | Contact |
+| `estado` | string? | State (UF) |
+| `userId` | string? | Optional FK → `users` |
+| `active` | boolean | Soft-delete flag |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+**Index:** `(active ASC, name ASC)`
+
+---
+
+### 6. `products/{productId}`
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Product name |
+| `description` | string? | Description |
+| `sku` | string | Stock keeping unit |
+| `hsCode` | string | Harmonized system code (customs) |
+| `concentration` | string? | For pharmaceutical products |
+| `price` | number | Unit price (USD) |
+| `inventory` | number? | Current stock count |
+| `active` | boolean | Soft-delete flag |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+**Index:** `(active ASC, name ASC)`
+
+---
+
+### 7. `stocks/{stockId}` and `stockProducts/{stockProductId}`
+
+Junction pattern for many-to-many product ↔ stock relationships.
+
+- `stocks`: `{ code, name, description, createdAt, updatedAt }`
+- `stockProducts`: `{ stockId, productId, quantity, createdAt, updatedAt }`
+
+---
+
+### 8. `users/{uid}`
+
+Document ID = Firebase Auth UID.
+
+| Field | Type | Description |
+|---|---|---|
+| `email` | string | Google OAuth email |
+| `groupId` | string | Role: admin, user, view_only |
+| `active` | boolean | Account active |
+| `lastLogin` | Timestamp | Last sign-in |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+**Index:** `(active ASC, email ASC)`
+
+---
+
+### 9. `preregistrations/{encodedEmail}`
+
+Pre-registers users before their first login. Document ID = email with `@` and `.` replaced by `_`.
+
+| Field | Type | Description |
+|---|---|---|
+| `email` | string | User email |
+| `groupId` | string | Role to assign on first login |
+| `createdAt` | Timestamp | When pre-registered |
+
+---
+
+### 10. `documents/{documentId}`
+
+Global registry of uploaded documents (ID scans, proofs, etc.).
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | string | Document type |
+| `holder` | string | Document holder name |
+| `key`, `number` | string | Reference keys |
+| `metadata` | object | Additional data |
+| `userId`, `orderId` | string? | Foreign keys |
+| `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
+
+---
+
+### 11. ANVISA module collections
+
+Prefixed with `anvisa_` to isolate from the sales module.
+
+| Collection | Purpose |
+|---|---|
+| `anvisa_requests/{requestId}` | ANVISA authorization requests with status, document references, confirmation number |
+| `anvisa_userProfiles/{userId}` | Requester profile (name, email, RG, address, phone) |
+| `anvisa_defaultProfile/{docId}` | Default profile template |
+| `anvisa_deleted_requests/{requestId}` | Audit trail of soft-deleted requests |
+| `anvisa_roles_admin/{userId}` | ANVISA module admin roles |
+
+Each request has subcollections: `pacienteDocuments`, `procuracaoDocuments`, `comprovanteResidenciaDocuments`, `receitaMedicaDocuments`.
+
+---
+
+### 12. Supporting collections
+
+| Collection | Purpose |
+|---|---|
+| `roles_admin/{userId}` | Dynamic admin role assignments |
+| `exchangeQuotes/{quoteId}` | Currency exchange quotes for payments |
+| `paymentMethods/{paymentMethodId}` | Payment method configurations and installment plans |
+| `medicalSpecialties/{specialtyId}` | Lookup table for doctor specialties |
+
+---
+
+## Entity relationships
+
+```
+users ──1:N──> orders (via createdById)
+clients ──1:N──> orders/customer (via userId)
+doctors ──1:N──> orders/doctor (via userId)
+representantes ──1:N──> orders/representative (via userId)
+products ──M:N──> stocks (via stockProducts junction)
+stockProducts ──1:N──> orders/products (via stockProductId)
+
+orders ──1:1──> prescriptions (SAME document ID = Receita ID)
+orders ──1:N──> payments, paymentLinks, documentRequests
+orders ──1:1──> customer, representative, doctor, shipping (subcollections)
+```
+
+## Why this architecture is standard and tidy
+
+1. **Firestore-native subcollection pattern.** Rather than cramming everything into a flat document (which hits the 1 MiB limit and forces full reads), related data is split into subcollections. This is the canonical Firestore approach recommended by Google's documentation.
+
+2. **Shared primary key for 1:1 relationships.** The order and its prescription share the same document ID. This eliminates join-like lookups — given a Receita ID you can fetch both `orders/{id}` and `prescriptions/{id}` in parallel with zero ambiguity.
+
+3. **Atomic batch writes for consistency.** The entire order tree is committed in one batch, so there are no orphaned subcollection documents if a write fails.
+
+4. **Denormalized for read performance.** Customer name, doctor name, and product name are copied into order subcollections at creation time. This avoids chained reads when rendering order lists — a standard Firestore optimization.
+
+5. **Soft deletes preserve audit trails.** No data is physically deleted. The `active` / `softDeleted` flags keep historical records queryable while hiding them from active views.
+
+6. **Composite indexes match query patterns.** Every list view that filters + sorts has a matching composite index, so Firestore never scans documents.
+
+7. **Clean namespace separation.** ANVISA collections are prefixed with `anvisa_` to avoid naming collisions with the sales module, making the schema self-documenting.
+
+8. **Consistent timestamp bookkeeping.** Every document tracks `createdAt`, `updatedAt`, and (where applicable) `createdById` / `updatedById`, providing a full audit trail without a separate logging system.
