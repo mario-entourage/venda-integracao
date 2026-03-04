@@ -17,11 +17,6 @@ const columns: ColumnDef<Representante>[] = [
     sortable: true,
   },
   {
-    key: 'code',
-    header: 'Código',
-    sortable: true,
-  },
-  {
     key: 'email',
     header: 'Email',
     render: (item) => item.email || '—',
@@ -30,6 +25,11 @@ const columns: ColumnDef<Representante>[] = [
     key: 'phone',
     header: 'Telefone',
     render: (item) => item.phone || '—',
+  },
+  {
+    key: 'estado',
+    header: 'Estado',
+    render: (item) => item.estado || '—',
   },
 ];
 
@@ -57,7 +57,7 @@ export default function RepresentantesPage() {
             columns={columns}
             data={representantes || []}
             loading={isLoading}
-            searchPlaceholder="Buscar por nome, código..."
+            searchPlaceholder="Buscar por nome, email..."
             emptyMessage="Nenhum representante cadastrado ainda."
             onRowClick={(r) => router.push(`/representantes/${r.id}`)}
           />

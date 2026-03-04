@@ -49,7 +49,6 @@ interface WizardState {
   // Representative (selected in step 1 — Identificação)
   selectedRepresentanteId: string;
   selectedRepresentanteName: string;
-  selectedRepresentanteCode: string;
   // ZapSign toggles (selected in step 2 — Pagamento)
   needsProcuracao: boolean;
   needsPowerOfAttorney: boolean;
@@ -89,7 +88,6 @@ const INITIAL_STATE: WizardState = {
   gpOrderId: '',
   selectedRepresentanteId: '',
   selectedRepresentanteName: 'Venda Direta',
-  selectedRepresentanteCode: 'DIRECT',
   needsProcuracao: false,
   needsPowerOfAttorney: false,
   needsComprovanteVinculo: false,
@@ -257,7 +255,6 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             },
             representative: {
               name: state.selectedRepresentanteName,
-              code: state.selectedRepresentanteCode,
               userId: state.selectedRepresentanteId,
             },
             doctor: {
@@ -345,19 +342,18 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
 
   // ── representante selection ─────────────────────────────────────────────
   const handleRepresentanteChange = useCallback(
-    async (id: string, name: string, code: string) => {
+    async (id: string, name: string) => {
       setState((prev) => ({
         ...prev,
         selectedRepresentanteId: id,
         selectedRepresentanteName: name,
-        selectedRepresentanteCode: code,
       }));
 
       // Persist to Firestore immediately (non-fatal)
       if (firestore && state.orderId) {
         try {
-          await updateOrderRepresentative(firestore, state.orderId, { name, code, userId: id });
-          console.log('[wizard] Representative updated:', name, code);
+          await updateOrderRepresentative(firestore, state.orderId, { name, userId: id });
+          console.log('[wizard] Representative updated:', name);
         } catch (err) {
           console.warn('[wizard] Representative update failed (non-fatal):', err);
         }

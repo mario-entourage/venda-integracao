@@ -43,7 +43,7 @@ export function getOrderSubcollectionRef(
 
 export interface CreateOrderData {
   customer: { name: string; document: string; userId: string };
-  representative: { name: string; code: string; userId: string };
+  representative: { name: string; userId: string };
   doctor: { name: string; crm: string; userId: string };
   products: Array<{
     stockProductId: string;
@@ -142,7 +142,6 @@ export async function createOrder(
   // --- Representative subcollection ------------------------------------------
   batch.set(doc(collection(db, 'orders', orderId, 'representative')), {
     name: orderData.representative.name,
-    code: orderData.representative.code,
     saleId: orderId,
     userId: orderData.representative.userId,
     createdAt: serverTimestamp(),
@@ -314,14 +313,13 @@ export async function getOrderSubcollectionDocs<T>(
 export async function updateOrderRepresentative(
   db: Firestore,
   orderId: string,
-  representative: { name: string; code: string; userId: string },
+  representative: { name: string; userId: string },
 ): Promise<void> {
   const repRef = collection(db, 'orders', orderId, 'representative');
   const snap = await getDocs(repRef);
   if (!snap.empty) {
     await updateDoc(snap.docs[0].ref, {
       name: representative.name,
-      code: representative.code,
       userId: representative.userId,
       updatedAt: serverTimestamp(),
     });

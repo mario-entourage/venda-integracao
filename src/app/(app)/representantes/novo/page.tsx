@@ -38,9 +38,9 @@ export default function NovoRepresentantePage() {
 
   const [form, setForm] = useState({
     name: '',
-    code: '',
     email: '',
     phone: '',
+    estado: '',
     userId: '',
   });
 
@@ -50,17 +50,17 @@ export default function NovoRepresentantePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
-      toast({ title: 'Nome e Código são obrigatórios.', variant: 'destructive' });
+    if (!form.name.trim()) {
+      toast({ title: 'Nome é obrigatório.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
     try {
       await createRepresentante(db, {
         name: form.name.trim(),
-        code: form.code.trim(),
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
+        estado: form.estado.trim() || undefined,
         userId: form.userId || undefined,
       });
       toast({ title: 'Representante cadastrado com sucesso.' });
@@ -100,16 +100,6 @@ export default function NovoRepresentantePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="code">Código *</Label>
-                <Input
-                  id="code"
-                  placeholder="Ex: REP001"
-                  value={form.code}
-                  onChange={handleChange('code')}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
@@ -126,6 +116,15 @@ export default function NovoRepresentantePage() {
                   placeholder="(11) 99999-9999"
                   value={form.phone}
                   onChange={handleChange('phone')}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="estado">Estado</Label>
+                <Input
+                  id="estado"
+                  placeholder="Ex: SP"
+                  value={form.estado}
+                  onChange={handleChange('estado')}
                 />
               </div>
             </div>

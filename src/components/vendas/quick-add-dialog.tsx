@@ -296,9 +296,9 @@ export function QuickAddClientDialog({
 
 const representanteQuickSchema = z.object({
   name: z.string().min(1, 'Nome obrigatório'),
-  code: z.string().min(1, 'Código obrigatório'),
   email: z.string().email('E-mail inválido').optional().or(z.literal('')),
   phone: z.string().optional(),
+  estado: z.string().optional(),
   userId: z.string().optional(),
 });
 
@@ -307,7 +307,7 @@ type RepresentanteQuickValues = z.infer<typeof representanteQuickSchema>;
 interface QuickAddRepresentanteDialogProps {
   open: boolean;
   onClose: () => void;
-  onCreated: (representanteId: string, name: string, code: string) => void;
+  onCreated: (representanteId: string, name: string) => void;
 }
 
 export function QuickAddRepresentanteDialog({
@@ -336,11 +336,11 @@ export function QuickAddRepresentanteDialog({
 
   const form = useForm<RepresentanteQuickValues>({
     resolver: zodResolver(representanteQuickSchema),
-    defaultValues: { name: '', code: '', email: '', phone: '', userId: '' },
+    defaultValues: { name: '', email: '', phone: '', estado: '', userId: '' },
   });
 
   useEffect(() => {
-    if (open) form.reset({ name: '', code: '', email: '', phone: '', userId: '' });
+    if (open) form.reset({ name: '', email: '', phone: '', estado: '', userId: '' });
   }, [open, form]);
 
   const { formState: { isSubmitting } } = form;
@@ -350,9 +350,9 @@ export function QuickAddRepresentanteDialog({
     try {
       const ref = await addDoc(collection(firestore, 'representantes'), {
         name: data.name.trim(),
-        code: data.code.trim().toUpperCase(),
         email: data.email ?? '',
         phone: data.phone ?? '',
+        estado: data.estado ?? '',
         userId: data.userId ?? '',
         active: true,
         createdAt: serverTimestamp(),
@@ -360,7 +360,7 @@ export function QuickAddRepresentanteDialog({
       });
 
       toast({ title: 'Representante cadastrado com sucesso.' });
-      onCreated(ref.id, data.name.trim(), data.code.trim().toUpperCase());
+      onCreated(ref.id, data.name.trim());
       form.reset();
       onClose();
     } catch (err) {
@@ -381,22 +381,13 @@ export function QuickAddRepresentanteDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 pt-1">
-            <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="name" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nome <span className="text-red-500">*</span></FormLabel>
-                  <FormControl><Input placeholder="João Silva" {...field} value={field.value ?? ''} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="code" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Código <span className="text-red-500">*</span></FormLabel>
-                  <FormControl><Input placeholder="REP001" {...field} value={field.value ?? ''} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </div>
+            <FormField control={form.control} name="name" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Nome <span className="text-red-500">*</span></FormLabel>
+                <FormControl><Input placeholder="João Silva" {...field} value={field.value ?? ''} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
 
             <div className="grid grid-cols-2 gap-4">
               <FormField control={form.control} name="email" render={({ field }) => (
@@ -414,6 +405,14 @@ export function QuickAddRepresentanteDialog({
                 </FormItem>
               )} />
             </div>
+
+            <FormField control={form.control} name="estado" render={({ field }) => (
+              <FormItem>
+                <FormLabel>Estado</FormLabel>
+                <FormControl><Input placeholder="Ex: SP" {...field} value={field.value ?? ''} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
 
             {/* ── Vincular a Usuário (opcional) ── */}
             <FormField control={form.control} name="userId" render={({ field }) => (

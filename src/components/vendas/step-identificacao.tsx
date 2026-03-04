@@ -126,7 +126,7 @@ interface StepIdentificacaoProps {
   /** Currently selected representante ID */
   selectedRepresentanteId: string;
   /** Called when the user picks or creates a representante */
-  onRepresentanteChange: (id: string, name: string, code: string) => void;
+  onRepresentanteChange: (id: string, name: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -360,8 +360,8 @@ export function StepIdentificacao({
       <QuickAddRepresentanteDialog
         open={showAddRepresentante}
         onClose={() => setShowAddRepresentante(false)}
-        onCreated={(id, name, code) => {
-          onRepresentanteChange(id, name, code);
+        onCreated={(id, name) => {
+          onRepresentanteChange(id, name);
           setShowAddRepresentante(false);
         }}
       />
@@ -671,12 +671,12 @@ export function StepIdentificacao({
           value={selectedRepresentanteId || '__none__'}
           onValueChange={(val) => {
             if (val === '__none__') {
-              onRepresentanteChange('', 'Venda Direta', 'DIRECT');
+              onRepresentanteChange('', 'Venda Direta');
               return;
             }
             const rep = representantes.find((r) => r.id === val);
             if (rep) {
-              onRepresentanteChange(rep.id, rep.name, rep.code);
+              onRepresentanteChange(rep.id, rep.name);
             }
           }}
         >
@@ -687,7 +687,7 @@ export function StepIdentificacao({
             <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
             {representantes.map((rep) => (
               <SelectItem key={rep.id} value={rep.id}>
-                {rep.name} — {rep.code}
+                {rep.name}{rep.estado ? ` — ${rep.estado}` : ''}
               </SelectItem>
             ))}
           </SelectContent>

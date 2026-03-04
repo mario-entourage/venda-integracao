@@ -27,13 +27,13 @@ export function getRepresentanteRef(db: Firestore, representanteId: string) {
  */
 export async function createRepresentante(
   db: Firestore,
-  data: { name: string; code: string; email?: string; phone?: string; userId?: string },
+  data: { name: string; email?: string; phone?: string; estado?: string; userId?: string },
 ): Promise<string> {
   const ref = await addDoc(getRepresentantesRef(db), {
     name: data.name,
-    code: data.code.toUpperCase(),
     email: data.email || '',
     phone: data.phone || '',
+    estado: data.estado || '',
     userId: data.userId || '',
     active: true,
     createdAt: serverTimestamp(),

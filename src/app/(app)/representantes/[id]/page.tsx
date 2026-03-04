@@ -47,9 +47,9 @@ export default function RepresentanteDetailPage() {
 
   const [form, setForm] = useState({
     name: '',
-    code: '',
     email: '',
     phone: '',
+    estado: '',
     userId: '',
   });
 
@@ -101,9 +101,9 @@ export default function RepresentanteDetailPage() {
   const handleStartEdit = () => {
     setForm({
       name: representante.name,
-      code: representante.code,
       email: representante.email || '',
       phone: representante.phone || '',
+      estado: representante.estado || '',
       userId: representante.userId || '',
     });
     setEditing(true);
@@ -115,17 +115,17 @@ export default function RepresentanteDetailPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.code.trim()) {
-      toast({ title: 'Nome e Código são obrigatórios.', variant: 'destructive' });
+    if (!form.name.trim()) {
+      toast({ title: 'Nome é obrigatório.', variant: 'destructive' });
       return;
     }
     setSaving(true);
     try {
       await updateRepresentante(db, id, {
         name: form.name.trim(),
-        code: form.code.trim().toUpperCase(),
         email: form.email.trim(),
         phone: form.phone.trim(),
+        estado: form.estado.trim(),
         userId: form.userId || '',
       });
       toast({ title: 'Representante atualizado com sucesso.' });
@@ -178,15 +178,6 @@ export default function RepresentanteDetailPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="code">Código *</Label>
-                  <Input
-                    id="code"
-                    value={form.code}
-                    onChange={handleChange('code')}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
@@ -201,6 +192,15 @@ export default function RepresentanteDetailPage() {
                     id="phone"
                     value={form.phone}
                     onChange={handleChange('phone')}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="estado">Estado</Label>
+                  <Input
+                    id="estado"
+                    placeholder="Ex: SP"
+                    value={form.estado}
+                    onChange={handleChange('estado')}
                   />
                 </div>
               </div>
@@ -255,9 +255,9 @@ export default function RepresentanteDetailPage() {
           )}
         </CardHeader>
         <CardContent>
-          <InfoRow label="Código" value={representante.code} />
           <InfoRow label="Email" value={representante.email} />
           <InfoRow label="Telefone" value={representante.phone} />
+          <InfoRow label="Estado" value={representante.estado} />
           <InfoRow
             label="Usuário Vinculado"
             value={
