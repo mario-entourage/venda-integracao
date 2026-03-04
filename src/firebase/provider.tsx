@@ -9,7 +9,12 @@ import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 import { ensureUser } from '@/services/users.service';
 
 // Super-admins are hardcoded and always have admin access
-const SUPER_ADMIN_EMAILS = ['caio@entouragelab.com', 'mario@entouragelab.com'];
+const SUPER_ADMIN_EMAILS = [
+  'caio@entouragelab.com',
+  'mario@entouragelab.com',
+  'marcos.freitas@entouragelab.com',
+  'tiago.fonseca@entouragelab.com',
+];
 
 interface FirebaseProviderProps {
   children: ReactNode;
