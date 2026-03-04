@@ -162,11 +162,15 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
               setPaymentUrl(url);
               setGpOrderId(gpId);
             }}
-            representantes={[]}
-            selectedRepresentanteId=""
-            onRepresentanteChange={() => {}}
+            allowedPaymentMethods={{ creditCard: true, debitCard: true, boleto: true, pix: true }}
             needsProcuracao={false}
             onNeedsProcuracaoChange={() => {}}
+            frete={0}
+            onFreteChange={() => {}}
+            needsPowerOfAttorney={false}
+            onNeedsPowerOfAttorneyChange={() => {}}
+            needsComprovanteVinculo={false}
+            onNeedsComprovanteVinculoChange={() => {}}
           />
         )}
 

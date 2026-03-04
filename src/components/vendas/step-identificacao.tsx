@@ -5,11 +5,19 @@ import { useDropzone } from 'react-dropzone';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect } from '@/components/shared/searchable-select';
 import { ImageViewer } from '@/components/shared/image-viewer';
-import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
+import { QuickAddClientDialog, QuickAddDoctorDialog, QuickAddRepresentanteDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
-import type { Client, Doctor, Product } from '@/types';
+import type { Client, Doctor, Product, Representante } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 
@@ -94,6 +102,12 @@ export interface Step1State {
   prescriptionDate: string;
   products: ProductLine[];
   anvisaOption: string;
+  allowedPaymentMethods: {
+    creditCard: boolean;
+    debitCard: boolean;
+    boleto: boolean;
+    pix: boolean;
+  };
 }
 
 interface StepIdentificacaoProps {
@@ -107,6 +121,12 @@ interface StepIdentificacaoProps {
   exchangeRateLoading: boolean;
   exchangeRateError: string | null;
   exchangeRateDate: string;
+  /** List of active representantes */
+  representantes: Representante[];
+  /** Currently selected representante ID */
+  selectedRepresentanteId: string;
+  /** Called when the user picks or creates a representante */
+  onRepresentanteChange: (id: string, name: string, code: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -114,11 +134,13 @@ interface StepIdentificacaoProps {
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
+  representantes, selectedRepresentanteId, onRepresentanteChange,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
+  const [showAddRepresentante, setShowAddRepresentante] = useState(false);
 
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
@@ -329,9 +351,20 @@ export function StepIdentificacao({
     (sum, p) => sum + p.negotiatedPrice * p.quantity, 0
   );
 
+  const hasPrescription = !!state.prescriptionFile;
+  const showSideBySide = hasPrescription && !!previewUrl;
+
   return (
-    <div className="space-y-7">
+    <div>
       {/* Quick-add dialogs */}
+      <QuickAddRepresentanteDialog
+        open={showAddRepresentante}
+        onClose={() => setShowAddRepresentante(false)}
+        onCreated={(id, name, code) => {
+          onRepresentanteChange(id, name, code);
+          setShowAddRepresentante(false);
+        }}
+      />
       <QuickAddClientDialog
         open={showAddClient}
         onClose={() => setShowAddClient(false)}
@@ -352,6 +385,10 @@ export function StepIdentificacao({
           setShowAddDoctor(false);
         }}
       />
+
+      <div className={cn(showSideBySide && 'lg:grid lg:grid-cols-[1fr_minmax(300px,400px)] lg:gap-6 lg:items-start')}>
+      {/* ── Left column ─── */}
+      <div className="space-y-7">
 
       {/* ── Client & Doctor — side by side ─────────────────────────── */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -442,10 +479,12 @@ export function StepIdentificacao({
           </div>
         ) : previewUrl && state.prescriptionFile?.type?.startsWith('image/') ? (
           /* ── Image viewer with zoom / pan / rotate ─── */
-          <ImageViewer
-            src={previewUrl}
-            alt={state.prescriptionFileName || 'Receita médica'}
-          />
+          <div className={cn(showSideBySide && 'lg:hidden')}>
+            <ImageViewer
+              src={previewUrl}
+              alt={state.prescriptionFileName || 'Receita médica'}
+            />
+          </div>
         ) : state.prescriptionFile ? (
           /* ── PDF or non-image file fallback ─── */
           <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
@@ -606,6 +645,97 @@ export function StepIdentificacao({
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Representante ──────────────────────────────────────── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-sm font-semibold">Representante</Label>
+            <p className="text-xs text-muted-foreground">Opcional. Associe esta venda a um representante.</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1"
+            onClick={() => setShowAddRepresentante(true)}
+          >
+            <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Novo Representante
+          </Button>
+        </div>
+        <Select
+          value={selectedRepresentanteId || '__none__'}
+          onValueChange={(val) => {
+            if (val === '__none__') {
+              onRepresentanteChange('', 'Venda Direta', 'DIRECT');
+              return;
+            }
+            const rep = representantes.find((r) => r.id === val);
+            if (rep) {
+              onRepresentanteChange(rep.id, rep.name, rep.code);
+            }
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Nenhum (Venda Direta)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
+            {representantes.map((rep) => (
+              <SelectItem key={rep.id} value={rep.id}>
+                {rep.name} — {rep.code}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* ── Payment methods ────────────────────────────────────── */}
+      <div className="space-y-3">
+        <Label className="text-sm font-semibold">Meios de Pagamento</Label>
+        <p className="text-xs text-muted-foreground">Desmarque as opções que não estão disponíveis para esta venda.</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {([
+            { key: 'creditCard' as const, label: 'Cartão de Crédito' },
+            { key: 'debitCard' as const, label: 'Cartão de Débito' },
+            { key: 'boleto' as const, label: 'Boleto' },
+            { key: 'pix' as const, label: 'Pix' },
+          ]).map(({ key, label }) => (
+            <label key={key} className="flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors">
+              <Checkbox
+                checked={state.allowedPaymentMethods[key]}
+                onCheckedChange={(checked) =>
+                  onChange({
+                    allowedPaymentMethods: {
+                      ...state.allowedPaymentMethods,
+                      [key]: !!checked,
+                    },
+                  })
+                }
+              />
+              <span className="text-sm">{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      </div>
+
+      {/* ── Right column — sticky prescription viewer ─── */}
+      {showSideBySide && (
+        <div className="hidden lg:block lg:sticky lg:top-24 self-start space-y-2">
+          <Label className="text-sm font-semibold">Visualizar Receita</Label>
+          <ImageViewer
+            src={previewUrl!}
+            alt={state.prescriptionFileName || 'Receita médica'}
+          />
+          <p className="text-xs text-muted-foreground text-center truncate">{state.prescriptionFileName}</p>
+        </div>
+      )}
       </div>
 
     </div>

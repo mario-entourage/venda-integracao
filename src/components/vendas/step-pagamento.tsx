@@ -5,19 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+// Select removed — representante moved to Step 0
 import { Switch } from '@/components/ui/switch';
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
+import { updateOrder } from '@/services/orders.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
-import { QuickAddRepresentanteDialog } from './quick-add-dialog';
-import type { Representante } from '@/types/representante';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -35,16 +28,25 @@ interface StepPagamentoProps {
   paymentUrl: string;
   gpOrderId: string;
   onPaymentGenerated: (paymentUrl: string, gpOrderId: string) => void;
-  /** List of active representantes to select from */
-  representantes: Representante[];
-  /** Currently selected representante ID */
-  selectedRepresentanteId: string;
-  /** Called when the user picks or creates a representante */
-  onRepresentanteChange: (id: string, name: string, code: string) => void;
+  /** Frete cost (BRL) */
+  frete: number;
+  onFreteChange: (value: number) => void;
+  /** Allowed payment methods from Step 0 (for display) */
+  allowedPaymentMethods: {
+    creditCard: boolean;
+    debitCard: boolean;
+    boleto: boolean;
+    pix: boolean;
+  };
   /** Whether procuração ZapSign should be generated */
   needsProcuracao: boolean;
-  /** Called when the user toggles the procuração switch */
   onNeedsProcuracaoChange: (value: boolean) => void;
+  /** Whether Power of Attorney ZapSign should be generated */
+  needsPowerOfAttorney: boolean;
+  onNeedsPowerOfAttorneyChange: (value: boolean) => void;
+  /** Whether Comprovante de Vínculo ZapSign should be generated */
+  needsComprovanteVinculo: boolean;
+  onNeedsComprovanteVinculoChange: (value: boolean) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -61,74 +63,88 @@ export function StepPagamento({
   paymentUrl,
   gpOrderId,
   onPaymentGenerated,
-  representantes,
-  selectedRepresentanteId,
-  onRepresentanteChange,
+  frete,
+  onFreteChange,
+  allowedPaymentMethods,
   needsProcuracao,
   onNeedsProcuracaoChange,
+  needsPowerOfAttorney,
+  onNeedsPowerOfAttorneyChange,
+  needsComprovanteVinculo,
+  onNeedsComprovanteVinculoChange,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
-  const [showAddRepresentante, setShowAddRepresentante] = useState(false);
+  const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
   const hasGenerated = useRef(false);
+
+  const totalWithFrete = orderAmount + frete;
+
+  // Generate payment link manually (called by button after user sets frete)
+  const generateLink = async () => {
+    if (!orderId || hasGenerated.current) return;
+    hasGenerated.current = true;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const result = await generatePaymentLink(
+        orderId,
+        totalWithFrete,
+        currency,
+        clientName || undefined,
+        clientPhone || undefined,
+        clientEmail || undefined,
+        clientDocument || undefined,
+        allowedPaymentMethods,
+      );
+
+      if (result.error || !result.paymentUrl) {
+        throw new Error(result.error || 'Link de pagamento não retornado.');
+      }
+
+      // Persist the payment link in Firestore
+      if (firestore) {
+        const expiresAt = new Date();
+        expiresAt.setHours(
+          expiresAt.getHours() +
+            parseInt(process.env.NEXT_PUBLIC_PAYMENT_LINK_EXPIRATION_HOURS || '24', 10),
+        );
+
+        await createPaymentLink(firestore, orderId, {
+          amount: totalWithFrete,
+          currency,
+          referenceId: result.gpOrderId,
+          paymentUrl: result.paymentUrl,
+          provider: 'globalpay',
+          expiresAt,
+        });
+
+        // Save frete to order document
+        if (frete > 0) {
+          await updateOrder(firestore, orderId, { frete });
+        }
+      }
+
+      onPaymentGenerated(result.paymentUrl, result.gpOrderId);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Erro ao gerar link de pagamento.';
+      setError(msg);
+      hasGenerated.current = false;
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Auto-generate on mount (or when orderId becomes available)
   useEffect(() => {
     if (!orderId || paymentUrl || hasGenerated.current) return;
-    hasGenerated.current = true;
-
-    const generate = async () => {
-      setIsGenerating(true);
-      setError(null);
-      try {
-        const result = await generatePaymentLink(
-          orderId,
-          orderAmount,
-          currency,
-          clientName || undefined,
-          clientPhone || undefined,
-          clientEmail || undefined,
-          clientDocument || undefined,
-        );
-
-        if (result.error || !result.paymentUrl) {
-          throw new Error(result.error || 'Link de pagamento não retornado.');
-        }
-
-        // Persist the payment link in Firestore
-        if (firestore) {
-          const expiresAt = new Date();
-          expiresAt.setHours(
-            expiresAt.getHours() +
-              parseInt(process.env.NEXT_PUBLIC_PAYMENT_LINK_EXPIRATION_HOURS || '24', 10),
-          );
-
-          await createPaymentLink(firestore, orderId, {
-            amount: orderAmount,
-            currency,
-            referenceId: result.gpOrderId,
-            paymentUrl: result.paymentUrl,
-            provider: 'globalpay',
-            expiresAt,
-          });
-        }
-
-        onPaymentGenerated(result.paymentUrl, result.gpOrderId);
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : 'Erro ao gerar link de pagamento.';
-        setError(msg);
-        hasGenerated.current = false;
-      } finally {
-        setIsGenerating(false);
-      }
-    };
-
-    generate();
-  }, [orderId, orderAmount, currency, paymentUrl, onPaymentGenerated, clientName, clientPhone, clientEmail, clientDocument, firestore]);
+    generateLink();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId, paymentUrl]);
 
   const handleRetry = () => {
     hasGenerated.current = false;
@@ -164,16 +180,6 @@ export function StepPagamento({
 
   return (
     <div className="space-y-6">
-      {/* Quick-add representante dialog */}
-      <QuickAddRepresentanteDialog
-        open={showAddRepresentante}
-        onClose={() => setShowAddRepresentante(false)}
-        onCreated={(id, name, code) => {
-          onRepresentanteChange(id, name, code);
-          setShowAddRepresentante(false);
-        }}
-      />
-
       {/* Order summary */}
       <Card className="bg-muted/30">
         <CardContent className="pt-5 space-y-2">
@@ -185,12 +191,44 @@ export function StepPagamento({
             <span className="text-muted-foreground">Paciente</span>
             <span className="font-medium">{clientName || '—'}</span>
           </div>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Produtos</span>
+            <span className="font-medium">{fmtAmount(orderAmount)}</span>
+          </div>
+          {frete > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Frete</span>
+              <span className="font-medium">{fmtAmount(frete)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between border-t pt-2">
             <span className="text-sm text-muted-foreground">Valor total</span>
-            <span className="text-xl font-bold text-primary">{fmtAmount(orderAmount)}</span>
+            <span className="text-xl font-bold text-primary">{fmtAmount(totalWithFrete)}</span>
           </div>
         </CardContent>
       </Card>
+
+      {/* Frete input */}
+      <div className="space-y-2">
+        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
+        <p className="text-xs text-muted-foreground">Deixe em branco ou 0 para não adicionar frete ao link de pagamento.</p>
+        <Input
+          id="frete-input"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="0,00"
+          value={freteInput}
+          onChange={(e) => setFreteInput(e.target.value)}
+          onBlur={() => {
+            const parsed = parseFloat(freteInput) || 0;
+            onFreteChange(Math.max(0, parsed));
+            setFreteInput(parsed > 0 ? String(parsed) : '');
+          }}
+          disabled={!!paymentUrl}
+          className="max-w-[200px]"
+        />
+      </div>
 
       {/* Payment link section */}
       <div className="space-y-3">
@@ -352,86 +390,45 @@ export function StepPagamento({
         )}
       </div>
 
-      {/* Procuração ZapSign toggle — shown only after payment link is generated */}
+      {/* ZapSign document toggles — shown after payment link is generated */}
       {paymentUrl && (
-        <div className="space-y-3 border-t pt-4">
-          <div className="flex items-center justify-between">
+        <div className="space-y-4 border-t pt-4">
+          <h3 className="text-sm font-semibold">Documentos ZapSign</h3>
+
+          {/* Procuração toggle */}
+          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
             <div>
-              <h3 className="text-sm font-semibold">Procuração ZapSign</h3>
-              <p className="text-xs text-muted-foreground">
-                Gerar procuração ANVISA para assinatura via ZapSign?
-              </p>
+              <p className="text-sm font-medium">Procuração ANVISA</p>
+              <p className="text-xs text-muted-foreground">Gerar procuração ANVISA para assinatura via ZapSign?</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                {needsProcuracao ? 'SIM' : 'NÃO'}
-              </span>
-              <Switch
-                checked={needsProcuracao}
-                onCheckedChange={onNeedsProcuracaoChange}
-              />
+              <span className="text-xs font-medium text-muted-foreground">{needsProcuracao ? 'SIM' : 'NÃO'}</span>
+              <Switch checked={needsProcuracao} onCheckedChange={onNeedsProcuracaoChange} />
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Representante selector — shown only after payment link is generated */}
-      {paymentUrl && (
-        <div className="space-y-3 border-t pt-4">
-          <div className="flex items-center justify-between">
+          {/* Power of Attorney toggle */}
+          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
             <div>
-              <h3 className="text-sm font-semibold">Representante</h3>
-              <p className="text-xs text-muted-foreground">
-                Opcional. Associe esta venda a um representante.
-              </p>
+              <p className="text-sm font-medium">Power of Attorney</p>
+              <p className="text-xs text-muted-foreground">Gerar Power of Attorney para assinatura via ZapSign?</p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs gap-1"
-              onClick={() => setShowAddRepresentante(true)}
-            >
-              <svg
-                className="h-3.5 w-3.5"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={2}
-                stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              Novo Representante
-            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{needsPowerOfAttorney ? 'SIM' : 'NÃO'}</span>
+              <Switch checked={needsPowerOfAttorney} onCheckedChange={onNeedsPowerOfAttorneyChange} />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="representante-select">Selecionar Representante</Label>
-            <Select
-              value={selectedRepresentanteId || '__none__'}
-              onValueChange={(val) => {
-                if (val === '__none__') {
-                  onRepresentanteChange('', 'Venda Direta', 'DIRECT');
-                  return;
-                }
-                const rep = representantes.find((r) => r.id === val);
-                if (rep) {
-                  onRepresentanteChange(rep.id, rep.name, rep.code);
-                }
-              }}
-            >
-              <SelectTrigger id="representante-select">
-                <SelectValue placeholder="Nenhum (Venda Direta)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
-                {representantes.map((rep) => (
-                  <SelectItem key={rep.id} value={rep.id}>
-                    {rep.name} — {rep.code}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+          {/* Comprovante de Vínculo toggle */}
+          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Comprovante de Vínculo</p>
+              <p className="text-xs text-muted-foreground">Gerar Comprovante de Vínculo para assinatura via ZapSign?</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{needsComprovanteVinculo ? 'SIM' : 'NÃO'}</span>
+              <Switch checked={needsComprovanteVinculo} onCheckedChange={onNeedsComprovanteVinculoChange} />
+            </div>
           </div>
         </div>
       )}

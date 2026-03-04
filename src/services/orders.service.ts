@@ -65,6 +65,12 @@ export interface CreateOrderData {
   type?: string;
   shippingAddress?: ShippingAddress;
   prescriptionDocId?: string;
+  allowedPaymentMethods?: {
+    creditCard: boolean;
+    debitCard: boolean;
+    boleto: boolean;
+    pix: boolean;
+  };
 }
 
 /**
@@ -116,6 +122,7 @@ export async function createOrder(
     documentsComplete: false,
     tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',
+    ...(orderData.allowedPaymentMethods && { allowedPaymentMethods: orderData.allowedPaymentMethods }),
     createdById,
     updatedById: createdById,
     createdAt: serverTimestamp(),

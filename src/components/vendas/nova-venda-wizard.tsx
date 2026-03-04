@@ -46,12 +46,16 @@ interface WizardState {
   // Step 2
   paymentUrl: string;
   gpOrderId: string;
-  // Representative (selected in step 2, optional)
+  // Representative (selected in step 1 — Identificação)
   selectedRepresentanteId: string;
   selectedRepresentanteName: string;
   selectedRepresentanteCode: string;
-  // Procuração ZapSign toggle (selected in step 2)
+  // ZapSign toggles (selected in step 2 — Pagamento)
   needsProcuracao: boolean;
+  needsPowerOfAttorney: boolean;
+  needsComprovanteVinculo: boolean;
+  // Frete (entered in step 2 — Pagamento)
+  frete: number;
   // PTAX exchange rate (fetched once on mount)
   exchangeRate: number;
   exchangeRateDate: string;
@@ -74,6 +78,7 @@ const INITIAL_STEP1: Step1State = {
   prescriptionDate: '',
   products: [],
   anvisaOption: 'regular',
+  allowedPaymentMethods: { creditCard: true, debitCard: true, boleto: true, pix: true },
 };
 
 const INITIAL_STATE: WizardState = {
@@ -86,6 +91,9 @@ const INITIAL_STATE: WizardState = {
   selectedRepresentanteName: 'Venda Direta',
   selectedRepresentanteCode: 'DIRECT',
   needsProcuracao: false,
+  needsPowerOfAttorney: false,
+  needsComprovanteVinculo: false,
+  frete: 0,
   exchangeRate: 0,
   exchangeRateDate: '',
   exchangeRateLoading: true,
@@ -238,7 +246,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           amount,
         });
 
-        // Create order (with default "Venda Direta" representative — can be updated in step 2)
+        // Create order with the selected representative (or default "Venda Direta")
         const orderId = await createOrder(
           firestore,
           {
@@ -248,9 +256,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
               userId: step1.clientId,
             },
             representative: {
-              name: 'Venda Direta',
-              code: 'DIRECT',
-              userId: '',
+              name: state.selectedRepresentanteName,
+              code: state.selectedRepresentanteCode,
+              userId: state.selectedRepresentanteId,
             },
             doctor: {
               name: step1.doctorName,
@@ -270,6 +278,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             exchangeRateDate: state.exchangeRateDate,
             anvisaOption: step1.anvisaOption as 'regular' | 'exceptional' | 'exempt',
             prescriptionDocId: prescriptionPath,
+            allowedPaymentMethods: step1.allowedPaymentMethods,
           },
           user.uid,
         );
@@ -434,6 +443,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             exchangeRateLoading={state.exchangeRateLoading}
             exchangeRateError={state.exchangeRateError}
             exchangeRateDate={state.exchangeRateDate}
+            representantes={representantes ?? []}
+            selectedRepresentanteId={state.selectedRepresentanteId}
+            onRepresentanteChange={handleRepresentanteChange}
           />
         )}
 
@@ -452,11 +464,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             onPaymentGenerated={(paymentUrl, gpOrderId) =>
               setState((prev) => ({ ...prev, paymentUrl, gpOrderId }))
             }
-            representantes={representantes ?? []}
-            selectedRepresentanteId={state.selectedRepresentanteId}
-            onRepresentanteChange={handleRepresentanteChange}
+            frete={state.frete}
+            onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
+            allowedPaymentMethods={state.step1.allowedPaymentMethods}
             needsProcuracao={state.needsProcuracao}
             onNeedsProcuracaoChange={(v) => setState((prev) => ({ ...prev, needsProcuracao: v }))}
+            needsPowerOfAttorney={state.needsPowerOfAttorney}
+            onNeedsPowerOfAttorneyChange={(v) => setState((prev) => ({ ...prev, needsPowerOfAttorney: v }))}
+            needsComprovanteVinculo={state.needsComprovanteVinculo}
+            onNeedsComprovanteVinculoChange={(v) => setState((prev) => ({ ...prev, needsComprovanteVinculo: v }))}
           />
         )}
 
@@ -470,6 +486,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             clientIsNew={state.step1.clientIsNew}
             doctorIsNew={state.step1.doctorIsNew}
             needsProcuracao={state.needsProcuracao}
+            needsPowerOfAttorney={state.needsPowerOfAttorney}
+            needsComprovanteVinculo={state.needsComprovanteVinculo}
           />
         )}
       </StepWizard>

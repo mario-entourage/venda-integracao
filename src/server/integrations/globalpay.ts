@@ -44,6 +44,8 @@ export interface GlobalPayLinkRequest {
   customerDocument?: string;
   /** Customer phone. */
   customerPhone?: string;
+  /** Allowed payment methods (e.g. ['credit_card', 'pix']). If omitted, all methods enabled. */
+  paymentMethods?: string[];
 }
 
 export interface GlobalPayLinkResponse {
@@ -236,8 +238,9 @@ export async function createGlobalPayLink(
     callback:    request.callbackUrl,
   };
 
-  if (request.description)          body.description = request.description;
-  if (Object.keys(client).length)   body.client      = client;
+  if (request.description)          body.description    = request.description;
+  if (Object.keys(client).length)   body.client         = client;
+  if (request.paymentMethods?.length) body.paymentMethods = request.paymentMethods;
 
   // Auto-retry once on auth error to handle stale cached token
   for (let attempt = 0; attempt < 2; attempt++) {

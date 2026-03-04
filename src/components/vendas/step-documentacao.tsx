@@ -13,9 +13,10 @@ import { getDoctorRef } from '@/services/doctors.service';
 import { updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateClient } from '@/services/clients.service';
 import { updateDoctor } from '@/services/doctors.service';
-import { generateProcuracao } from '@/server/actions/zapsign.actions';
+import { generateProcuracao, generatePowerOfAttorney, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
+import { ImageViewer } from '@/components/shared/image-viewer';
 import { cn } from '@/lib/utils';
 import type { Client, Doctor, Order } from '@/types';
 import type { ClassifyAndExtractResponse } from '@/app/api/ai/classify-and-extract-document/route';
@@ -37,6 +38,8 @@ interface ProcessedFile {
   documentType: string;
   extractedData: ClassifyAndExtractResponse['extractedData'];
   confidence: number;
+  blobUrl?: string;
+  mimeType?: string;
 }
 
 /** Map from documentType → array of processed files */
@@ -126,10 +129,15 @@ interface StepDocumentacaoProps {
   doctorIsNew: boolean;
   /** Whether procuração ZapSign should be generated (toggled in Pagamento step) */
   needsProcuracao?: boolean;
+  /** Whether Power of Attorney ZapSign should be generated */
+  needsPowerOfAttorney?: boolean;
+  /** Whether Comprovante de Vínculo ZapSign should be generated */
+  needsComprovanteVinculo?: boolean;
 }
 
 export function StepDocumentacao({
-  orderId, anvisaOption, clientId, clientName, doctorId, clientIsNew, doctorIsNew, needsProcuracao = false,
+  orderId, anvisaOption, clientId, clientName, doctorId, clientIsNew, doctorIsNew,
+  needsProcuracao = false, needsPowerOfAttorney = false, needsComprovanteVinculo = false,
 }: StepDocumentacaoProps) {
   const { firestore, storage, user } = useFirebase();
 
@@ -172,11 +180,34 @@ export function StepDocumentacao({
   // Track which merged "generation" we already diffed to avoid re-running
   const lastDiffedFileCount = useRef(0);
 
-  // ZapSign state
+  // Document viewer state
+  const [selectedViewerIdx, setSelectedViewerIdx] = useState(0);
+  const blobUrlsRef = useRef<string[]>([]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach(url => URL.revokeObjectURL(url));
+    };
+  }, []);
+
+  // ZapSign state — Procuração
   const hasTriggeredZapSign = useRef(false);
   const [zapsignLoading, setZapsignLoading] = useState(false);
   const [zapsignError, setZapsignError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // ZapSign state — Power of Attorney
+  const hasTriggeredPoa = useRef(false);
+  const [poaLoading, setPoaLoading] = useState(false);
+  const [poaError, setPoaError] = useState<string | null>(null);
+  const [copiedPoaLink, setCopiedPoaLink] = useState(false);
+
+  // ZapSign state — Comprovante de Vínculo
+  const hasTriggeredCv = useRef(false);
+  const [cvLoading, setCvLoading] = useState(false);
+  const [cvError, setCvError] = useState<string | null>(null);
+  const [copiedCvLink, setCopiedCvLink] = useState(false);
 
   const requests = docRequests ?? [];
   const receivedCount = requests.filter((r) => r.status === 'received' || r.status === 'approved').length;
@@ -252,6 +283,108 @@ export function StepDocumentacao({
     trigger();
   }, [needsProcuracao, allReceived, anvisaOption, orderId, firestore, orderData?.zapsignDocId, clientData]);
 
+  // ── auto-trigger ZapSign Power of Attorney ─────────────────────────────────
+  useEffect(() => {
+    if (
+      !needsPowerOfAttorney ||
+      !allReceived ||
+      !orderId ||
+      !firestore ||
+      orderData?.zapsignPoaDocId ||
+      hasTriggeredPoa.current ||
+      !clientData?.address ||
+      !clientData?.document
+    ) return;
+
+    hasTriggeredPoa.current = true;
+
+    const trigger = async () => {
+      setPoaLoading(true);
+      setPoaError(null);
+      try {
+        const addr = clientData.address!;
+        const result = await generatePowerOfAttorney(
+          orderId,
+          clientData.fullName,
+          clientData.document,
+          clientData.email || undefined,
+          clientData.phone || undefined,
+          {
+            street: addr.street, number: addr.number, complement: addr.complement,
+            neighborhood: addr.neighborhood, city: addr.city, state: addr.state, postalCode: addr.postalCode,
+          },
+        );
+        if (result.error || !result.signUrl) {
+          throw new Error(result.error || 'Link de assinatura não retornado.');
+        }
+        await updateOrder(firestore, orderId, {
+          zapsignPoaDocId: result.docId,
+          zapsignPoaStatus: result.status,
+          zapsignPoaSignUrl: result.signUrl,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro ao gerar Power of Attorney.';
+        setPoaError(msg);
+        hasTriggeredPoa.current = false;
+      } finally {
+        setPoaLoading(false);
+      }
+    };
+
+    trigger();
+  }, [needsPowerOfAttorney, allReceived, orderId, firestore, orderData?.zapsignPoaDocId, clientData]);
+
+  // ── auto-trigger ZapSign Comprovante de Vínculo ────────────────────────────
+  useEffect(() => {
+    if (
+      !needsComprovanteVinculo ||
+      !allReceived ||
+      !orderId ||
+      !firestore ||
+      orderData?.zapsignCvDocId ||
+      hasTriggeredCv.current ||
+      !clientData?.address ||
+      !clientData?.document
+    ) return;
+
+    hasTriggeredCv.current = true;
+
+    const trigger = async () => {
+      setCvLoading(true);
+      setCvError(null);
+      try {
+        const addr = clientData.address!;
+        const result = await generateComprovanteVinculo(
+          orderId,
+          clientData.fullName,
+          clientData.document,
+          clientData.email || undefined,
+          clientData.phone || undefined,
+          {
+            street: addr.street, number: addr.number, complement: addr.complement,
+            neighborhood: addr.neighborhood, city: addr.city, state: addr.state, postalCode: addr.postalCode,
+          },
+        );
+        if (result.error || !result.signUrl) {
+          throw new Error(result.error || 'Link de assinatura não retornado.');
+        }
+        await updateOrder(firestore, orderId, {
+          zapsignCvDocId: result.docId,
+          zapsignCvStatus: result.status,
+          zapsignCvSignUrl: result.signUrl,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Erro ao gerar Comprovante de Vínculo.';
+        setCvError(msg);
+        hasTriggeredCv.current = false;
+      } finally {
+        setCvLoading(false);
+      }
+    };
+
+    trigger();
+  }, [needsComprovanteVinculo, allReceived, orderId, firestore, orderData?.zapsignCvDocId, clientData]);
+
   // ── process uploaded document ─────────────────────────────────────────────
   const processDocument = useCallback(async (file: File) => {
     if (!firestore || !storage || !user) {
@@ -309,7 +442,11 @@ export function StepDocumentacao({
       const label = DOC_LABELS[classification.documentType] ?? classification.documentType;
       setProcessingMsg(`"${label}" registrado (${file.name}) ✓`);
 
-      // 4. Accumulate file into processedFiles (diffs built later via useEffect)
+      // 4. Create blob URL for document viewer
+      const blobUrl = URL.createObjectURL(file);
+      blobUrlsRef.current.push(blobUrl);
+
+      // 5. Accumulate file into processedFiles (diffs built later via useEffect)
       setProcessedFiles(prev => ({
         ...prev,
         [classification.documentType]: [
@@ -319,6 +456,8 @@ export function StepDocumentacao({
             documentType: classification.documentType,
             extractedData: classification.extractedData,
             confidence: classification.confidence,
+            blobUrl,
+            mimeType: file.type,
           },
         ],
       }));
@@ -545,8 +684,11 @@ export function StepDocumentacao({
   const fmtDate = (ts: { seconds: number } | undefined) =>
     ts ? new Date(ts.seconds * 1000).toLocaleDateString('pt-BR') : null;
 
+  const viewableFiles = allProcessedFiles.filter(f => f.blobUrl);
+  const showDocViewer = viewableFiles.length > 0;
+
   return (
-    <div className="space-y-6">
+    <div>
       {/* Update profile dialog (shows queue one at a time) */}
       {currentPendingUpdate && (
         <UpdateProfileDialog
@@ -557,6 +699,10 @@ export function StepDocumentacao({
           changes={currentPendingUpdate.changes}
         />
       )}
+
+      <div className={cn(showDocViewer && 'lg:grid lg:grid-cols-[1fr_minmax(300px,400px)] lg:gap-6 lg:items-start')}>
+      {/* ── Left column ─── */}
+      <div className="space-y-6">
 
       {/* Header */}
       <div className="rounded-lg bg-muted/40 px-4 py-3 space-y-1">
@@ -844,6 +990,136 @@ export function StepDocumentacao({
         </div>
       )}
 
+      {/* ZapSign Power of Attorney */}
+      {needsPowerOfAttorney && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Power of Attorney</p>
+          {orderData?.zapsignPoaSignUrl ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-green-600 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                <p className="text-sm font-medium text-green-700">Power of Attorney gerado</p>
+                <Badge variant="outline" className="ml-auto border-green-300 text-green-700 bg-green-50 text-xs">
+                  {orderData.zapsignPoaStatus === 'signed' ? 'Assinado' : 'Pendente'}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={orderData.zapsignPoaSignUrl} className="h-8 text-xs bg-white" onFocus={(e) => e.target.select()} />
+                <Button type="button" variant="outline" size="sm" className="shrink-0 h-8"
+                  onClick={() => { navigator.clipboard.writeText(orderData.zapsignPoaSignUrl!); setCopiedPoaLink(true); setTimeout(() => setCopiedPoaLink(false), 2000); }}>
+                  {copiedPoaLink ? 'Copiado!' : 'Copiar'}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" asChild>
+                  <a href={orderData.zapsignPoaSignUrl} target="_blank" rel="noopener noreferrer">Abrir link de assinatura</a>
+                </Button>
+              </div>
+            </div>
+          ) : poaLoading ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent shrink-0" />
+                <p className="text-sm text-blue-700">Gerando Power of Attorney no ZapSign…</p>
+              </div>
+            </div>
+          ) : poaError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2">
+              <p className="text-sm text-red-700">{poaError}</p>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                onClick={() => { hasTriggeredPoa.current = false; setPoaError(null); }}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : allReceived && !clientData?.address ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <p className="text-sm text-amber-700">Endereço do paciente não cadastrado. Envie o comprovante de residência.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+                <p className="text-sm text-blue-700">O Power of Attorney será gerado automaticamente após todos os documentos serem recebidos.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ZapSign Comprovante de Vínculo */}
+      {needsComprovanteVinculo && (
+        <div className="space-y-2">
+          <p className="text-sm font-semibold">Comprovante de Vínculo</p>
+          {orderData?.zapsignCvSignUrl ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 space-y-3">
+              <div className="flex items-center gap-2">
+                <svg className="h-4 w-4 text-green-600 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                <p className="text-sm font-medium text-green-700">Comprovante de Vínculo gerado</p>
+                <Badge variant="outline" className="ml-auto border-green-300 text-green-700 bg-green-50 text-xs">
+                  {orderData.zapsignCvStatus === 'signed' ? 'Assinado' : 'Pendente'}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input readOnly value={orderData.zapsignCvSignUrl} className="h-8 text-xs bg-white" onFocus={(e) => e.target.select()} />
+                <Button type="button" variant="outline" size="sm" className="shrink-0 h-8"
+                  onClick={() => { navigator.clipboard.writeText(orderData.zapsignCvSignUrl!); setCopiedCvLink(true); setTimeout(() => setCopiedCvLink(false), 2000); }}>
+                  {copiedCvLink ? 'Copiado!' : 'Copiar'}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" className="h-8 text-xs" asChild>
+                  <a href={orderData.zapsignCvSignUrl} target="_blank" rel="noopener noreferrer">Abrir link de assinatura</a>
+                </Button>
+              </div>
+            </div>
+          ) : cvLoading ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent shrink-0" />
+                <p className="text-sm text-blue-700">Gerando Comprovante de Vínculo no ZapSign…</p>
+              </div>
+            </div>
+          ) : cvError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2">
+              <p className="text-sm text-red-700">{cvError}</p>
+              <Button type="button" variant="outline" size="sm" className="h-7 text-xs border-red-300 text-red-700 hover:bg-red-100"
+                onClick={() => { hasTriggeredCv.current = false; setCvError(null); }}>
+                Tentar novamente
+              </Button>
+            </div>
+          ) : allReceived && !clientData?.address ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <p className="text-sm text-amber-700">Endereço do paciente não cadastrado. Envie o comprovante de residência.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+              <div className="flex items-start gap-2">
+                <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+                <p className="text-sm text-blue-700">O Comprovante de Vínculo será gerado automaticamente após todos os documentos serem recebidos.</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {allReceived && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
           <svg className="h-5 w-5 text-green-600 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
@@ -852,6 +1128,53 @@ export function StepDocumentacao({
           <p className="text-sm font-medium text-green-700">Todos os documentos foram recebidos!</p>
         </div>
       )}
+
+      </div>
+
+      {/* ── Right column — sticky document viewer ─── */}
+      {showDocViewer && (
+        <div className="hidden lg:block lg:sticky lg:top-24 self-start space-y-3">
+          <p className="text-sm font-semibold">Documentos Enviados</p>
+          {/* File tabs */}
+          <div className="flex gap-1 flex-wrap">
+            {viewableFiles.map((f, i) => (
+              <button
+                key={`${f.fileName}-${i}`}
+                type="button"
+                onClick={() => setSelectedViewerIdx(i)}
+                className={cn(
+                  'px-2.5 py-1 text-xs rounded-md border transition-colors',
+                  selectedViewerIdx === i
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-muted/40 hover:bg-muted border-border',
+                )}
+              >
+                {f.fileName.length > 18 ? `${f.fileName.slice(0, 18)}…` : f.fileName}
+              </button>
+            ))}
+          </div>
+          {/* Document viewer */}
+          {(() => {
+            const selected = viewableFiles[selectedViewerIdx] ?? viewableFiles[0];
+            if (!selected?.blobUrl) return null;
+            const label = DOC_LABELS[selected.documentType] ?? selected.documentType;
+            return (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  {label} — <span className="font-medium">{selected.fileName}</span>
+                </p>
+                {selected.mimeType?.startsWith('image/') ? (
+                  <ImageViewer src={selected.blobUrl} alt={selected.fileName} />
+                ) : (
+                  <iframe src={selected.blobUrl} title={selected.fileName} className="w-full h-[400px] rounded-lg border" />
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+      </div>
+
     </div>
   );
 }

@@ -19,6 +19,23 @@ export interface Order {
   zapsignDocId?: string;
   zapsignStatus?: string;
   zapsignSignUrl?: string;
+  /** Power of Attorney ZapSign document */
+  zapsignPoaDocId?: string;
+  zapsignPoaStatus?: string;
+  zapsignPoaSignUrl?: string;
+  /** Comprovante de Vínculo ZapSign document */
+  zapsignCvDocId?: string;
+  zapsignCvStatus?: string;
+  zapsignCvSignUrl?: string;
+  /** Allowed payment methods (negotiated with client) */
+  allowedPaymentMethods?: {
+    creditCard: boolean;
+    debitCard: boolean;
+    boleto: boolean;
+    pix: boolean;
+  };
+  /** Shipping cost added to the payment link (BRL) */
+  frete?: number;
   documentsComplete: boolean;
   tristarShipmentId?: string;
   prescriptionDocId?: string;
