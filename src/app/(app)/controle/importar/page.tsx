@@ -313,7 +313,7 @@ export default function ImportarPage() {
   if (!isAdmin) {
     return (
       <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold mb-2">Acesso restrito</h1>
+        <h1 className="text-2xl font-bold mb-2 font-headline">Acesso restrito</h1>
         <p className="text-muted-foreground">
           Apenas administradores podem importar pedidos via CSV.
         </p>

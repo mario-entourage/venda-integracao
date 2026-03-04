@@ -7,6 +7,7 @@ import {
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
   Shield, Upload, Truck, HelpCircle,
 } from 'lucide-react';
+import { BrandLogo } from '@/components/shared/brand-logo';
 import {
   Sidebar,
   SidebarContent,
@@ -87,9 +88,9 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="border-b px-4 py-3">
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <span className="font-headline text-lg font-bold text-primary">Entourage Lab</span>
+          <BrandLogo variant="light" className="text-sidebar-primary-foreground" />
         </Link>
       </SidebarHeader>
 

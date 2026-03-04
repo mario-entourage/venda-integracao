@@ -23,10 +23,9 @@ export default function LoginPage() {
         <Image src="/logo.png" alt="Entourage Phytolab" width={240} height={80} priority />
       </div>
 
-      {/* Title */}
-      <div className="text-center space-y-1">
-        <h1 className="text-3xl font-bold text-slate-900">Project VENDA</h1>
-        <p className="text-sm text-slate-500">Acesso restrito para @entouragelab.com</p>
+      {/* Subtitle */}
+      <div className="text-center">
+        <p className="text-sm text-muted-foreground">Acesso restrito para @entouragelab.com</p>
       </div>
 
       {/* Sign in */}
@@ -38,7 +37,7 @@ export default function LoginPage() {
       )}
 
       {/* Disclaimer */}
-      <p className="text-center text-xs text-slate-400 leading-relaxed">
+      <p className="text-center text-xs text-muted-foreground/60 leading-relaxed">
         Ao continuar, você concorda com nossos{' '}
         <span className="underline cursor-pointer">Termos de Serviço</span>{' '}
         e{' '}

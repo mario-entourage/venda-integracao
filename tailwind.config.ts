@@ -15,7 +15,7 @@ export default {
   				'sans-serif'
   			],
   			headline: [
-  				'Space Grotesk',
+  				'Montserrat',
   				'sans-serif'
   			],
   			code: [

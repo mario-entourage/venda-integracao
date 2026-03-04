@@ -52,7 +52,7 @@ export async function generatePaymentLink(
       merchantCode: process.env.GLOBALPAYS_MERCHANT_CODE || '4912',
       referenceId: orderId,
       callbackUrl,
-      description: `Entourage Lab — Pedido ${orderId.slice(0, 8).toUpperCase()}`,
+      description: `Entourage PhytoLab — Pedido ${orderId.slice(0, 8).toUpperCase()}`,
       customerName,
       customerPhone,
       customerEmail,

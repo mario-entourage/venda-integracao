@@ -46,7 +46,7 @@ function helpTextToHtml(text: string): string {
         // Skip the title line and any trailing ---...--- line
         i = j;
         if (i + 1 < lines.length && /^-+$/.test(lines[i + 1].trim())) i++;
-        out.push(`<h2 class="text-lg font-bold mt-8 mb-3 text-primary border-b pb-2">${escHtml(title)}</h2>`);
+        out.push(`<h2 class="text-lg font-bold mt-8 mb-3 text-primary border-b pb-2 font-headline">${escHtml(title)}</h2>`);
       }
       continue;
     }
@@ -65,7 +65,7 @@ function helpTextToHtml(text: string): string {
       if (/^ENTOURAGE LAB/.test(trimmed)) continue;
 
       closeList();
-      out.push(`<h3 class="text-base font-semibold mt-5 mb-2">${escHtml(trimmed)}</h3>`);
+      out.push(`<h3 class="text-base font-semibold mt-5 mb-2 font-headline">${escHtml(trimmed)}</h3>`);
       continue;
     }
 
@@ -74,10 +74,10 @@ function helpTextToHtml(text: string): string {
       closeList();
       const match = trimmed.match(/^([^(]+)\((.+)\)$/);
       if (match) {
-        out.push(`<h3 class="text-base font-semibold mt-5 mb-1">${escHtml(match[1].trim())}</h3>`);
+        out.push(`<h3 class="text-base font-semibold mt-5 mb-1 font-headline">${escHtml(match[1].trim())}</h3>`);
         out.push(`<p class="text-xs text-muted-foreground mb-2">${escHtml(match[2].trim())}</p>`);
       } else {
-        out.push(`<h3 class="text-base font-semibold mt-5 mb-2">${escHtml(trimmed)}</h3>`);
+        out.push(`<h3 class="text-base font-semibold mt-5 mb-2 font-headline">${escHtml(trimmed)}</h3>`);
       }
       continue;
     }
@@ -157,7 +157,7 @@ export default function AjudaPage() {
 
   return (
     <div className="container mx-auto py-6 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Ajuda</h1>
+      <h1 className="text-3xl font-bold mb-6 font-headline">Ajuda</h1>
 
       {/* Quick navigation */}
       <div className="flex gap-3 mb-6">
@@ -179,7 +179,7 @@ export default function AjudaPage() {
       {/* Section 1: Ajuda do Aplicativo Web */}
       <Card className="mb-8" id="app-web">
         <CardContent className="p-6">
-          <h2 className="text-xl font-bold mb-4 text-primary">
+          <h2 className="text-xl font-bold mb-4 text-primary font-headline">
             Ajuda do Aplicativo Web
           </h2>
           <div dangerouslySetInnerHTML={{ __html: section1Html }} />
@@ -189,7 +189,7 @@ export default function AjudaPage() {
       {/* Section 2: Ajuda da Extensão ANVISA Auto-Fill */}
       <Card id="extensao-anvisa">
         <CardContent className="p-6">
-          <h2 className="text-xl font-bold mb-4 text-primary">
+          <h2 className="text-xl font-bold mb-4 text-primary font-headline">
             Ajuda da Extensão ANVISA Auto-Fill
           </h2>
           <div dangerouslySetInnerHTML={{ __html: section2Html }} />

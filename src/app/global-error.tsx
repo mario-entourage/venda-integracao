@@ -18,7 +18,7 @@ export default function GlobalError({
     <html lang="pt-BR">
       <body className="flex h-screen items-center justify-center bg-white font-sans antialiased">
         <div className="flex flex-col items-center gap-4 text-center max-w-sm px-4">
-          <h2 className="text-xl font-bold text-gray-900">Algo deu errado</h2>
+          <h2 className="text-xl font-bold text-gray-900 font-headline">Algo deu errado</h2>
           <p className="text-sm text-gray-500">{error.message}</p>
           <Button onClick={reset}>Tentar novamente</Button>
         </div>

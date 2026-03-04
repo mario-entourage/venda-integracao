@@ -54,5 +54,5 @@ export const DEFAULT_FREIGHT = 30.0;
 export const PAYMENT_LINK_EXPIRATION_HOURS = 24;
 export const FIRST_INVOICE_NUMBER = 1000;
 
-export const APP_NAME = 'Entourage Lab';
+export const APP_NAME = 'ENTOURΛGE';
 export const SUPPORT_WHATSAPP = '+5511981333669';
