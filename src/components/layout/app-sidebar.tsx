@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck, HelpCircle,
+  Shield, Upload, Truck, HelpCircle, Puzzle,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/shared/brand-logo';
 import {
@@ -47,6 +47,7 @@ const anvisaNavItems = [
   { href: '/anvisa', icon: Shield, label: 'Solicitacoes' },
   { href: '/anvisa/nova', icon: Upload, label: 'Nova Solicitacao' },
   { href: '/anvisa/perfil', icon: User, label: 'Modelo Solicitante' },
+  { href: '/anvisa/extensao', icon: Puzzle, label: 'Extensao' },
 ];
 
 const adminNavItems = [

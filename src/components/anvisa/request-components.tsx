@@ -956,9 +956,10 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             {profileLoaded && !userProfile && (
                 <Alert>
                     <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Perfil do solicitante não configurado</AlertTitle>
+                    <AlertTitle>Modelo Solicitante não configurado</AlertTitle>
                     <AlertDescription>
-                        <Link href={ANVISA_ROUTES.profile} className="underline text-primary font-medium">Configure seu perfil</Link>{' '}
+                        Configure o{' '}
+                        <Link href={ANVISA_ROUTES.profile} className="underline text-primary font-medium">Modelo Solicitante</Link>{' '}
                         para preencher automaticamente os dados do solicitante no formulário ANVISA.
                     </AlertDescription>
                 </Alert>

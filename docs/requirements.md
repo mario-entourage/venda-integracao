@@ -13,8 +13,8 @@
 | FR-01.1 | A 3-step wizard guides the user through creating a new order: Identification → Payment → Documentation. |
 | FR-01.2 | **Step 0 — Identification**: User selects or creates a client (patient), doctor, representative, and adds products with negotiated BRL pricing. A prescription image can be uploaded. |
 | FR-01.3 | The system fetches the current PTAX exchange rate (BCB) and stores it with the order. |
-| FR-01.4 | **Step 1 — Payment**: A payment link is auto-generated via GlobalPay. The user can set frete (shipping cost), toggle Procuração ANVISA and Comprovante de Vínculo, and enter Signatário details for the Comprovante. |
-| FR-01.5 | **Step 2 — Documentation**: Uploads are classified by AI (Gemini). The system auto-generates ZapSign documents (Procuração, Comprovante de Vínculo) based on toggles from Step 1. Document request statuses are tracked per document type. |
+| FR-01.4 | **Step 1 — Payment**: A payment link is auto-generated via GlobalPay. The user can set frete (shipping cost), toggle Comprovante de Vínculo, and enter Signatário details (name + CPF) for the Comprovante. |
+| FR-01.5 | **Step 2 — Documentation**: Uploads are classified by AI (Gemini). The system auto-generates a ZapSign Comprovante de Vínculo document based on the toggle from Step 1. Document request statuses are tracked per document type. |
 | FR-01.6 | The order, all subcollections, and the prescription record are created atomically. The order and prescription share the same Firestore document ID (Receita ID). |
 
 ### FR-02 Pedidos (Orders Module)
@@ -24,7 +24,7 @@
 | FR-02.1 | Display a filterable list of in-progress orders (pending through paid). |
 | FR-02.2 | Each order shows a granular status badge (e.g., "Falta Pagamento + ANVISA") computed from missing items. |
 | FR-02.3 | All orders show "Falta ANVISA" until `anvisaStatus` is CONCLUIDO. |
-| FR-02.4 | Procuração is flagged as missing only if a ZapSign document was created but not yet signed. |
+| FR-02.4 | Comprovante de Vínculo is flagged as missing only if a ZapSign document was created but not yet signed. |
 | FR-02.5 | Action menu per order provides: view details, regenerate payment link, open signing URLs. |
 
 ### FR-03 Controle (Order Management)
@@ -32,7 +32,7 @@
 | ID | Requirement |
 |---|---|
 | FR-03.1 | Detailed order view with metadata, products, and manual status override actions. |
-| FR-03.2 | Per-document-type "Mark as Signed" buttons for Procuração and Comprovante de Vínculo. |
+| FR-03.2 | "Mark as Signed" button for Comprovante de Vínculo documents. |
 | FR-03.3 | Manual "Mark as Paid" action for advancing order status. |
 | FR-03.4 | CSV bulk import (admin-only) with column mapping, validation, duplicate detection, and batch creation in chunks of 80 rows. |
 | FR-03.5 | Date-range filtering for order lists. |
@@ -45,7 +45,9 @@
 | FR-04.2 | Upload and classify documents (patient ID, proof of residence, prescription, procuração) with AI-powered OCR extraction. |
 | FR-04.3 | Track request status: PENDENTE → EM_AJUSTE → EM_AUTOMACAO → CONCLUIDO / ERRO. |
 | FR-04.4 | AI suggests field corrections when extracted data is incomplete or inconsistent. |
-| FR-04.5 | User profile management for ANVISA requester details. |
+| FR-04.5 | Modelo Solicitante: user profile management for ANVISA requester details (name, email, RG, address, phone). Autofills the solicitation form. |
+| FR-04.6 | Chrome extension (ANVISA Auto-Fill) receives extracted OCR data from the web app and automatically fills the ANVISA portal form. Dedicated download and installation page at `/anvisa/extensao`. |
+| FR-04.7 | Validation step warns when Modelo Solicitante is not configured and links to the configuration page. |
 
 ### FR-05 Clients / Doctors / Representatives
 
@@ -54,7 +56,7 @@
 | FR-05.1 | CRUD operations for clients (patients), doctors, and sales representatives. |
 | FR-05.2 | Search by name with active-only filtering. |
 | FR-05.3 | Representatives can optionally be linked to a system user account. |
-| FR-05.4 | Client address stored for document generation (Procuração, Comprovante). |
+| FR-05.4 | Client address stored for document generation (Comprovante de Vínculo). |
 
 ### FR-06 Products & Inventory
 
@@ -90,6 +92,13 @@
 | FR-09.1 | Customer-facing payment page accessible via generated payment link. |
 | FR-09.2 | Payment confirmation page with order details. |
 | FR-09.3 | WhatsApp share button to send payment link to client. |
+
+### FR-10 Help & Documentation
+
+| ID | Requirement |
+|---|---|
+| FR-10.1 | In-app help page (`/ajuda`) with two sections: web application guide and Chrome extension guide. |
+| FR-10.2 | Extension download link and GitHub source link available from the help page and the dedicated `/anvisa/extensao` page. |
 
 ---
 
@@ -148,6 +157,18 @@
 | NFR-06.3 | Loading skeletons for all async data fetches. |
 | NFR-06.4 | Inline error messages with retry options. |
 
+### NFR-07 Brand & Visual Identity
+
+| ID | Requirement |
+|---|---|
+| NFR-07.1 | Brand name displayed as "ENTOURΛGE" (capital Greek lambda for the A). |
+| NFR-07.2 | All headings and subheadings use Montserrat font in uppercase (via `font-headline` + `text-transform: uppercase`). |
+| NFR-07.3 | Body text uses Inter font family. |
+| NFR-07.4 | Background color: Whispering Mist `RGB(234, 234, 234)`. Primary accent: Traditional Turquoise `RGB(3, 145, 163)`. Secondary accent: Teal Blue (Xona) `RGB(9, 61, 91)`. |
+| NFR-07.5 | Dark sidebar with Teal Blue background and white icon/text. |
+| NFR-07.6 | Brand icon accompanies the "ENTOURΛGE" name in sidebar header, checkout header, and other brand placements. Four icon variants: color, white (255), light gray (234), black (000). |
+| NFR-07.7 | Browser tab title shows "ENTOURΛGE". |
+
 ---
 
 ## Integrations
@@ -170,13 +191,12 @@
 
 | Attribute | Value |
 |---|---|
-| **Purpose** | Generate and track electronic signatures for Procuração ANVISA and Comprovante de Vínculo documents. |
+| **Purpose** | Generate and track electronic signatures for Comprovante de Vínculo documents. |
 | **Base URL** | `https://api.zapsign.com.br` (configurable via `ZAPSIGN_API_URL`) |
 | **Authentication** | Bearer API key in `Authorization` header. |
 | **Endpoints used** | `POST /api/v1/docs/` — create document with signer from markdown template. |
-| **Document types** | **Procuração**: authorizes representative for ANVISA filings. |
-| | **Comprovante de Vínculo**: two-person format — Signatário declares that Cliente resides at given address. |
-| **Webhook** | `POST /api/webhooks/zapsign` — receives `doc_signed` events, updates `zapsignStatus` / `zapsignCvStatus` on the order. Correlates via `external_id` = orderId. |
+| **Document type** | **Comprovante de Vínculo**: two-person format — Signatário (name + CPF) declares that Cliente (name + CPF) resides at a given address. |
+| **Webhook** | `POST /api/webhooks/zapsign` — receives `doc_signed` events, updates `zapsignCvStatus` on the order. Correlates via `external_id` = orderId. |
 | **Environment variables** | `ZAPSIGN_API_URL`, `ZAPSIGN_API_KEY`, `ZAPSIGN_SANDBOX` |
 
 ### INT-03 BCB PTAX — Exchange Rates
@@ -225,3 +245,13 @@
 | **Security rules** | Domain-restricted reads/writes. Admin-only deletes. Subcollection access follows parent order permissions. |
 | **Deployment** | Firebase App Hosting with GitHub-triggered rollouts from `main` branch. Manual trigger: `firebase apphosting:rollouts:create vend-backend --git-branch main`. |
 | **Environment variables** | `NEXT_PUBLIC_FIREBASE_*` (6 client config vars), `GOOGLE_CLOUD_PROJECT` |
+
+### INT-07 ANVISA Auto-Fill Chrome Extension
+
+| Attribute | Value |
+|---|---|
+| **Purpose** | Automatically fill the ANVISA import authorization portal form with OCR-extracted data from the web app. |
+| **Communication** | The web app sends extracted data to the extension via browser messaging (`window.postMessage` or Chrome extension messaging API). |
+| **Workflow** | 1) User uploads documents in Nova Solicitação. 2) AI extracts fields via OCR. 3) User clicks "Enviar para extensão" to transfer data. 4) Extension auto-fills the ANVISA portal form. |
+| **Distribution** | Manual installation via `.zip` download from `/extensao-anvisa.zip` or GitHub source. |
+| **Source code** | `https://github.com/mario-entourage/Anvisa_app/tree/main/extension` |
