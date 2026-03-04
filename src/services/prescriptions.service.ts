@@ -1,4 +1,4 @@
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import type { Firestore } from 'firebase/firestore';
 import type { PrescriptionProduct } from '@/types';
 
@@ -6,7 +6,10 @@ import type { PrescriptionProduct } from '@/types';
  * Saves a prescription record to the `prescriptions` Firestore collection.
  * Called after the order is created in the Nova Venda wizard (step 0 → 1).
  *
- * @returns The newly created Firestore document ID.
+ * The prescription document ID is set to the **orderId** so that both the
+ * order and its prescription share the same primary key (the "Receita ID").
+ *
+ * @returns The document ID (same as orderId).
  */
 export async function savePrescription(
   firestore: Firestore,
@@ -17,7 +20,7 @@ export async function savePrescription(
     clientId: string;
     /** Firestore Doctor document ID */
     doctorId: string;
-    /** Firestore Order document ID — links this prescription to the order. */
+    /** Firestore Order document ID — used as the prescription document ID. */
     orderId: string;
     /** Firebase Storage path for the uploaded file. Empty string if no file was uploaded. */
     prescriptionPath: string;
@@ -25,9 +28,9 @@ export async function savePrescription(
     products: PrescriptionProduct[];
   },
 ): Promise<string> {
-  const docRef = await addDoc(collection(firestore, 'prescriptions'), {
+  const prescriptionRef = doc(firestore, 'prescriptions', data.orderId);
+  await setDoc(prescriptionRef, {
     prescriptionDate: data.prescriptionDate ?? null,
-    /** ISO 8601 timestamp of when the wizard submitted the order. */
     uploadDate: new Date().toISOString(),
     clientId: data.clientId,
     doctorId: data.doctorId,
@@ -37,5 +40,5 @@ export async function savePrescription(
     createdAt: serverTimestamp(),
   });
 
-  return docRef.id;
+  return data.orderId;
 }
