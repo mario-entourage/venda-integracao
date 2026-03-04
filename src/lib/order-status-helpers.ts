@@ -1,5 +1,5 @@
 import type { Order } from '@/types';
-import { OrderStatus, AnvisaOption } from '@/types/enums';
+import { OrderStatus } from '@/types/enums';
 
 // ---------------------------------------------------------------------------
 // In-progress statuses (excludes shipped, delivered, cancelled)
@@ -77,15 +77,10 @@ export function getGranularStatus(order: Order): GranularStatus {
     missing.push('Documentos');
   }
 
-  // Does this order need ANVISA?
-  const needsAnvisa =
-    !!order.anvisaOption &&
-    order.anvisaOption !== AnvisaOption.EXEMPT;
-
-  // Missing ANVISA — needed but not yet concluded
+  // Missing ANVISA — all orders need ANVISA Solicitação completed
   const anvisaConcluded =
     order.anvisaStatus === 'CONCLUIDO' || order.anvisaStatus === 'concluido';
-  if (needsAnvisa && !anvisaConcluded) {
+  if (!anvisaConcluded) {
     missing.push('ANVISA');
   }
 
