@@ -1,4 +1,4 @@
-import { Download, ExternalLink, Monitor, Puzzle } from 'lucide-react';
+import { Download, ExternalLink, Monitor, Chrome } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,7 +49,7 @@ export default function ExtensaoPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <Puzzle className="h-5 w-5" />
+              <Chrome className="h-5 w-5" />
               Como Instalar
             </CardTitle>
           </CardHeader>
