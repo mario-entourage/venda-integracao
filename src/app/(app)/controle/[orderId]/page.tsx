@@ -128,13 +128,13 @@ export default function OrderDetailPage() {
     }
   };
 
-  const handleMarkAsSigned = async () => {
+  const handleMarkAsSigned = async (field: 'zapsignStatus' | 'zapsignPoaStatus' | 'zapsignCvStatus') => {
     if (!firestore || !user) return;
     setIsUpdating(true);
     setUpdateError(null);
     try {
       await updateOrder(firestore, orderId, {
-        zapsignStatus: 'signed',
+        [field]: 'signed',
         updatedById: user.uid,
       });
     } catch (err) {
@@ -190,10 +190,13 @@ export default function OrderDetailPage() {
   const canMarkAsPaid = ![
     OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.CANCELLED,
   ].includes(order.status as OrderStatus);
-  // ZapSign contract not yet marked signed (independent of payment status)
-  const canMarkAsSigned = order.zapsignStatus !== 'signed' && order.status !== OrderStatus.CANCELLED;
-  // Show the manual payment section at all
-  const showPaymentActions = canMarkAsPaid || canMarkAsSigned;
+  const isCancelledOrder = order.status === OrderStatus.CANCELLED;
+  // Per-doc-type signing flags
+  const canMarkProcuracaoSigned = !isCancelledOrder && !!order.zapsignDocId && order.zapsignStatus !== 'signed';
+  const canMarkPoaSigned = !isCancelledOrder && !!order.zapsignPoaDocId && order.zapsignPoaStatus !== 'signed';
+  const canMarkCvSigned = !isCancelledOrder && !!order.zapsignCvDocId && order.zapsignCvStatus !== 'signed';
+  // Show the manual status section at all
+  const showPaymentActions = canMarkAsPaid || canMarkProcuracaoSigned || canMarkPoaSigned || canMarkCvSigned;
 
   return (
     <div className="space-y-6">
@@ -339,14 +342,34 @@ export default function OrderDetailPage() {
                   {isUpdating ? 'Atualizando…' : '✓ Marcar como Pago'}
                 </Button>
               )}
-              {canMarkAsSigned && (
+              {canMarkProcuracaoSigned && (
                 <Button
                   variant="outline"
                   className="border-blue-300 text-blue-700 hover:bg-blue-50"
                   disabled={isUpdating}
-                  onClick={handleMarkAsSigned}
+                  onClick={() => handleMarkAsSigned('zapsignStatus')}
                 >
-                  {isUpdating ? 'Atualizando…' : '✍ Marcar como Assinado'}
+                  {isUpdating ? 'Atualizando…' : '✍ Procuracao Assinada'}
+                </Button>
+              )}
+              {canMarkPoaSigned && (
+                <Button
+                  variant="outline"
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  disabled={isUpdating}
+                  onClick={() => handleMarkAsSigned('zapsignPoaStatus')}
+                >
+                  {isUpdating ? 'Atualizando…' : '✍ Power of Attorney Assinado'}
+                </Button>
+              )}
+              {canMarkCvSigned && (
+                <Button
+                  variant="outline"
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                  disabled={isUpdating}
+                  onClick={() => handleMarkAsSigned('zapsignCvStatus')}
+                >
+                  {isUpdating ? 'Atualizando…' : '✍ Comprovante Assinado'}
                 </Button>
               )}
             </div>

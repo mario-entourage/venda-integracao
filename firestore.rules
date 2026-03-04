@@ -115,6 +115,11 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    match /preregistrations/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
     match /exchangeQuotes/{quoteId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow write: if isAdmin();

@@ -1,9 +1,55 @@
 import {
-  collection, doc, updateDoc, getDoc, getDocs,
+  collection, doc, updateDoc, getDoc, getDocs, setDoc, deleteDoc,
   query, where, orderBy, serverTimestamp, writeBatch,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { User, UserProfile } from '@/types';
+
+// ---------------------------------------------------------------------------
+// Pre-registration collection (keyed by email)
+// ---------------------------------------------------------------------------
+
+export interface Preregistration {
+  email: string;
+  groupId: string;
+  createdAt: unknown; // Firestore Timestamp
+}
+
+export function getPreregistrationsRef(db: Firestore) {
+  return collection(db, 'preregistrations');
+}
+
+export function getPreregistrationRef(db: Firestore, email: string) {
+  // Use encoded email as doc ID (replace @ and . to keep valid)
+  const docId = email.replace(/[.@]/g, '_');
+  return doc(db, 'preregistrations', docId);
+}
+
+/**
+ * Create or overwrite a pre-registration entry so the user gets the given
+ * groupId when they first log in via Google OAuth.
+ */
+export async function createPreregistration(
+  db: Firestore,
+  email: string,
+  groupId: string,
+): Promise<void> {
+  await setDoc(getPreregistrationRef(db, email), {
+    email,
+    groupId,
+    createdAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Fetch all pending pre-registrations.
+ */
+export async function getPreregistrations(
+  db: Firestore,
+): Promise<(Preregistration & { id: string })[]> {
+  const snap = await getDocs(getPreregistrationsRef(db));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Preregistration & { id: string });
+}
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -48,16 +94,28 @@ export async function ensureUser(
     return false;
   }
 
+  // Check if there is a pre-registration for this email
+  const preregRef = getPreregistrationRef(db, email);
+  const preregSnap = await getDoc(preregRef);
+  const groupId = preregSnap.exists()
+    ? (preregSnap.data() as Preregistration).groupId
+    : 'user';
+
   const batch = writeBatch(db);
 
   batch.set(userRef, {
     email,
-    groupId: 'user',
+    groupId,
     active: true,
     lastLogin: serverTimestamp(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+
+  // Consume the pre-registration if it existed
+  if (preregSnap.exists()) {
+    batch.delete(preregRef);
+  }
 
   // Profile defaults to Caio's information.
   const profileRef = doc(getUserProfilesRef(db, uid));

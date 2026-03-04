@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import { query, orderBy } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getUsersRef, updateUser } from '@/services/users.service';
+import { getUsersRef, updateUser, getPreregistrationsRef } from '@/services/users.service';
+import type { Preregistration } from '@/services/users.service';
 import { DataTable } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -59,6 +60,17 @@ function formatDateTime(ts: unknown): string {
   return '—';
 }
 
+// A combined row type that can represent either an active user or a pending pre-registration
+type UserRow = (User & { id: string; pending?: false }) | {
+  id: string;
+  email: string;
+  groupId: string;
+  active: boolean;
+  pending: true;
+  lastLogin?: undefined;
+  createdAt: unknown;
+};
+
 export default function UsuariosPage() {
   const { isAdmin, isAdminLoading } = useUser();
   const db = useFirestore();
@@ -70,7 +82,26 @@ export default function UsuariosPage() {
     [db],
   );
 
+  const preregQuery = useMemoFirebase(
+    () => query(getPreregistrationsRef(db), orderBy('createdAt', 'desc')),
+    [db],
+  );
+
   const { data: users, isLoading } = useCollection<User>(usersQuery);
+  const { data: preregistrations } = useCollection<Preregistration>(preregQuery);
+
+  // Merge: show pre-registrations first (as pending rows), then actual users
+  const allRows: UserRow[] = [
+    ...(preregistrations || []).map((p) => ({
+      id: p.id,
+      email: p.email,
+      groupId: p.groupId,
+      active: false,
+      pending: true as const,
+      createdAt: p.createdAt,
+    })),
+    ...(users || []) as (User & { id: string })[],
+  ];
 
   const handleGroupChange = async (userId: string, newGroup: string) => {
     try {
@@ -92,7 +123,7 @@ export default function UsuariosPage() {
     }
   };
 
-  const adminColumns: ColumnDef<User>[] = [
+  const adminColumns: ColumnDef<UserRow>[] = [
     {
       key: 'email',
       header: 'Email',
@@ -107,6 +138,7 @@ export default function UsuariosPage() {
           <Select
             value={item.groupId}
             onValueChange={(val) => handleGroupChange(item.id, val)}
+            disabled={!!item.pending}
           >
             <SelectTrigger className="h-8 w-[180px]">
               <SelectValue />
@@ -125,25 +157,30 @@ export default function UsuariosPage() {
     {
       key: 'active',
       header: 'Status',
-      render: (item) => (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Select
-            value={String(item.active)}
-            onValueChange={(val) => handleStatusChange(item.id, val)}
-          >
-            <SelectTrigger className="h-8 w-[120px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
-                  {opt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      ),
+      render: (item) => {
+        if (item.pending) {
+          return <Badge variant="secondary">Pendente</Badge>;
+        }
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Select
+              value={String(item.active)}
+              onValueChange={(val) => handleStatusChange(item.id, val)}
+            >
+              <SelectTrigger className="h-8 w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        );
+      },
     },
     {
       key: 'lastLogin',
@@ -159,7 +196,7 @@ export default function UsuariosPage() {
     },
   ];
 
-  const userColumns: ColumnDef<User>[] = [
+  const userColumns: ColumnDef<UserRow>[] = [
     {
       key: 'email',
       header: 'Email',
@@ -174,11 +211,14 @@ export default function UsuariosPage() {
     {
       key: 'active',
       header: 'Status',
-      render: (item) => (
-        <Badge variant={item.active ? 'default' : 'destructive'}>
-          {item.active ? 'Ativo' : 'Inativo'}
-        </Badge>
-      ),
+      render: (item) => {
+        if (item.pending) return <Badge variant="secondary">Pendente</Badge>;
+        return (
+          <Badge variant={item.active ? 'default' : 'destructive'}>
+            {item.active ? 'Ativo' : 'Inativo'}
+          </Badge>
+        );
+      },
     },
   ];
 
@@ -202,11 +242,15 @@ export default function UsuariosPage() {
         <CardContent className="pt-6">
           <DataTable
             columns={columns}
-            data={users || []}
+            data={allRows}
             loading={isLoading}
             searchPlaceholder="Buscar usuario..."
             emptyMessage="Nenhum usuario encontrado."
-            {...(isAdmin ? { onRowClick: (u: User) => router.push(`/usuarios/${u.id}`) } : {})}
+            {...(isAdmin ? {
+              onRowClick: (u: UserRow) => {
+                if (!u.pending) router.push(`/usuarios/${u.id}`);
+              },
+            } : {})}
           />
         </CardContent>
       </Card>

@@ -29,21 +29,9 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { getGranularStatus, EXTENDED_STATUS_CONFIG, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
+import { OrderStatus } from '@/types/enums';
 import type { Order } from '@/types';
-
-// ─── status config ────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Pendente', className: 'border-slate-300 text-slate-600 bg-slate-50' },
-  processing: { label: 'Em andamento', className: 'border-blue-300 text-blue-700 bg-blue-50' },
-  awaiting_documents: { label: 'Aguard. docs', className: 'border-amber-300 text-amber-700 bg-amber-50' },
-  documents_complete: { label: 'Docs OK', className: 'border-teal-300 text-teal-700 bg-teal-50' },
-  awaiting_payment: { label: 'Aguard. pagto', className: 'border-orange-300 text-orange-700 bg-orange-50' },
-  paid: { label: 'Pago', className: 'border-green-300 text-green-700 bg-green-50' },
-  shipped: { label: 'Enviado', className: 'border-purple-300 text-purple-700 bg-purple-50' },
-  delivered: { label: 'Entregue', className: 'border-green-400 text-green-800 bg-green-100' },
-  cancelled: { label: 'Cancelado', className: 'border-red-300 text-red-600 bg-red-50' },
-};
 
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -78,9 +66,9 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQ);
 
-  // exclude cancelled and soft-deleted
+  // Only show in-progress orders (exclude shipped, delivered, cancelled, soft-deleted)
   const activeOrders = (orders ?? []).filter(
-    (o) => o.status !== 'cancelled' && !o.softDeleted,
+    (o) => !o.softDeleted && IN_PROGRESS_STATUSES.includes(o.status as OrderStatus),
   );
 
   // ── selection helpers ───────────────────────────────────────────────────────
@@ -233,7 +221,8 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
       {/* ── Rows ── */}
       <div className="space-y-2">
         {activeOrders.map((order) => {
-          const statusCfg = STATUS_CONFIG[order.status] ?? STATUS_CONFIG.pending;
+          const granular = getGranularStatus(order);
+          const statusCfg = EXTENDED_STATUS_CONFIG[granular.configKey] ?? EXTENDED_STATUS_CONFIG.pending;
           const isSelected = selectedIds.has(order.id);
 
           return (
@@ -270,7 +259,7 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
                 {/* Status */}
                 <div className="flex-shrink-0 w-36">
                   <Badge variant="outline" className={cn('text-xs', statusCfg.className)}>
-                    {statusCfg.label}
+                    {granular.label}
                   </Badge>
                 </div>
 
