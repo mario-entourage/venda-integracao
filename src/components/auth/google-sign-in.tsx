@@ -24,8 +24,10 @@ export function GoogleSignIn() {
 
     try {
       const provider = new GoogleAuthProvider();
-      // Restrict the Google account picker to @entouragelab.com accounts only
-      provider.setCustomParameters({ hd: 'entouragelab.com', prompt: 'select_account' });
+      // Always show the account picker so users can switch accounts.
+      // Domain restriction (@entouragelab.com) is enforced server-side
+      // in FirebaseProvider's onAuthStateChanged listener.
+      provider.setCustomParameters({ prompt: 'select_account' });
       await signInWithPopup(auth, provider);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? '';

@@ -103,7 +103,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
             console.warn(`Access denied for ${firebaseUser.email}. Signing out.`);
             auth.signOut(); // This will re-trigger onAuthStateChanged with a null user
             // Set an error to be surfaced in the UI
-            setUserAuthState({ user: null, isUserLoading: false, userError: new Error("Access restricted to @entouragelab.com users.") });
+            setUserAuthState({ user: null, isUserLoading: false, userError: new Error("Acesso restrito para contas @entouragelab.com. Tente novamente com a conta correta.") });
         } else {
             setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
         }
