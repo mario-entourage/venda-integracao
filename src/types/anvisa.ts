@@ -35,6 +35,10 @@ export type PatientRequest = {
   currentStep: string;
   softDeleted: boolean;
   confirmationNumber: string | null;
+  /** FK → orders. The originating sales order (empty for standalone requests). */
+  orderId?: string;
+  /** Firebase Storage path to the prescription imported from the linked order. */
+  prescriptionSourcePath?: string;
 };
 
 // ─── ANVISA document types ──────────────────────────────────────────────────

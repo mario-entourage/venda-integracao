@@ -67,31 +67,48 @@ export async function POST(request: NextRequest) {
 
   const orderData = orderSnap.data() ?? {};
 
-  // ── Secondary verification: doc token must match what we stored ────────────
-  // Prevents a spoofed payload from modifying the wrong order.
+  // ── Identify which document was signed ──────────────────────────────────────
+  // Match the webhook token against our stored Procuração or CV document IDs.
 
-  if (docToken && orderData.zapsignDocId && docToken !== orderData.zapsignDocId) {
+  const isProcuracao = docToken && docToken === orderData.zapsignDocId;
+  const isCv = docToken && docToken === orderData.zapsignCvDocId;
+
+  if (docToken && !isProcuracao && !isCv) {
     console.warn(
       `[webhook/zapsign] Token mismatch for order "${orderId}":`,
-      `expected "${orderData.zapsignDocId}", got "${docToken}"`,
+      `docToken "${docToken}" does not match zapsignDocId "${orderData.zapsignDocId}" or zapsignCvDocId "${orderData.zapsignCvDocId}"`,
     );
     return NextResponse.json({ error: 'Token mismatch' }, { status: 400 });
   }
 
   // ── Idempotency guard ──────────────────────────────────────────────────────
 
-  if (orderData.zapsignStatus === 'signed') {
-    console.log(`[webhook/zapsign] Order "${orderId}" already signed — skipping`);
+  if (isProcuracao && orderData.zapsignStatus === 'signed') {
+    console.log(`[webhook/zapsign] Order "${orderId}" procuracao already signed — skipping`);
+    return NextResponse.json({ received: true, processed: false });
+  }
+
+  if (isCv && orderData.zapsignCvStatus === 'signed') {
+    console.log(`[webhook/zapsign] Order "${orderId}" CV already signed — skipping`);
     return NextResponse.json({ received: true, processed: false });
   }
 
   // ── Update order ───────────────────────────────────────────────────────────
 
-  await orderRef.update({
-    zapsignStatus: 'signed',
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  if (isCv) {
+    await orderRef.update({
+      zapsignCvStatus: 'signed',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`[webhook/zapsign] ✓ Order "${orderId}" CV marked as signed`);
+  } else {
+    // Default to procuração (backwards-compatible)
+    await orderRef.update({
+      zapsignStatus: 'signed',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`[webhook/zapsign] ✓ Order "${orderId}" procuracao marked as signed`);
+  }
 
-  console.log(`[webhook/zapsign] ✓ Order "${orderId}" marked as signed`);
   return NextResponse.json({ received: true, processed: true });
 }

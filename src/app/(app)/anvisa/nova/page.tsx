@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FileUp, Loader2, Upload, Zap, X, Check, XCircle } from 'lucide-react';
+import { OrderPicker } from '@/components/anvisa/order-picker';
+import { updateOrder } from '@/services/orders.service';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -529,8 +531,32 @@ export default function NewRequestPage() {
   const [outrosFiles, setOutrosFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { firestore, storage, user } = useFirebase();
   const { toast } = useToast();
+
+  // ── Order linking ─────────────────────────────────────────────────────
+  const preselectedOrderId = searchParams.get('orderId') ?? undefined;
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedPrescriptionPath, setSelectedPrescriptionPath] = useState<string | null>(null);
+  const [showUploadUI, setShowUploadUI] = useState(!!preselectedOrderId); // skip picker if pre-selected
+
+  const handleOrderSelected = (orderId: string, prescriptionDocId: string) => {
+    setSelectedOrderId(orderId);
+    setSelectedPrescriptionPath(prescriptionDocId);
+    setShowUploadUI(true);
+  };
+
+  const handleSkipOrderPicker = () => {
+    setSelectedOrderId(null);
+    setSelectedPrescriptionPath(null);
+    setShowUploadUI(true);
+  };
+
+  // When linked to an order, RECEITA_MEDICA is pre-loaded — not required from user
+  const effectiveRequiredTypes: ClassificationType[] = selectedOrderId
+    ? ['DOCUMENTO_PACIENTE', 'COMPROVANTE_RESIDENCIA']
+    : REQUIRED_TYPES;
 
   // Prevent browser from opening files when dropped outside the drop zones
   useEffect(() => {
@@ -553,7 +579,7 @@ export default function NewRequestPage() {
       .map(f => f.userOverride || f.classifiedType)
       .filter((t): t is ClassificationType => t !== null && t !== 'OUTRO')
   );
-  const allRequiredCovered = REQUIRED_TYPES.every(t => coveredTypes.has(t));
+  const allRequiredCovered = effectiveRequiredTypes.every(t => coveredTypes.has(t));
 
   const canSubmit = allRequiredCovered && !isAnyClassifying && !isLoading;
 
@@ -704,7 +730,7 @@ export default function NewRequestPage() {
     }
 
     // Validate all required types are present
-    const missingTypes = REQUIRED_TYPES.filter(t => !typeFilesMap.has(t as AnvisaDocumentType));
+    const missingTypes = effectiveRequiredTypes.filter(t => !typeFilesMap.has(t as AnvisaDocumentType));
     if (missingTypes.length > 0) {
       const missingLabels = missingTypes.map(t => DOC_TYPE_LABELS[t]).join(', ');
       toast({
@@ -834,7 +860,20 @@ export default function NewRequestPage() {
         procuracaoDocumentIds: docIds.procuracaoDocumentIds,
         receitaMedicaDocumentId: docIds.receitaMedicaDocumentId,
         receitaMedicaDocumentIds: docIds.receitaMedicaDocumentIds,
+        // Order link (if applicable)
+        ...(selectedOrderId ? { orderId: selectedOrderId } : {}),
+        ...(selectedPrescriptionPath ? { prescriptionSourcePath: selectedPrescriptionPath } : {}),
       });
+
+      // Bidirectional link: update the order with the ANVISA request ID
+      if (selectedOrderId) {
+        const orderRef = doc(firestore, 'orders', selectedOrderId);
+        parentBatch.update(orderRef, {
+          anvisaRequestId: newRequestId,
+          anvisaStatus: initialStatus,
+        });
+      }
+
       await parentBatch.commit();
 
       // Now create all subdocuments
@@ -884,11 +923,38 @@ export default function NewRequestPage() {
     }
   };
 
+  // ── Phase A: Order picker ─────────────────────────────────────────────
+  if (!showUploadUI) {
+    return (
+      <div className="container mx-auto py-8 max-w-2xl">
+        <h1 className="font-headline text-2xl font-bold mb-6">Criar Nova Solicitação</h1>
+        <OrderPicker
+          preselectedOrderId={preselectedOrderId}
+          onOrderSelected={handleOrderSelected}
+          onSkip={handleSkipOrderPicker}
+        />
+      </div>
+    );
+  }
+
+  // ── Phase B: Document upload UI ─────────────────────────────────────────
   return (
     <div className="container mx-auto py-8">
       <Card>
         <CardHeader>
           <CardTitle className="font-headline text-2xl">Criar Nova Solicitacao</CardTitle>
+          {selectedOrderId && (
+            <div className="flex items-center gap-2 mt-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-3 py-1 text-xs font-medium text-blue-700">
+                <Check className="h-3 w-3" />
+                Vinculado ao pedido #{selectedOrderId.slice(0, 8).toUpperCase()}
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-medium text-green-700">
+                <Check className="h-3 w-3" />
+                Receita importada do pedido
+              </span>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="grid gap-6">
           <ClassifiedUploadArea

@@ -16,7 +16,8 @@ import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
-import { StepDocumentacao } from './step-documentacao';
+import { StepDocumentosZapSign } from './step-documentos-zapsign';
+import { StepEnviarCliente } from './step-enviar-cliente';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
 import type { Client, Doctor, Product, Representante } from '@/types';
@@ -104,7 +105,8 @@ const INITIAL_STATE: WizardState = {
 const STEPS = [
   { label: 'Identificação', description: 'Paciente, médico e produtos' },
   { label: 'Pagamento', description: 'Gerar link GlobalPay' },
-  { label: 'Documentação', description: 'Checklist de documentos' },
+  { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
+  { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
 ];
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -399,7 +401,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     if (isSubmitting) return false;
     if (currentStep === 0) return step1Valid && state.exchangeRate > 0;
     if (currentStep === 1) return state.paymentUrl !== '';
-    return true; // step 2 — always allow finalize
+    if (currentStep === 2) return true; // ZapSign step — always allow advance (optional)
+    return true; // step 3 — always allow finalize
   })();
 
   // ── render ──────────────────────────────────────────────────────────────
@@ -466,6 +469,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             frete={state.frete}
             onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
+          />
+        )}
+
+        {currentStep === 2 && (
+          <StepDocumentosZapSign
+            orderId={state.orderId}
+            clientId={state.step1.clientId}
+            clientName={state.step1.clientName}
+            anvisaOption={state.step1.anvisaOption}
             needsProcuracao={state.needsProcuracao}
             onNeedsProcuracaoChange={(v) => setState((prev) => ({ ...prev, needsProcuracao: v }))}
             needsComprovanteVinculo={state.needsComprovanteVinculo}
@@ -477,19 +489,12 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           />
         )}
 
-        {currentStep === 2 && (
-          <StepDocumentacao
+        {currentStep === 3 && (
+          <StepEnviarCliente
             orderId={state.orderId}
-            anvisaOption={state.step1.anvisaOption}
-            clientId={state.step1.clientId}
             clientName={state.step1.clientName}
-            doctorId={state.step1.doctorId}
-            clientIsNew={state.step1.clientIsNew}
-            doctorIsNew={state.step1.doctorIsNew}
-            needsProcuracao={state.needsProcuracao}
-            needsComprovanteVinculo={state.needsComprovanteVinculo}
-            cvSignatarioName={state.cvSignatarioName}
-            cvSignatarioCpf={state.cvSignatarioCpf}
+            clientPhone={state.step1.clientPhone}
+            paymentUrl={state.paymentUrl}
           />
         )}
       </StepWizard>

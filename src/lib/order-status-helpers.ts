@@ -81,7 +81,11 @@ export function getGranularStatus(order: Order): GranularStatus {
   const anvisaConcluded =
     order.anvisaStatus === 'CONCLUIDO' || order.anvisaStatus === 'concluido';
   if (!anvisaConcluded) {
-    missing.push('ANVISA');
+    if (order.anvisaRequestId) {
+      missing.push('ANVISA (em andamento)');
+    } else {
+      missing.push('ANVISA');
+    }
   }
 
   // Missing Procuracao — only if a Procuração doc was created but not yet signed

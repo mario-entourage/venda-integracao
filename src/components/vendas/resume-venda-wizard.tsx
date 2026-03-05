@@ -10,14 +10,16 @@ import {
 } from '@/services/orders.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepPagamento } from './step-pagamento';
-import { StepDocumentacao } from './step-documentacao';
+import { StepDocumentosZapSign } from './step-documentos-zapsign';
+import { StepEnviarCliente } from './step-enviar-cliente';
 import type { Order, OrderCustomer, OrderDoctor } from '@/types';
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const RESUME_STEPS = [
   { label: 'Pagamento', description: 'Gerar link GlobalPay' },
-  { label: 'Documentação', description: 'Checklist de documentos' },
+  { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
+  { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
 ];
 
 // ─── props ────────────────────────────────────────────────────────────────────
@@ -82,6 +84,12 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // ZapSign toggles
+  const [needsProcuracao, setNeedsProcuracao] = useState(false);
+  const [needsComprovanteVinculo, setNeedsComprovanteVinculo] = useState(false);
+  const [cvSignatarioName, setCvSignatarioName] = useState('');
+  const [cvSignatarioCpf, setCvSignatarioCpf] = useState('');
+
   // ── completion ──────────────────────────────────────────────────────────────
   const handleComplete = async () => {
     if (!firestore || !user) return;
@@ -115,7 +123,12 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
     );
   }
 
-  const canAdvance = currentStep === 0 ? paymentUrl !== '' : true;
+  const canAdvance = (() => {
+    if (isSubmitting) return false;
+    if (currentStep === 0) return paymentUrl !== '';
+    if (currentStep === 1) return true; // ZapSign optional
+    return true; // step 2 — always allow finalize
+  })();
 
   return (
     <div className="space-y-4">
@@ -142,7 +155,7 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
         currentStep={currentStep}
         onStepChange={(s) => setCurrentStep(s)}
         onComplete={handleComplete}
-        canAdvance={!isSubmitting && canAdvance}
+        canAdvance={canAdvance}
         canGoBack={!isSubmitting && currentStep > 0}
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
       >
@@ -163,29 +176,34 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
               setGpOrderId(gpId);
             }}
             allowedPaymentMethods={{ creditCard: true, debitCard: true, boleto: true, pix: true }}
-            needsProcuracao={false}
-            onNeedsProcuracaoChange={() => {}}
             frete={0}
             onFreteChange={() => {}}
-            needsComprovanteVinculo={false}
-            onNeedsComprovanteVinculoChange={() => {}}
-            cvSignatarioName=""
-            onCvSignatarioNameChange={() => {}}
-            cvSignatarioCpf=""
-            onCvSignatarioCpfChange={() => {}}
           />
         )}
 
         {currentStep === 1 && (
-          <StepDocumentacao
+          <StepDocumentosZapSign
             orderId={orderId}
-            anvisaOption={(order?.anvisaOption as string) ?? 'regular'}
             clientId={customer?.userId ?? ''}
             clientName={customer?.name ?? ''}
-            doctorId={doctor?.userId ?? ''}
-            clientIsNew={false}
-            doctorIsNew={false}
-            needsProcuracao={false}
+            anvisaOption={(order?.anvisaOption as string) ?? 'regular'}
+            needsProcuracao={needsProcuracao}
+            onNeedsProcuracaoChange={setNeedsProcuracao}
+            needsComprovanteVinculo={needsComprovanteVinculo}
+            onNeedsComprovanteVinculoChange={setNeedsComprovanteVinculo}
+            cvSignatarioName={cvSignatarioName}
+            onCvSignatarioNameChange={setCvSignatarioName}
+            cvSignatarioCpf={cvSignatarioCpf}
+            onCvSignatarioCpfChange={setCvSignatarioCpf}
+          />
+        )}
+
+        {currentStep === 2 && (
+          <StepEnviarCliente
+            orderId={orderId}
+            clientName={customer?.name ?? ''}
+            clientPhone=""
+            paymentUrl={paymentUrl}
           />
         )}
       </StepWizard>

@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 // Select removed — representante moved to Step 0
-import { Switch } from '@/components/ui/switch';
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { updateOrder } from '@/services/orders.service';
@@ -38,18 +37,6 @@ interface StepPagamentoProps {
     boleto: boolean;
     pix: boolean;
   };
-  /** Whether procuração ZapSign should be generated */
-  needsProcuracao: boolean;
-  onNeedsProcuracaoChange: (value: boolean) => void;
-  /** Whether Comprovante de Vínculo ZapSign should be generated */
-  needsComprovanteVinculo: boolean;
-  onNeedsComprovanteVinculoChange: (value: boolean) => void;
-  /** Signatário name for Comprovante de Vínculo */
-  cvSignatarioName: string;
-  onCvSignatarioNameChange: (value: string) => void;
-  /** Signatário CPF for Comprovante de Vínculo */
-  cvSignatarioCpf: string;
-  onCvSignatarioCpfChange: (value: string) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -69,14 +56,6 @@ export function StepPagamento({
   frete,
   onFreteChange,
   allowedPaymentMethods,
-  needsProcuracao,
-  onNeedsProcuracaoChange,
-  needsComprovanteVinculo,
-  onNeedsComprovanteVinculoChange,
-  cvSignatarioName,
-  onCvSignatarioNameChange,
-  cvSignatarioCpf,
-  onCvSignatarioCpfChange,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -395,65 +374,6 @@ export function StepPagamento({
         )}
       </div>
 
-      {/* ZapSign document toggles — shown after payment link is generated */}
-      {paymentUrl && (
-        <div className="space-y-4 border-t pt-4">
-          <h3 className="text-sm font-semibold">Documentos ZapSign</h3>
-
-          {/* Procuração toggle */}
-          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-            <div>
-              <p className="text-sm font-medium">Procuração ANVISA</p>
-              <p className="text-xs text-muted-foreground">Gerar procuração ANVISA para assinatura via ZapSign?</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{needsProcuracao ? 'SIM' : 'NÃO'}</span>
-              <Switch checked={needsProcuracao} onCheckedChange={onNeedsProcuracaoChange} />
-            </div>
-          </div>
-
-          {/* Comprovante de Vínculo toggle */}
-          <div className="flex items-center justify-between rounded-lg border px-4 py-3">
-            <div>
-              <p className="text-sm font-medium">Comprovante de Vínculo</p>
-              <p className="text-xs text-muted-foreground">Gerar Comprovante de Vínculo para assinatura via ZapSign?</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{needsComprovanteVinculo ? 'SIM' : 'NÃO'}</span>
-              <Switch checked={needsComprovanteVinculo} onCheckedChange={onNeedsComprovanteVinculoChange} />
-            </div>
-          </div>
-
-          {/* Signatário fields — shown when Comprovante is enabled */}
-          {needsComprovanteVinculo && (
-            <div className="rounded-lg border px-4 py-3 space-y-3">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Dados do Signatário (quem assina o comprovante)
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label htmlFor="cv-signatario-name" className="text-sm">Nome Completo do Signatário</Label>
-                  <Input
-                    id="cv-signatario-name"
-                    placeholder="Nome do signatário"
-                    value={cvSignatarioName}
-                    onChange={(e) => onCvSignatarioNameChange(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="cv-signatario-cpf" className="text-sm">CPF do Signatário</Label>
-                  <Input
-                    id="cv-signatario-cpf"
-                    placeholder="000.000.000-00"
-                    value={cvSignatarioCpf}
-                    onChange={(e) => onCvSignatarioCpfChange(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

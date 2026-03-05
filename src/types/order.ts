@@ -16,6 +16,8 @@ export interface Order {
   type: OrderType;
   anvisaOption?: AnvisaOption;
   anvisaStatus?: string;
+  /** FK → anvisa_requests. Set when an ANVISA Solicitação is linked to this order. */
+  anvisaRequestId?: string;
   zapsignDocId?: string;
   zapsignStatus?: string;
   zapsignSignUrl?: string;

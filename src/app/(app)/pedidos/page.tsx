@@ -227,7 +227,7 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
               size="sm"
               variant="outline"
               className="text-purple-600 border-purple-200 hover:bg-purple-50"
-              onClick={() => router.push('/anvisa/nova')}
+              onClick={() => router.push(`/anvisa/nova?orderId=${order.id}`)}
             >
               <Shield className="h-3.5 w-3.5 mr-1" />
               ANVISA

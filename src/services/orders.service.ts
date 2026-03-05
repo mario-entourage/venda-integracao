@@ -115,6 +115,7 @@ export async function createOrder(
     legalGuardian: orderData.legalGuardian || false,
     anvisaOption: orderData.anvisaOption || '',
     anvisaStatus: '',
+    anvisaRequestId: '',
     zapsignDocId: '',
     zapsignStatus: '',
     exchangeRate: orderData.exchangeRate || null,
@@ -273,6 +274,21 @@ export function getOrdersByCreatorQuery(db: Firestore, createdById: string): Que
   return query(
     getOrdersRef(db),
     where('createdById', '==', createdById),
+    orderBy('createdAt', 'desc'),
+  );
+}
+
+/**
+ * Return orders eligible for linking to an ANVISA Solicitação:
+ * - has a prescription uploaded
+ * - no ANVISA request linked yet
+ * - not ANVISA-exempt
+ * - not cancelled or soft-deleted
+ */
+export function getAnvisaEligibleOrdersQuery(db: Firestore): Query {
+  return query(
+    getOrdersRef(db),
+    where('prescriptionDocId', '!=', ''),
     orderBy('createdAt', 'desc'),
   );
 }
