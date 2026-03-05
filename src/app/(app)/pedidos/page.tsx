@@ -5,11 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getOrdersQuery, getOrderSubcollectionDocs } from '@/services/orders.service';
-import { generatePaymentLink } from '@/server/actions/payment.actions';
-import { createPaymentLink } from '@/services/payments.service';
-import { getGranularStatus, EXTENDED_STATUS_CONFIG, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
-import { ORDER_STATUS_LABELS } from '@/lib/constants';
-import { OrderStatus, AnvisaOption } from '@/types/enums';
+import { getGranularStatus, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
+import { OrderStatus } from '@/types/enums';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,9 +25,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { FileText, Shield, MoreHorizontal, RefreshCw, Loader2 } from 'lucide-react';
+import { Truck, MoreHorizontal } from 'lucide-react';
 import { TriStarDialog } from '@/components/shipping/tristar-dialog';
 import { LocalMailDialog } from '@/components/shipping/local-mail-dialog';
 import { MotoboyDialog } from '@/components/shipping/motoboy-dialog';
@@ -41,7 +37,7 @@ import type { Order, OrderCustomer, OrderShipping, ShippingAddress } from '@/typ
 // ---------------------------------------------------------------------------
 
 const fmtBRL = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
 const fmtDate = (ts: { seconds: number } | undefined) => {
   if (!ts) return '—';
@@ -62,13 +58,11 @@ interface OrderRowProps {
 function OrderRow({ order, onShipped }: OrderRowProps) {
   const { firestore } = useFirebase();
   const router = useRouter();
-  const { toast } = useToast();
 
   const [customer, setCustomer] = useState<OrderCustomer | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(null);
   const [loadingSubcollections, setLoadingSubcollections] = useState(true);
   const [openDialog, setOpenDialog] = useState<DialogType>(null);
-  const [isRegeneratingLink, setIsRegeneratingLink] = useState(false);
 
   useEffect(() => {
     if (!firestore) return;
@@ -102,50 +96,6 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
     onShipped(order.id);
   };
 
-  const handleRegeneratePaymentLink = async () => {
-    if (!firestore) return;
-    setIsRegeneratingLink(true);
-    try {
-      const result = await generatePaymentLink(
-        order.id,
-        order.amount,
-        order.currency || 'USD',
-        customer?.name || undefined,
-        undefined,
-        undefined,
-        customer?.document || undefined,
-      );
-
-      if (result.error || !result.paymentUrl) {
-        throw new Error(result.error || 'Link nao retornado.');
-      }
-
-      const expiresAt = new Date();
-      expiresAt.setHours(expiresAt.getHours() + 24);
-
-      await createPaymentLink(firestore, order.id, {
-        amount: order.amount,
-        currency: order.currency || 'USD',
-        referenceId: result.gpOrderId,
-        paymentUrl: result.paymentUrl,
-        provider: 'globalpay',
-        expiresAt,
-      });
-
-      try {
-        await navigator.clipboard.writeText(result.paymentUrl);
-        toast({ title: 'Link regenerado e copiado para a area de transferencia.' });
-      } catch {
-        toast({ title: 'Link regenerado com sucesso.' });
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao regenerar link.';
-      toast({ variant: 'destructive', title: 'Erro', description: msg });
-    } finally {
-      setIsRegeneratingLink(false);
-    }
-  };
-
   if (loadingSubcollections) {
     return (
       <div className="flex items-center gap-4 rounded-lg border bg-card px-4 py-3">
@@ -159,28 +109,27 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
   const address = shippingAddress;
   const locationStr = address ? `${address.city}/${address.state}` : '—';
 
-  // Granular status
-  const granular = getGranularStatus(order);
-  const statusCfg = EXTENDED_STATUS_CONFIG[granular.configKey] ?? EXTENDED_STATUS_CONFIG.pending;
+  // Pedido phase
+  const isReadyToShip = IN_PROGRESS_STATUSES.includes(order.status as OrderStatus);
+  const isInTransit = order.status === OrderStatus.SHIPPED;
 
-  // Conditional action buttons
-  const showAddDocuments = !order.documentsComplete;
-  const needsAnvisa =
-    !!order.anvisaOption && order.anvisaOption !== AnvisaOption.EXEMPT;
-  const anvisaConcluded =
-    order.anvisaStatus === 'CONCLUIDO' || order.anvisaStatus === 'concluido';
-  const showAnvisa = needsAnvisa && !anvisaConcluded;
-  const isPaid = order.status === 'paid';
+  const pedidoStatusLabel = isReadyToShip
+    ? 'Pronto para envio'
+    : isInTransit
+      ? 'Em trânsito'
+      : 'Recebido';
+  const pedidoStatusClass = isReadyToShip
+    ? 'border-green-300 text-green-700 bg-green-50'
+    : isInTransit
+      ? 'border-purple-300 text-purple-700 bg-purple-50'
+      : 'border-green-400 text-green-800 bg-green-100';
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card px-4 py-3">
-        {/* Order ID + date */}
-        <div className="w-24 flex-shrink-0">
-          <p className="text-xs font-mono text-muted-foreground">
-            #{order.id.slice(0, 8).toUpperCase()}
-          </p>
-          <p className="text-xs text-muted-foreground">{fmtDate(order.createdAt as unknown as { seconds: number })}</p>
+        {/* Date */}
+        <div className="flex-shrink-0">
+          <p className="text-[10px] text-muted-foreground">{fmtDate(order.createdAt as unknown as { seconds: number })}</p>
         </div>
 
         {/* Customer name */}
@@ -198,8 +147,8 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
 
         {/* Status badge */}
         <div className="flex-shrink-0">
-          <Badge variant="outline" className={cn('text-xs', statusCfg.className)}>
-            {granular.label}
+          <Badge variant="outline" className={cn('text-xs', pedidoStatusClass)}>
+            {pedidoStatusLabel}
           </Badge>
         </div>
 
@@ -210,58 +159,32 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
           </Badge>
         </div>
 
-        {/* Conditional action buttons */}
-        <div className="flex gap-2 flex-shrink-0">
-          {showAddDocuments && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => router.push(`/controle/${order.id}`)}
-            >
-              <FileText className="h-3.5 w-3.5 mr-1" />
-              Docs
-            </Button>
-          )}
-          {showAnvisa && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-purple-600 border-purple-200 hover:bg-purple-50"
-              onClick={() => router.push(`/anvisa/nova?orderId=${order.id}`)}
-            >
-              <Shield className="h-3.5 w-3.5 mr-1" />
-              ANVISA
-            </Button>
-          )}
-        </div>
-
-        {/* Shipping buttons (paid orders only) */}
-        {isPaid && (
-          <div className="flex gap-2 flex-shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-blue-600 border-blue-200 hover:bg-blue-50"
-              onClick={() => setOpenDialog('tristar')}
-            >
-              TriStar
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setOpenDialog('local_mail')}
-            >
-              Correios
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="text-amber-600 border-amber-200 hover:bg-amber-50"
-              onClick={() => setOpenDialog('motoboy')}
-            >
-              Motoboy
-            </Button>
-          </div>
+        {/* Action button for current status */}
+        {isReadyToShip && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                <Truck className="h-3.5 w-3.5 mr-1" />
+                Enviar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Método de envio</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setOpenDialog('tristar')}>
+                TriStar
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenDialog('local_mail')}>
+                Correios
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenDialog('motoboy')}>
+                Motoboy
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         {/* Hamburger menu */}
@@ -271,34 +194,22 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
               size="icon"
               variant="ghost"
               className="h-8 w-8 flex-shrink-0"
-              aria-label="Mais acoes"
-              disabled={isRegeneratingLink}
+              aria-label="Mais ações"
             >
-              {isRegeneratingLink ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MoreHorizontal className="h-4 w-4" />
-              )}
+              <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Acoes</DropdownMenuLabel>
+            <DropdownMenuLabel>Ações</DropdownMenuLabel>
             <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
               Ver detalhes
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={handleRegeneratePaymentLink}
-              disabled={isRegeneratingLink}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Regenerar link de pagamento
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
       {/* Shipping Dialogs */}
-      {isPaid && (
+      {isReadyToShip && (
         <>
           <TriStarDialog
             open={openDialog === 'tristar'}
@@ -335,11 +246,10 @@ function OrderRow({ order, onShipped }: OrderRowProps) {
 // ---------------------------------------------------------------------------
 
 const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'Todos em andamento' },
-  ...IN_PROGRESS_STATUSES.map((s) => ({
-    value: s,
-    label: ORDER_STATUS_LABELS[s as OrderStatus] ?? s,
-  })),
+  { value: 'all', label: 'Todos' },
+  { value: 'ready_to_ship', label: 'Pronto para envio' },
+  { value: 'shipped', label: 'Em trânsito' },
+  { value: 'delivered', label: 'Recebido' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -360,15 +270,27 @@ export default function PedidosPage() {
   const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
   const filteredOrders = useMemo(() => {
-    let result = (orders ?? []).filter(
-      (o) =>
-        !o.softDeleted &&
-        !shippedIds.has(o.id) &&
-        IN_PROGRESS_STATUSES.includes(o.status as OrderStatus),
-    );
-    if (statusFilter !== 'all') {
-      result = result.filter((o) => o.status === statusFilter);
+    let result = (orders ?? []).filter((o) => {
+      if (o.softDeleted || shippedIds.has(o.id)) return false;
+      const status = o.status as OrderStatus;
+
+      // "Ready to ship" = in-progress with all venda steps complete
+      if (IN_PROGRESS_STATUSES.includes(status)) {
+        return getGranularStatus(o).missing.length === 0;
+      }
+
+      // "In transit" or "Received"
+      return status === OrderStatus.SHIPPED || status === OrderStatus.DELIVERED;
+    });
+
+    if (statusFilter === 'ready_to_ship') {
+      result = result.filter((o) => IN_PROGRESS_STATUSES.includes(o.status as OrderStatus));
+    } else if (statusFilter === 'shipped') {
+      result = result.filter((o) => o.status === OrderStatus.SHIPPED);
+    } else if (statusFilter === 'delivered') {
+      result = result.filter((o) => o.status === OrderStatus.DELIVERED);
     }
+
     return result;
   }, [orders, statusFilter, shippedIds]);
 
