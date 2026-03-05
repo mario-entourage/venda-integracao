@@ -175,9 +175,19 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     ) return;
 
     hasEnsuredUser.current = true;
-    ensureUser(firestore, userAuthState.user.uid, userAuthState.user.email).catch((err) =>
-      console.error('[FirebaseProvider] ensureUser failed:', err),
-    );
+    const tryEnsure = async (retries = 3) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          await ensureUser(firestore!, userAuthState.user!.uid, userAuthState.user!.email!);
+          return;
+        } catch (err) {
+          console.warn(`[FirebaseProvider] ensureUser attempt ${i + 1} failed:`, err);
+          if (i < retries - 1) await new Promise((r) => setTimeout(r, (i + 1) * 1000));
+        }
+      }
+      console.error('[FirebaseProvider] ensureUser failed after all retries');
+    };
+    tryEnsure();
   }, [firestore, userAuthState.user?.uid, userAuthState.user?.email]);
 
   // Memoize the context value

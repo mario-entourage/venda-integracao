@@ -89,8 +89,11 @@ export async function ensureUser(
   const snap = await getDoc(userRef);
 
   if (snap.exists()) {
-    // Always update lastLogin on every sign-in
-    await updateDoc(userRef, { lastLogin: serverTimestamp() });
+    // Always update lastLogin + backfill active flag on every sign-in
+    const data = snap.data();
+    const updates: Record<string, unknown> = { lastLogin: serverTimestamp() };
+    if (data.active !== true) updates.active = true;
+    await updateDoc(userRef, updates);
     return false;
   }
 

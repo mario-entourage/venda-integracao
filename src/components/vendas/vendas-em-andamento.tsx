@@ -1,20 +1,41 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2, Loader2, MoreHorizontal } from 'lucide-react';
+import {
+  Trash2,
+  Loader2,
+  MoreHorizontal,
+  DollarSign,
+  FileText,
+  Shield,
+  PenTool,
+  FileCheck,
+  RefreshCw,
+  XCircle,
+} from 'lucide-react';
 import { writeBatch } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
-import { getOrdersQuery, getOrderRef, updateOrder } from '@/services/orders.service';
+import {
+  getOrdersQuery,
+  getOrderRef,
+  getOrderSubcollectionDocs,
+  updateOrder,
+  updateOrderStatus,
+} from '@/services/orders.service';
+import { generatePaymentLink } from '@/server/actions/payment.actions';
+import { createPaymentLink } from '@/services/payments.service';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -27,11 +48,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { getGranularStatus, EXTENDED_STATUS_CONFIG, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
-import { OrderStatus } from '@/types/enums';
-import type { Order } from '@/types';
+import { OrderStatus, AnvisaOption } from '@/types/enums';
+import type { Order, OrderCustomer } from '@/types';
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
@@ -41,7 +70,393 @@ const fmtDate = (ts: { seconds: number } | undefined) => {
   return new Date(ts.seconds * 1000).toLocaleDateString('pt-BR');
 };
 
-// ─── component ───────────────────────────────────────────────────────────────
+// ─── missing-item indicator config ─────────────────────────────────────────────
+
+const MISSING_ITEM_CONFIG: Record<string, { icon: React.ElementType; abbr: string; className: string }> = {
+  Pagamento:               { icon: DollarSign, abbr: 'Pgto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  Documentos:              { icon: FileText,   abbr: 'Docs',  className: 'border-amber-300 text-amber-700 bg-amber-50' },
+  ANVISA:                  { icon: Shield,     abbr: 'ANV',   className: 'border-purple-300 text-purple-700 bg-purple-50' },
+  'ANVISA (em andamento)': { icon: Shield,     abbr: 'ANV…',  className: 'border-purple-200 text-purple-500 bg-purple-50' },
+  'Procuracao (assinatura)': { icon: PenTool,  abbr: 'Proc',  className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  Comprovante:             { icon: FileCheck,  abbr: 'CV',    className: 'border-blue-300 text-blue-700 bg-blue-50' },
+};
+
+// ─── base status labels (short, one-line) ─────────────────────────────────────
+
+const BASE_STATUS_LABELS: Record<string, string> = {
+  pending: 'Pendente',
+  processing: 'Processando',
+  awaiting_documents: 'Aguard. docs',
+  documents_complete: 'Docs OK',
+  awaiting_payment: 'Aguard. pgto',
+  paid: 'Pago',
+};
+
+// ─── VendaRow ─────────────────────────────────────────────────────────────────
+
+interface VendaRowProps {
+  order: Order;
+  isAdmin: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  onDeleteRequest: () => void;
+  onCancelRequest: () => void;
+}
+
+function VendaRow({
+  order,
+  isAdmin,
+  isSelected,
+  onToggleSelect,
+  onDeleteRequest,
+  onCancelRequest,
+}: VendaRowProps) {
+  const { firestore, user } = useFirebase();
+  const router = useRouter();
+  const { toast } = useToast();
+
+  // ── load customer ───────────────────────────────────────────────────────
+  const [customer, setCustomer] = useState<OrderCustomer | null>(null);
+  const [loadingSub, setLoadingSub] = useState(true);
+
+  useEffect(() => {
+    if (!firestore) return;
+    let cancelled = false;
+    getOrderSubcollectionDocs<OrderCustomer>(firestore, order.id, 'customer')
+      .then((docs) => { if (!cancelled) setCustomer(docs[0] ?? null); })
+      .catch((err) => console.error('[VendaRow] customer load:', err))
+      .finally(() => { if (!cancelled) setLoadingSub(false); });
+    return () => { cancelled = true; };
+  }, [firestore, order.id]);
+
+  // ── inline action states ────────────────────────────────────────────────
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isRegeneratingLink, setIsRegeneratingLink] = useState(false);
+
+  // ── granular status ─────────────────────────────────────────────────────
+  const granular = getGranularStatus(order);
+  const baseLabel = BASE_STATUS_LABELS[order.status] ?? order.status;
+  const statusCfg = EXTENDED_STATUS_CONFIG[order.status] ?? EXTENDED_STATUS_CONFIG.pending;
+
+  // ── conditional flags ───────────────────────────────────────────────────
+  const notPaid = ![OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(
+    order.status as OrderStatus,
+  );
+  const needsAnvisa =
+    !!order.anvisaOption && order.anvisaOption !== AnvisaOption.EXEMPT;
+  const anvisaConcluded =
+    order.anvisaStatus === 'CONCLUIDO' || order.anvisaStatus === 'concluido';
+  const showAnvisa = needsAnvisa && !anvisaConcluded;
+  const canMarkProcSigned = !!order.zapsignDocId && order.zapsignStatus !== 'signed';
+  const canMarkCvSigned = !!order.zapsignCvDocId && order.zapsignCvStatus !== 'signed';
+
+  // ── inline actions ──────────────────────────────────────────────────────
+  const handleMarkPaid = async () => {
+    if (!firestore || !user) return;
+    setIsUpdating(true);
+    try {
+      await updateOrderStatus(firestore, order.id, 'paid', user.uid);
+      toast({ title: 'Pedido marcado como pago.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao marcar como pago.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleMarkSigned = async (field: 'zapsignStatus' | 'zapsignCvStatus') => {
+    if (!firestore || !user) return;
+    setIsUpdating(true);
+    try {
+      await updateOrder(firestore, order.id, {
+        [field]: 'signed',
+        updatedById: user.uid,
+      });
+      toast({ title: field === 'zapsignStatus' ? 'Procuração marcada.' : 'Comprovante marcado.' });
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro ao atualizar assinatura.' });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRegeneratePaymentLink = async () => {
+    if (!firestore) return;
+    setIsRegeneratingLink(true);
+    try {
+      const result = await generatePaymentLink(
+        order.id,
+        order.amount,
+        order.currency || 'USD',
+        customer?.name || undefined,
+        undefined,
+        undefined,
+        customer?.document || undefined,
+      );
+      if (result.error || !result.paymentUrl) {
+        throw new Error(result.error || 'Link não retornado.');
+      }
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 24);
+      await createPaymentLink(firestore, order.id, {
+        amount: order.amount,
+        currency: order.currency || 'USD',
+        referenceId: result.gpOrderId,
+        paymentUrl: result.paymentUrl,
+        provider: 'globalpay',
+        expiresAt,
+      });
+      try {
+        await navigator.clipboard.writeText(result.paymentUrl);
+        toast({ title: 'Link regenerado e copiado.' });
+      } catch {
+        toast({ title: 'Link regenerado com sucesso.' });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao regenerar link.';
+      toast({ variant: 'destructive', title: 'Erro', description: msg });
+    } finally {
+      setIsRegeneratingLink(false);
+    }
+  };
+
+  // ── loading state ───────────────────────────────────────────────────────
+  if (loadingSub) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+        <Skeleton className="h-4 w-20" />
+        <Skeleton className="h-4 w-32 flex-1" />
+        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-4 w-20" />
+      </div>
+    );
+  }
+
+  // ── render ──────────────────────────────────────────────────────────────
+  return (
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-2 rounded-lg border bg-card px-3 py-2.5 transition-colors sm:gap-3 sm:px-4 sm:py-3',
+        isSelected && 'bg-muted/50',
+      )}
+    >
+      {/* Admin checkbox */}
+      {isAdmin && (
+        <Checkbox
+          checked={isSelected}
+          onCheckedChange={onToggleSelect}
+          aria-label={`Selecionar pedido ${order.id.slice(0, 8)}`}
+          className="flex-shrink-0"
+        />
+      )}
+
+      {/* Clickable area → navigate to detail */}
+      <button
+        type="button"
+        className="flex flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded min-w-0 sm:gap-3"
+        onClick={() => router.push(`/controle/${order.id}`)}
+      >
+        {/* ID + date */}
+        <div className="flex-shrink-0 w-[4.5rem]">
+          <p className="text-xs font-mono text-muted-foreground">
+            #{order.id.slice(0, 8).toUpperCase()}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {fmtDate(order.createdAt as unknown as { seconds: number })}
+          </p>
+        </div>
+
+        {/* Customer name */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{customer?.name ?? '—'}</p>
+        </div>
+
+        {/* Base status badge */}
+        <Badge
+          variant="outline"
+          className={cn('text-[10px] flex-shrink-0 whitespace-nowrap', statusCfg.className)}
+        >
+          {baseLabel}
+        </Badge>
+
+        {/* Missing-item indicator pills */}
+        {granular.missing.length > 0 && (
+          <div className="hidden sm:flex gap-1 flex-shrink-0 flex-wrap">
+            {granular.missing.map((item) => {
+              const cfg = MISSING_ITEM_CONFIG[item];
+              if (!cfg) return null;
+              const Icon = cfg.icon;
+              return (
+                <Tooltip key={item}>
+                  <TooltipTrigger asChild>
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
+                        cfg.className,
+                      )}
+                    >
+                      <Icon className="h-2.5 w-2.5" />
+                      {cfg.abbr}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    {item}
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Amount */}
+        <div className="flex-shrink-0 text-right">
+          <p className="text-sm font-semibold">{fmtBRL(order.amount)}</p>
+        </div>
+      </button>
+
+      {/* Inline action buttons */}
+      <div className="flex gap-1 flex-shrink-0">
+        {notPaid && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-green-600 hover:bg-green-50"
+                disabled={isUpdating}
+                onClick={handleMarkPaid}
+              >
+                <DollarSign className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Marcar como Pago</TooltipContent>
+          </Tooltip>
+        )}
+        {!order.documentsComplete && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-amber-600 hover:bg-amber-50"
+                onClick={() => router.push(`/controle/${order.id}`)}
+              >
+                <FileText className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Documentos</TooltipContent>
+          </Tooltip>
+        )}
+        {showAnvisa && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-purple-600 hover:bg-purple-50"
+                onClick={() =>
+                  router.push(
+                    order.anvisaRequestId
+                      ? `/anvisa/${order.anvisaRequestId}`
+                      : `/anvisa/nova?orderId=${order.id}`,
+                  )
+                }
+              >
+                <Shield className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              {order.anvisaRequestId ? 'Ver ANVISA' : 'Criar ANVISA'}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {canMarkProcSigned && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-blue-600 hover:bg-blue-50"
+                disabled={isUpdating}
+                onClick={() => handleMarkSigned('zapsignStatus')}
+              >
+                <PenTool className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Marcar Procuração</TooltipContent>
+          </Tooltip>
+        )}
+        {canMarkCvSigned && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 text-blue-600 hover:bg-blue-50"
+                disabled={isUpdating}
+                onClick={() => handleMarkSigned('zapsignCvStatus')}
+              >
+                <FileCheck className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">Marcar Comprovante</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      {/* Hamburger menu (all users) */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 flex-shrink-0"
+            aria-label="Ações do pedido"
+            disabled={isRegeneratingLink}
+          >
+            {isRegeneratingLink ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MoreHorizontal className="h-4 w-4" />
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuLabel>Ações</DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
+            Ver detalhes
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleRegeneratePaymentLink}
+            disabled={isRegeneratingLink}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Regenerar link de pagamento
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={onCancelRequest}
+          >
+            <XCircle className="mr-2 h-4 w-4" />
+            Cancelar pedido
+          </DropdownMenuItem>
+          {isAdmin && (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onDeleteRequest}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Excluir
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// ─── main component ───────────────────────────────────────────────────────────
 
 interface VendasEmAndamentoProps {
   onNewVenda: () => void;
@@ -52,13 +467,15 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
   const { firestore, user, isAdmin } = useFirebase();
   const { toast } = useToast();
 
-  // ── selection state ─────────────────────────────────────────────────────────
+  // ── selection state ─────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
-  // ── data ────────────────────────────────────────────────────────────────────
+  // ── data ────────────────────────────────────────────────────────────────
   const ordersQ = useMemoFirebase(
     () => (firestore ? getOrdersQuery(firestore) : null),
     [firestore],
@@ -66,12 +483,11 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQ);
 
-  // Only show in-progress orders (exclude shipped, delivered, cancelled, soft-deleted)
   const activeOrders = (orders ?? []).filter(
     (o) => !o.softDeleted && IN_PROGRESS_STATUSES.includes(o.status as OrderStatus),
   );
 
-  // ── selection helpers ───────────────────────────────────────────────────────
+  // ── selection helpers ─────────────────────────────────────────────────
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -89,7 +505,7 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     }
   };
 
-  // ── soft-delete (single) ────────────────────────────────────────────────────
+  // ── soft-delete (single) ──────────────────────────────────────────────
   const handleSoftDelete = useCallback(
     async (order: Order) => {
       if (!firestore || !user) return;
@@ -119,7 +535,29 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     [firestore, user, toast],
   );
 
-  // ── soft-delete (batch) ─────────────────────────────────────────────────────
+  // ── cancel order ──────────────────────────────────────────────────────
+  const handleCancelOrder = useCallback(
+    async (order: Order) => {
+      if (!firestore || !user) return;
+      setIsCancelling(true);
+      try {
+        await updateOrderStatus(firestore, order.id, 'cancelled', user.uid);
+        toast({
+          title: 'Pedido cancelado',
+          description: `Pedido #${order.id.slice(0, 8).toUpperCase()} foi cancelado.`,
+        });
+      } catch (err) {
+        console.error('[VendasEmAndamento] cancel error:', err);
+        toast({ variant: 'destructive', title: 'Erro', description: 'Não foi possível cancelar o pedido.' });
+      } finally {
+        setIsCancelling(false);
+        setCancelTarget(null);
+      }
+    },
+    [firestore, user, toast],
+  );
+
+  // ── soft-delete (batch) ───────────────────────────────────────────────
   const handleBatchDelete = useCallback(async () => {
     if (!firestore || !user || selectedIds.size === 0) return;
     setIsDeleting(true);
@@ -144,18 +582,18 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     }
   }, [firestore, user, selectedIds, toast]);
 
-  // ── loading skeleton ────────────────────────────────────────────────────────
+  // ── loading skeleton ──────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />
+          <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
         ))}
       </div>
     );
   }
 
-  // ── empty state ─────────────────────────────────────────────────────────────
+  // ── empty state ───────────────────────────────────────────────────────
   if (activeOrders.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/25 px-6 py-16 text-center">
@@ -184,12 +622,12 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
     );
   }
 
-  // ── order list ──────────────────────────────────────────────────────────────
+  // ── order list ────────────────────────────────────────────────────────
   const allSelected = selectedIds.size === activeOrders.length;
 
   return (
-    <>
-      {/* ── Action bar ── */}
+    <TooltipProvider delayDuration={300}>
+      {/* Action bar */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2.5">
           {isAdmin && (
@@ -218,110 +656,22 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
         )}
       </div>
 
-      {/* ── Rows ── */}
+      {/* Rows */}
       <div className="space-y-2">
-        {activeOrders.map((order) => {
-          const granular = getGranularStatus(order);
-          const statusCfg = EXTENDED_STATUS_CONFIG[granular.configKey] ?? EXTENDED_STATUS_CONFIG.pending;
-          const isSelected = selectedIds.has(order.id);
-
-          return (
-            <div
-              key={order.id}
-              className={cn(
-                'flex items-center gap-2 rounded-lg border bg-card px-4 py-3 transition-colors',
-                isSelected && 'bg-muted/50',
-              )}
-            >
-              {/* Checkbox (admin only) */}
-              {isAdmin && (
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => toggleSelect(order.id)}
-                  aria-label={`Selecionar pedido ${order.id.slice(0, 8).toUpperCase()}`}
-                  className="flex-shrink-0"
-                />
-              )}
-
-              {/* Clickable area → navigate to detail */}
-              <button
-                type="button"
-                className="flex flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded min-w-0"
-                onClick={() => router.push(`/controle/${order.id}`)}
-              >
-                {/* Order ID */}
-                <div className="flex-shrink-0 w-20">
-                  <p className="text-xs font-mono text-muted-foreground">
-                    #{order.id.slice(0, 8).toUpperCase()}
-                  </p>
-                </div>
-
-                {/* Status */}
-                <div className="flex-shrink-0 w-36">
-                  <Badge variant="outline" className={cn('text-xs', statusCfg.className)}>
-                    {granular.label}
-                  </Badge>
-                </div>
-
-                {/* Amount */}
-                <div className="flex-shrink-0 w-28 text-right">
-                  <p className="text-sm font-semibold">{fmtBRL(order.amount)}</p>
-                </div>
-
-                {/* Date */}
-                <div className="flex-shrink-0 ml-auto text-right">
-                  <p className="text-xs text-muted-foreground">
-                    {fmtDate(order.createdAt as unknown as { seconds: number })}
-                  </p>
-                </div>
-
-                {/* Chevron */}
-                <svg
-                  className="ml-2 h-4 w-4 flex-shrink-0 text-muted-foreground"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={2}
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                </svg>
-              </button>
-
-              {/* Per-row actions (admin only) */}
-              {isAdmin && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 flex-shrink-0"
-                      aria-label="Ações do pedido"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>Ações</DropdownMenuLabel>
-                    <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
-                      Ver detalhes
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => setDeleteTarget(order)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Excluir
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
-            </div>
-          );
-        })}
+        {activeOrders.map((order) => (
+          <VendaRow
+            key={order.id}
+            order={order}
+            isAdmin={isAdmin}
+            isSelected={selectedIds.has(order.id)}
+            onToggleSelect={() => toggleSelect(order.id)}
+            onDeleteRequest={() => setDeleteTarget(order)}
+            onCancelRequest={() => setCancelTarget(order)}
+          />
+        ))}
       </div>
 
-      {/* ── Single-delete confirmation dialog ── */}
+      {/* Single-delete confirmation dialog */}
       <AlertDialog
         open={!!deleteTarget}
         onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
@@ -349,7 +699,35 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Batch-delete confirmation dialog ── */}
+      {/* Cancel order confirmation dialog */}
+      <AlertDialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => { if (!open) setCancelTarget(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar pedido?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O pedido{' '}
+              <strong>#{cancelTarget?.id.slice(0, 8).toUpperCase()}</strong> será
+              marcado como cancelado. Esta ação não pode ser desfeita facilmente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Voltar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isCancelling}
+              onClick={() => cancelTarget && handleCancelOrder(cancelTarget)}
+            >
+              {isCancelling && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Cancelar Pedido
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch-delete confirmation dialog */}
       <AlertDialog
         open={showBatchDeleteDialog}
         onOpenChange={(open) => { if (!open) setShowBatchDeleteDialog(false); }}
@@ -375,6 +753,6 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </TooltipProvider>
   );
 }
