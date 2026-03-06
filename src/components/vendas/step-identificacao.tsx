@@ -146,6 +146,9 @@ export function StepIdentificacao({
   // the user is typing so that the computed value doesn't overwrite mid-edit.
   const [editingTotals, setEditingTotals] = useState<Record<string, string>>({});
 
+  // Local editing state for the all-product order total — same pattern as editingTotals.
+  const [editingOrderTotal, setEditingOrderTotal] = useState<string | null>(null);
+
   // Generate a blob URL for image preview (revoked on file change / unmount)
   const previewUrl = useMemo(() => {
     if (!state.prescriptionFile || !state.prescriptionFile.type?.startsWith('image/')) return null;
@@ -234,6 +237,39 @@ export function StepIdentificacao({
     const listPriceBRL = line.listPrice * exchangeRate;
     const negotiatedPrice = parseFloat((listPriceBRL * (1 - clampedDiscount / 100)).toFixed(2));
     updateLine(lineId, { discount: clampedDiscount, negotiatedPrice });
+  };
+
+  /**
+   * When the user edits the ALL-PRODUCT order total, distribute the change
+   * equally across every product line that has a selected product.
+   * Each line's unit price and discount are recalculated accordingly.
+   */
+  const handleOrderTotalChange = (newTotal: number) => {
+    const activeLines = state.products.filter((p) => p.productId);
+    if (activeLines.length === 0) return;
+
+    const currentTotal = activeLines.reduce(
+      (s, p) => s + p.negotiatedPrice * p.quantity, 0,
+    );
+    const delta = newTotal - currentTotal;
+    const perLineDelta = delta / activeLines.length;
+
+    const updated = state.products.map((line) => {
+      if (!line.productId) return line;
+
+      const oldSubtotal = line.negotiatedPrice * line.quantity;
+      const newSubtotal = Math.max(0, oldSubtotal + perLineDelta);
+      const qty = Math.max(1, line.quantity);
+      const unitPriceBRL = Math.floor((newSubtotal / qty) * 100) / 100;
+      const listPriceBRL = line.listPrice * exchangeRate;
+      const discount = listPriceBRL > 0
+        ? Math.max(0, Math.min(100, ((listPriceBRL - unitPriceBRL) / listPriceBRL) * 100))
+        : 0;
+
+      return { ...line, negotiatedPrice: unitPriceBRL, discount };
+    });
+
+    onChange({ products: updated });
   };
 
   // ── AI extraction ─────────────────────────────────────────────────────────
@@ -637,11 +673,29 @@ export function StepIdentificacao({
               </div>
             ))}
 
-            {/* Total */}
-            <div className="flex justify-end border-t pt-3 pr-2">
-              <p className="text-sm font-medium">
-                Total: <span className="text-base font-bold text-primary">{fmtBRL(orderTotal)}</span>
-              </p>
+            {/* Total — editable, distributes changes equally across product lines */}
+            <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
+              <label className="text-sm font-medium">Total:</label>
+              <div className="relative w-36">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
+                <Input
+                  type="number" min={0} step="0.01"
+                  value={
+                    editingOrderTotal !== null
+                      ? editingOrderTotal
+                      : parseFloat(orderTotal.toFixed(2))
+                  }
+                  onFocus={() => setEditingOrderTotal(orderTotal.toFixed(2))}
+                  onChange={(e) => setEditingOrderTotal(e.target.value)}
+                  onBlur={() => {
+                    if (editingOrderTotal !== null) {
+                      handleOrderTotalChange(parseFloat(editingOrderTotal) || 0);
+                    }
+                    setEditingOrderTotal(null);
+                  }}
+                  className="pl-8 text-right font-bold text-primary"
+                />
+              </div>
             </div>
           </div>
         )}

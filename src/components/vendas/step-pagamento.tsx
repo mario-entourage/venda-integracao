@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -123,12 +123,7 @@ export function StepPagamento({
     }
   };
 
-  // Auto-generate on mount (or when orderId becomes available)
-  useEffect(() => {
-    if (!orderId || paymentUrl || hasGenerated.current) return;
-    generateLink();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, paymentUrl]);
+  // No auto-generation — user sets Frete first, then clicks "Gerar Link".
 
   const handleRetry = () => {
     hasGenerated.current = false;
@@ -368,9 +363,16 @@ export function StepPagamento({
         )}
 
         {!isGenerating && !paymentUrl && !error && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            Aguardando geração do link…
-          </p>
+          <Button
+            className="w-full gap-2"
+            onClick={generateLink}
+            disabled={!orderId}
+          >
+            <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.72" />
+            </svg>
+            Gerar Link de Pagamento
+          </Button>
         )}
       </div>
 
