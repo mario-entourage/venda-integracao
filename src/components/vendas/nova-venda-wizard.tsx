@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -9,9 +10,10 @@ import { getActiveClientsQuery } from '@/services/clients.service';
 import { getActiveDoctorsQuery } from '@/services/doctors.service';
 import { getActiveProductsQuery } from '@/services/products.service';
 import { getActiveRepresentantesQuery } from '@/services/representantes.service';
-import { createOrder, updateOrderRepresentative } from '@/services/orders.service';
+import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
+import { BASE_LABELS } from '@/lib/order-status-helpers';
 import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
@@ -77,6 +79,7 @@ const INITIAL_STEP1: Step1State = {
   doctorIsNew: false,
   prescriptionFile: null,
   prescriptionFileName: '',
+  prescriptionHash: '',
   prescriptionDate: '',
   products: [],
   anvisaOption: 'regular',
@@ -147,6 +150,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  /** When a duplicate prescription is detected, store the existing order ID for linking. */
+  const [duplicateOrderId, setDuplicateOrderId] = useState<string | null>(null);
   // Post-completion dialog: shown when one or both entities were quick-added
   const [showPostDialog, setShowPostDialog] = useState(false);
   const [completedOrderId, setCompletedOrderId] = useState('');
@@ -178,6 +183,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   const updateStep1 = useCallback((changes: Partial<Step1State>) => {
     setState((prev) => ({ ...prev, step1: { ...prev.step1, ...changes } }));
   }, []);
+
+  // Clear duplicate-prescription error when the user swaps the file
+  useEffect(() => {
+    if (duplicateOrderId) {
+      setDuplicateOrderId(null);
+      setSubmitError(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.step1.prescriptionFile]);
 
   // ── step 1 validation ───────────────────────────────────────────────────
   // listPrice === 0 is valid (TBD-priced products); prescriptionFile is optional
@@ -222,9 +236,28 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
       if (!step1Valid || !firestore || !user) return;
       setIsSubmitting(true);
       setSubmitError(null);
+      setDuplicateOrderId(null);
 
       try {
         const { step1 } = state;
+
+        // ── Duplicate prescription check ────────────────────────────────
+        if (step1.prescriptionHash && firestore) {
+          const existing = await findActiveOrderByPrescriptionHash(
+            firestore,
+            step1.prescriptionHash,
+          );
+          if (existing) {
+            const statusLabel = BASE_LABELS[existing.status] || existing.status;
+            setSubmitError(
+              `Esta receita já está vinculada à venda #${existing.id.slice(0, 8).toUpperCase()} ` +
+              `(status: ${statusLabel}). Cancele essa venda primeiro para reutilizar a receita.`,
+            );
+            setDuplicateOrderId(existing.id);
+            setIsSubmitting(false);
+            return;
+          }
+        }
 
         // Upload prescription (non-fatal — if it fails, we still create the order)
         let prescriptionPath = '';
@@ -280,6 +313,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             exchangeRateDate: state.exchangeRateDate,
             anvisaOption: step1.anvisaOption as 'regular' | 'exceptional' | 'exempt',
             prescriptionDocId: prescriptionPath,
+            prescriptionHash: step1.prescriptionHash,
             allowedPaymentMethods: step1.allowedPaymentMethods,
           },
           user.uid,
@@ -421,7 +455,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
       />
       {submitError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {submitError}
+          <p>{submitError}</p>
+          {duplicateOrderId && (
+            <Link
+              href={`/controle/${duplicateOrderId}`}
+              className="mt-1 inline-block font-medium underline text-red-800 hover:text-red-900"
+            >
+              Ver venda existente →
+            </Link>
+          )}
         </div>
       )}
 
