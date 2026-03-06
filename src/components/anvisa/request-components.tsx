@@ -795,7 +795,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
 }
 
 function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovanteResidenciaDoc, comprovanteResidenciaDocs = [], procuracaoDoc, procuracaoDocs = [], receitaMedicaDoc, receitaMedicaDocs = [], isProcessing }: AdjustmentListProps) {
-    const { firestore, user } = useFirebase();
+    const { firestore, storage, user } = useFirebase();
     const { toast } = useToast();
 
     // Merge all pages per type for comprehensive field coverage
@@ -876,19 +876,74 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         return data;
     }, [validatedData, userProfile]);
 
+    // Resolve Firebase Storage download URLs for all documents
+    type FileEntry = { docType: string; fileName: string; downloadUrl: string; mimeType: string };
+    const [resolvedFiles, setResolvedFiles] = useState<FileEntry[]>([]);
+
+    useEffect(() => {
+        if (!storage || isProcessing) return;
+
+        const docsByType: { doc: DocumentBase; docType: string }[] = [];
+
+        const pDocs = pacienteDocs.length > 0 ? pacienteDocs : [pacienteDoc];
+        pDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'DOCUMENTO_PACIENTE' }); });
+
+        const crDocs = comprovanteResidenciaDocs.length > 0 ? comprovanteResidenciaDocs : [comprovanteResidenciaDoc];
+        crDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'COMPROVANTE_RESIDENCIA' }); });
+
+        const rmDocs = receitaMedicaDocs.length > 0 ? receitaMedicaDocs : [receitaMedicaDoc];
+        rmDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'RECEITA_MEDICA' }); });
+
+        const prDocs = procuracaoDocs.length > 0 ? procuracaoDocs : (procuracaoDoc ? [procuracaoDoc] : []);
+        prDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'PROCURACAO' }); });
+
+        if (docsByType.length === 0) return;
+
+        let cancelled = false;
+        Promise.all(
+            docsByType.map(async (entry) => {
+                try {
+                    const storageRef = ref(storage, entry.doc.fileStoragePath);
+                    const url = await getDownloadURL(storageRef);
+                    const fn = entry.doc.fileName.toLowerCase();
+                    const mimeType = fn.endsWith('.pdf') ? 'application/pdf'
+                        : fn.endsWith('.png') ? 'image/png'
+                        : fn.endsWith('.jpg') || fn.endsWith('.jpeg') ? 'image/jpeg'
+                        : 'application/octet-stream';
+                    return { docType: entry.docType, fileName: entry.doc.fileName, downloadUrl: url, mimeType } as FileEntry;
+                } catch {
+                    return null;
+                }
+            })
+        ).then((results) => {
+            if (!cancelled) setResolvedFiles(results.filter((r): r is FileEntry => r !== null));
+        });
+
+        return () => { cancelled = true; };
+    }, [storage, isProcessing, pacienteDoc, pacienteDocs, comprovanteResidenciaDoc, comprovanteResidenciaDocs, receitaMedicaDoc, receitaMedicaDocs, procuracaoDoc, procuracaoDocs]);
+
+    // Full payload including file URLs for the extension
+    const extensionPayload = useMemo(() => {
+        const payload: Record<string, unknown> = { ...fullPayload };
+        if (resolvedFiles.length > 0) {
+            payload._files = resolvedFiles;
+        }
+        return payload;
+    }, [fullPayload, resolvedFiles]);
+
     // Auto-send data to extension once OCR/extraction is done AND profile is loaded
     useEffect(() => {
         if (autoSent || isProcessing || !profileLoaded) return;
         const hasData = Object.values(validatedData).some(v => v && String(v).trim().length > 0);
         if (!hasData) return;
         setAutoSent(true);
-        window.postMessage({ type: 'anvisa-autofill-data', data: fullPayload }, '*');
-    }, [validatedData, isProcessing, autoSent, profileLoaded, fullPayload]);
+        window.postMessage({ type: 'anvisa-autofill-data', data: extensionPayload }, '*');
+    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionPayload]);
 
     const handleSendToExtension = () => {
         // Use postMessage to cross the content script isolation boundary
         window.postMessage(
-            { type: 'anvisa-autofill-data', data: fullPayload },
+            { type: 'anvisa-autofill-data', data: extensionPayload },
             '*'
         );
 
