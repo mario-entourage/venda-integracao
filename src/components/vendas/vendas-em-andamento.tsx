@@ -71,12 +71,12 @@ const fmtDate = (ts: { seconds: number } | undefined) => {
 // ─── missing-item indicator config ─────────────────────────────────────────────
 
 const MISSING_ITEM_CONFIG: Record<string, { icon: React.ElementType; abbr: string; className: string }> = {
-  Pagamento:               { icon: DollarSign, abbr: 'Pgto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
-  Documentos:              { icon: FileText,   abbr: 'Docs',  className: 'border-amber-300 text-amber-700 bg-amber-50' },
-  ANVISA:                  { icon: Shield,     abbr: 'ANV',   className: 'border-purple-300 text-purple-700 bg-purple-50' },
-  'ANVISA (em andamento)': { icon: Shield,     abbr: 'ANV…',  className: 'border-purple-200 text-purple-500 bg-purple-50' },
-  'Procuracao (assinatura)': { icon: PenTool,  abbr: 'Proc',  className: 'border-blue-300 text-blue-700 bg-blue-50' },
-  Comprovante:             { icon: FileCheck,  abbr: 'CV',    className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  Pagamento:               { icon: DollarSign, abbr: 'Marcar Pgto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  Documentos:              { icon: FileText,   abbr: 'Docs',          className: 'border-amber-300 text-amber-700 bg-amber-50' },
+  ANVISA:                  { icon: Shield,     abbr: 'ANV',           className: 'border-purple-300 text-purple-700 bg-purple-50' },
+  'ANVISA (em andamento)': { icon: Shield,     abbr: 'ANV…',          className: 'border-purple-200 text-purple-500 bg-purple-50' },
+  'Procuracao (assinatura)': { icon: PenTool,  abbr: 'Marcar Proc',   className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  Comprovante:             { icon: FileCheck,  abbr: 'Marcar CV',     className: 'border-blue-300 text-blue-700 bg-blue-50' },
 };
 
 // ─── VendaRow ─────────────────────────────────────────────────────────────────
