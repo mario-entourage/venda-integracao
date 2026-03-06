@@ -11,7 +11,6 @@ import {
   Shield,
   PenTool,
   FileCheck,
-  RefreshCw,
   XCircle,
 } from 'lucide-react';
 import { writeBatch } from 'firebase/firestore';
@@ -27,7 +26,6 @@ import {
 import { generatePaymentLink } from '@/server/actions/payment.actions';
 import { createPaymentLink } from '@/services/payments.service';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -56,14 +54,14 @@ import {
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { getGranularStatus, EXTENDED_STATUS_CONFIG, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
+import { getGranularStatus, IN_PROGRESS_STATUSES } from '@/lib/order-status-helpers';
 import { OrderStatus, AnvisaOption } from '@/types/enums';
 import type { Order, OrderCustomer } from '@/types';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
 const fmtBRL = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(v);
 
 const fmtDate = (ts: { seconds: number } | undefined) => {
   if (!ts) return '—';
@@ -73,23 +71,12 @@ const fmtDate = (ts: { seconds: number } | undefined) => {
 // ─── missing-item indicator config ─────────────────────────────────────────────
 
 const MISSING_ITEM_CONFIG: Record<string, { icon: React.ElementType; abbr: string; className: string }> = {
-  Pagamento:               { icon: DollarSign, abbr: 'Pgto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
-  Documentos:              { icon: FileText,   abbr: 'Docs',  className: 'border-amber-300 text-amber-700 bg-amber-50' },
-  ANVISA:                  { icon: Shield,     abbr: 'ANV',   className: 'border-purple-300 text-purple-700 bg-purple-50' },
-  'ANVISA (em andamento)': { icon: Shield,     abbr: 'ANV…',  className: 'border-purple-200 text-purple-500 bg-purple-50' },
-  'Procuracao (assinatura)': { icon: PenTool,  abbr: 'Proc',  className: 'border-blue-300 text-blue-700 bg-blue-50' },
-  Comprovante:             { icon: FileCheck,  abbr: 'CV',    className: 'border-blue-300 text-blue-700 bg-blue-50' },
-};
-
-// ─── base status labels (short, one-line) ─────────────────────────────────────
-
-const BASE_STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendente',
-  processing: 'Processando',
-  awaiting_documents: 'Aguard. docs',
-  documents_complete: 'Docs OK',
-  awaiting_payment: 'Aguard. pgto',
-  paid: 'Pago',
+  Pagamento:               { icon: DollarSign, abbr: 'Marcar Pgto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  Documentos:              { icon: FileText,   abbr: 'Docs',          className: 'border-amber-300 text-amber-700 bg-amber-50' },
+  ANVISA:                  { icon: Shield,     abbr: 'ANV',           className: 'border-purple-300 text-purple-700 bg-purple-50' },
+  'ANVISA (em andamento)': { icon: Shield,     abbr: 'ANV…',          className: 'border-purple-200 text-purple-500 bg-purple-50' },
+  'Procuracao (assinatura)': { icon: PenTool,  abbr: 'Marcar Proc',   className: 'border-blue-300 text-blue-700 bg-blue-50' },
+  Comprovante:             { icon: FileCheck,  abbr: 'Marcar CV',     className: 'border-blue-300 text-blue-700 bg-blue-50' },
 };
 
 // ─── VendaRow ─────────────────────────────────────────────────────────────────
@@ -135,9 +122,6 @@ function VendaRow({
 
   // ── granular status ─────────────────────────────────────────────────────
   const granular = getGranularStatus(order);
-  const baseLabel = BASE_STATUS_LABELS[order.status] ?? order.status;
-  const statusCfg = EXTENDED_STATUS_CONFIG[order.status] ?? EXTENDED_STATUS_CONFIG.pending;
-
   // ── conditional flags ───────────────────────────────────────────────────
   const notPaid = ![OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.DELIVERED].includes(
     order.status as OrderStatus,
@@ -149,6 +133,25 @@ function VendaRow({
   const showAnvisa = needsAnvisa && !anvisaConcluded;
   const canMarkProcSigned = !!order.zapsignDocId && order.zapsignStatus !== 'signed';
   const canMarkCvSigned = !!order.zapsignCvDocId && order.zapsignCvStatus !== 'signed';
+
+  // ── pill action mapping ───────────────────────────────────────────────
+  const getMissingItemAction = (item: string): (() => void) => {
+    switch (item) {
+      case 'Pagamento': return handleMarkPaid;
+      case 'Documentos': return () => router.push(`/controle/${order.id}`);
+      case 'ANVISA':
+      case 'ANVISA (em andamento)':
+        return () =>
+          router.push(
+            order.anvisaRequestId
+              ? `/anvisa/${order.anvisaRequestId}`
+              : `/anvisa/nova?orderId=${order.id}`,
+          );
+      case 'Procuracao (assinatura)': return () => handleMarkSigned('zapsignStatus');
+      case 'Comprovante': return () => handleMarkSigned('zapsignCvStatus');
+      default: return () => {};
+    }
+  };
 
   // ── inline actions ──────────────────────────────────────────────────────
   const handleMarkPaid = async () => {
@@ -245,7 +248,7 @@ function VendaRow({
         <Checkbox
           checked={isSelected}
           onCheckedChange={onToggleSelect}
-          aria-label={`Selecionar pedido ${order.id.slice(0, 8)}`}
+          aria-label="Selecionar venda"
           className="flex-shrink-0"
         />
       )}
@@ -256,11 +259,8 @@ function VendaRow({
         className="flex flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded min-w-0 sm:gap-3"
         onClick={() => router.push(`/controle/${order.id}`)}
       >
-        {/* ID + date */}
-        <div className="flex-shrink-0 w-[4.5rem]">
-          <p className="text-xs font-mono text-muted-foreground">
-            #{order.id.slice(0, 8).toUpperCase()}
-          </p>
+        {/* Date */}
+        <div className="flex-shrink-0">
           <p className="text-[10px] text-muted-foreground">
             {fmtDate(order.createdAt as unknown as { seconds: number })}
           </p>
@@ -271,150 +271,55 @@ function VendaRow({
           <p className="text-sm font-medium truncate">{customer?.name ?? '—'}</p>
         </div>
 
-        {/* Base status badge */}
-        <Badge
-          variant="outline"
-          className={cn('text-[10px] flex-shrink-0 whitespace-nowrap', statusCfg.className)}
-        >
-          {baseLabel}
-        </Badge>
-
-        {/* Missing-item indicator pills */}
-        {granular.missing.length > 0 && (
-          <div className="hidden sm:flex gap-1 flex-shrink-0 flex-wrap">
-            {granular.missing.map((item) => {
-              const cfg = MISSING_ITEM_CONFIG[item];
-              if (!cfg) return null;
-              const Icon = cfg.icon;
-              return (
-                <Tooltip key={item}>
-                  <TooltipTrigger asChild>
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
-                        cfg.className,
-                      )}
-                    >
-                      <Icon className="h-2.5 w-2.5" />
-                      {cfg.abbr}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs">
-                    {item}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </div>
-        )}
-
         {/* Amount */}
         <div className="flex-shrink-0 text-right">
           <p className="text-sm font-semibold">{fmtBRL(order.amount)}</p>
         </div>
       </button>
 
-      {/* Inline action buttons */}
-      <div className="flex gap-1 flex-shrink-0">
-        {notPaid && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-green-600 hover:bg-green-50"
-                disabled={isUpdating}
-                onClick={handleMarkPaid}
-              >
-                <DollarSign className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">Marcar como Pago</TooltipContent>
-          </Tooltip>
-        )}
-        {!order.documentsComplete && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-amber-600 hover:bg-amber-50"
-                onClick={() => router.push(`/controle/${order.id}`)}
-              >
-                <FileText className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">Documentos</TooltipContent>
-          </Tooltip>
-        )}
-        {showAnvisa && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-purple-600 hover:bg-purple-50"
-                onClick={() =>
-                  router.push(
-                    order.anvisaRequestId
-                      ? `/anvisa/${order.anvisaRequestId}`
-                      : `/anvisa/nova?orderId=${order.id}`,
-                  )
-                }
-              >
-                <Shield className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
-              {order.anvisaRequestId ? 'Ver ANVISA' : 'Criar ANVISA'}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {canMarkProcSigned && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-blue-600 hover:bg-blue-50"
-                disabled={isUpdating}
-                onClick={() => handleMarkSigned('zapsignStatus')}
-              >
-                <PenTool className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">Marcar Procuração</TooltipContent>
-          </Tooltip>
-        )}
-        {canMarkCvSigned && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 text-blue-600 hover:bg-blue-50"
-                disabled={isUpdating}
-                onClick={() => handleMarkSigned('zapsignCvStatus')}
-              >
-                <FileCheck className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">Marcar Comprovante</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
+      {/* Pending action pills (clickable) */}
+      {granular.missing.length > 0 && (
+        <div className="flex gap-1 flex-shrink-0 flex-wrap">
+          {granular.missing.map((item) => {
+            const cfg = MISSING_ITEM_CONFIG[item];
+            if (!cfg) return null;
+            const Icon = cfg.icon;
+            return (
+              <Tooltip key={item}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium cursor-pointer hover:opacity-75 transition-opacity',
+                      cfg.className,
+                    )}
+                    onClick={getMissingItemAction(item)}
+                    disabled={isUpdating}
+                  >
+                    <Icon className="h-2.5 w-2.5" />
+                    {cfg.abbr}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {item}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+      )}
 
-      {/* Hamburger menu (all users) */}
+      {/* Hamburger menu */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             size="icon"
             variant="ghost"
             className="h-7 w-7 flex-shrink-0"
-            aria-label="Ações do pedido"
-            disabled={isRegeneratingLink}
+            aria-label="Ações da venda"
+            disabled={isRegeneratingLink || isUpdating}
           >
-            {isRegeneratingLink ? (
+            {(isRegeneratingLink || isUpdating) ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <MoreHorizontal className="h-4 w-4" />
@@ -426,20 +331,49 @@ function VendaRow({
           <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
             Ver detalhes
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={handleRegeneratePaymentLink}
-            disabled={isRegeneratingLink}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Regenerar link de pagamento
-          </DropdownMenuItem>
+
+          {/* Re-do actions for already-completed items */}
+          {!notPaid && (
+            <DropdownMenuItem
+              onClick={handleRegeneratePaymentLink}
+              disabled={isRegeneratingLink}
+            >
+              <DollarSign className="mr-2 h-4 w-4" />
+              Regenerar link de pagamento
+            </DropdownMenuItem>
+          )}
+          {order.documentsComplete && (
+            <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
+              <FileText className="mr-2 h-4 w-4" />
+              Reenviar documentos
+            </DropdownMenuItem>
+          )}
+          {anvisaConcluded && order.anvisaRequestId && (
+            <DropdownMenuItem onClick={() => router.push(`/anvisa/${order.anvisaRequestId}`)}>
+              <Shield className="mr-2 h-4 w-4" />
+              Ver ANVISA
+            </DropdownMenuItem>
+          )}
+          {order.zapsignDocId && order.zapsignStatus === 'signed' && (
+            <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
+              <PenTool className="mr-2 h-4 w-4" />
+              Gerenciar Procuração
+            </DropdownMenuItem>
+          )}
+          {order.zapsignCvDocId && order.zapsignCvStatus === 'signed' && (
+            <DropdownMenuItem onClick={() => router.push(`/controle/${order.id}`)}>
+              <FileCheck className="mr-2 h-4 w-4" />
+              Gerenciar Comprovante
+            </DropdownMenuItem>
+          )}
+
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={onCancelRequest}
           >
             <XCircle className="mr-2 h-4 w-4" />
-            Cancelar pedido
+            Cancelar venda
           </DropdownMenuItem>
           {isAdmin && (
             <DropdownMenuItem
@@ -484,7 +418,10 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
   const { data: orders, isLoading } = useCollection<Order>(ordersQ);
 
   const activeOrders = (orders ?? []).filter(
-    (o) => !o.softDeleted && IN_PROGRESS_STATUSES.includes(o.status as OrderStatus),
+    (o) =>
+      !o.softDeleted &&
+      IN_PROGRESS_STATUSES.includes(o.status as OrderStatus) &&
+      getGranularStatus(o).missing.length > 0,
   );
 
   // ── selection helpers ─────────────────────────────────────────────────
@@ -634,11 +571,11 @@ export function VendasEmAndamento({ onNewVenda }: VendasEmAndamentoProps) {
             <Checkbox
               checked={allSelected}
               onCheckedChange={toggleSelectAll}
-              aria-label="Selecionar todos os pedidos"
+              aria-label="Selecionar todas as vendas"
             />
           )}
           <span className="text-sm text-muted-foreground">
-            {activeOrders.length} pedido(s)
+            {activeOrders.length} venda(s)
           </span>
         </div>
 
