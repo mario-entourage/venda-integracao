@@ -1,5 +1,5 @@
 import type { Order } from '@/types';
-import { OrderStatus } from '@/types/enums';
+import { OrderStatus, AnvisaOption } from '@/types/enums';
 
 // ---------------------------------------------------------------------------
 // In-progress statuses (excludes shipped, delivered, cancelled)
@@ -77,10 +77,11 @@ export function getGranularStatus(order: Order): GranularStatus {
     missing.push('Documentos');
   }
 
-  // Missing ANVISA — all orders need ANVISA Solicitação completed
+  // Missing ANVISA — exempt orders skip this check; others need conclusion
+  const anvisaExempt = order.anvisaOption === AnvisaOption.EXEMPT;
   const anvisaConcluded =
     order.anvisaStatus === 'CONCLUIDO' || order.anvisaStatus === 'concluido';
-  if (!anvisaConcluded) {
+  if (!anvisaExempt && !anvisaConcluded) {
     if (order.anvisaRequestId) {
       missing.push('ANVISA (em andamento)');
     } else {
@@ -128,4 +129,33 @@ export const EXTENDED_STATUS_CONFIG: Record<string, { label: string; className: 
   delivered:          { label: 'Entregue',       className: 'border-green-400 text-green-800 bg-green-100' },
   cancelled:          { label: 'Cancelado',      className: 'border-red-300 text-red-600 bg-red-50' },
   falta:              { label: 'Falta...',       className: 'border-orange-300 text-orange-700 bg-orange-50' },
+  pronto:             { label: 'Pronto p/ envio', className: 'border-emerald-400 text-emerald-700 bg-emerald-50' },
 };
+
+// ---------------------------------------------------------------------------
+// "Ready to ship" predicate
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns `true` when ALL prerequisites for shipping are met:
+ * - Payment received (status === 'paid')
+ * - Documents complete
+ * - ANVISA exempt OR concluded
+ * - Procuração signed (if created)
+ * - Comprovante de Vínculo signed (if created)
+ */
+export function isReadyToShip(order: Order): boolean {
+  if (order.status !== OrderStatus.PAID) return false;
+  if (!order.documentsComplete) return false;
+
+  const anvisaOk =
+    order.anvisaOption === AnvisaOption.EXEMPT ||
+    order.anvisaStatus === 'CONCLUIDO' ||
+    order.anvisaStatus === 'concluido';
+  if (!anvisaOk) return false;
+
+  if (order.zapsignDocId && order.zapsignStatus !== 'signed') return false;
+  if (order.zapsignCvDocId && order.zapsignCvStatus !== 'signed') return false;
+
+  return true;
+}
