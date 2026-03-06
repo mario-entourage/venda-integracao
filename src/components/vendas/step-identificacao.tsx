@@ -17,6 +17,7 @@ import { SearchableSelect } from '@/components/shared/searchable-select';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog, QuickAddRepresentanteDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
+import { computeFileHash } from '@/lib/file-hash';
 import type { Client, Doctor, Product, Representante } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -98,6 +99,8 @@ export interface Step1State {
   doctorIsNew: boolean;
   prescriptionFile: File | null;
   prescriptionFileName: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection). */
+  prescriptionHash: string;
   /** Date printed on the prescription (YYYY-MM-DD), extracted by AI or null if not found. */
   prescriptionDate: string;
   products: ProductLine[];
@@ -365,8 +368,10 @@ export function StepIdentificacao({
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
     const file = acceptedFiles[0];
-    onChange({ prescriptionFile: file, prescriptionFileName: file.name });
+    onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
     runExtraction(file);
+    // Compute SHA-256 hash in parallel (for duplicate prescription detection)
+    computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
   }, [onChange, runExtraction]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

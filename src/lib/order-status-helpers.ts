@@ -27,7 +27,7 @@ export interface GranularStatus {
   missing: string[];
 }
 
-const BASE_LABELS: Record<string, string> = {
+export const BASE_LABELS: Record<string, string> = {
   pending: 'Pendente',
   processing: 'Em andamento',
   awaiting_documents: 'Aguard. docs',

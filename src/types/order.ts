@@ -37,6 +37,8 @@ export interface Order {
   documentsComplete: boolean;
   tristarShipmentId?: string;
   prescriptionDocId?: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection) */
+  prescriptionHash?: string;
   softDeleted?: boolean;
   createdById: string;
   createdAt: Timestamp;
