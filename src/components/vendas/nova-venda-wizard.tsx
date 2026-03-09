@@ -10,6 +10,7 @@ import { getActiveClientsQuery } from '@/services/clients.service';
 import { getActiveDoctorsQuery } from '@/services/doctors.service';
 import { getActiveProductsQuery } from '@/services/products.service';
 import { getActiveRepresentantesQuery } from '@/services/representantes.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
@@ -22,7 +23,7 @@ import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
-import type { Client, Doctor, Product, User } from '@/types';
+import type { Client, Doctor, Product, User, Representante } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
