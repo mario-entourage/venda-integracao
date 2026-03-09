@@ -71,6 +71,7 @@ export default function MedicoDetailPage() {
     city: doctor.city,
     phone: doctor.phone,
     mobilePhone: doctor.mobilePhone,
+    repUserId: doctor.repUserId,
   };
 
   const handleSave = async (data: DoctorFormValues) => {
@@ -87,6 +88,7 @@ export default function MedicoDetailPage() {
         city: data.city || '',
         phone: data.phone || '',
         mobilePhone: data.mobilePhone || '',
+        repUserId: data.repUserId || '',
       });
       toast({ title: 'Medico atualizado com sucesso.' });
       setEditing(false);
@@ -149,6 +151,7 @@ export default function MedicoDetailPage() {
           <InfoRow label="Telefone" value={doctor.phone} />
           <InfoRow label="Celular" value={doctor.mobilePhone} />
           <InfoRow label="Email" value={doctor.email} />
+          <InfoRow label="Representante" value={doctor.repUserId || '—'} />
           <InfoRow
             label="Status"
             value={
