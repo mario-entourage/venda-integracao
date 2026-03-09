@@ -18,7 +18,7 @@ import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
-import type { Client, Doctor, Product, Representante } from '@/types';
+import type { Client, Doctor, Product, Representante, User } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 

@@ -2,12 +2,14 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { RefreshCw } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -16,6 +18,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/hooks/use-toast';
 import type { PaymentLink } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -62,9 +65,36 @@ function fmtDate(ts: unknown): string {
 export default function PagamentosPage() {
   const { firestore } = useFirebase();
   const router = useRouter();
+  const { toast } = useToast();
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<{ time: string; approved: number; checked: number } | null>(null);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/payments/sync', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setLastSync({ time, approved: data.approved, checked: data.checked });
+      if (data.approved > 0) {
+        toast({ title: `${data.approved} pagamento(s) confirmado(s) e pedido(s) atualizado(s).` });
+      } else {
+        toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), nenhuma mudança.` });
+      }
+    } catch (err) {
+      toast({
+        title: 'Erro ao sincronizar pagamentos.',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const paymentLinksQ = useMemoFirebase(
     () => (firestore ? getAllPaymentLinksQuery(firestore) : null),
@@ -98,7 +128,24 @@ export default function PagamentosPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Pagamentos" description="Links de pagamento GlobalPay" />
+      <div className="flex items-start justify-between gap-4">
+        <PageHeader title="Pagamentos" description="Links de pagamento GlobalPay" />
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <Button
+            variant="outline"
+            onClick={handleSync}
+            disabled={syncing}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar GlobalPay'}
+          </Button>
+          {lastSync && (
+            <p className="text-xs text-muted-foreground">
+              {lastSync.time} — {lastSync.checked} verificado(s), {lastSync.approved} aprovado(s)
+            </p>
+          )}
+        </div>
+      </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">

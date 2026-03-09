@@ -11,4 +11,5 @@ export const SHIPPING_API_ROUTES = {
   confirmShipment: '/api/tristar/confirm-shipment',
   trackShipment: '/api/tristar/track',
   getLabel: '/api/tristar/label',
+  inventory: '/api/tristar/inventory',
 } as const;

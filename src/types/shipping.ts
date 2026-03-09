@@ -73,6 +73,38 @@ export interface TriStarShipmentResponse {
 // Extended shipping record (stored in Firestore, extends OrderShipping)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TriStar Stock / Inventory types (from API docs: stocks-index, stocks-show)
+// ---------------------------------------------------------------------------
+
+export interface TriStarStockItem {
+  id: number;
+  product_name: string;
+  sku: string;
+  quantity: number;
+  reserved: number;
+  available: number;
+  warehouse?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export interface TriStarStockListResponse {
+  data: TriStarStockItem[];
+  /** Pagination metadata — may vary by API version */
+  meta?: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Extended shipping record (stored in Firestore, extends OrderShipping)
+// ---------------------------------------------------------------------------
+
 export type ShippingRecord = OrderShipping & {
   /** Which shipping method was used */
   method?: ShippingMethod;
