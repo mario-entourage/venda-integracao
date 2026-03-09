@@ -21,6 +21,7 @@ import {
   transformDoctorRow,
   transformClientRow,
   transformUserRow,
+  transformOrderRow,
   type RowValidation,
 } from '@/lib/csv-processors';
 
@@ -167,6 +168,116 @@ export default function ImportarPage() {
             profileData: profile,
             createdAt: now,
           });
+        } else if (entityType === 'orders') {
+          const transformed = transformOrderRow(data);
+          const { _clientDocument, _clientName, _doctorCrm, _repEmail, ...orderData } = transformed;
+
+          // Resolve client
+          let clientId: string | undefined;
+          let clientName = _clientName;
+          if (_clientDocument) {
+            try {
+              const q = query(
+                collection(firestore, 'clients'),
+                where('document', '==', _clientDocument),
+              );
+              const snap = await getDocs(q);
+              if (!snap.empty) {
+                clientId = snap.docs[0].id;
+                const c = snap.docs[0].data();
+                clientName = c.fullName || clientName;
+              }
+            } catch { /* ignore — will import without link */ }
+          }
+
+          // Resolve doctor
+          let doctorId: string | undefined;
+          let doctorName = '';
+          let doctorCrm = _doctorCrm;
+          if (_doctorCrm) {
+            try {
+              const q = query(
+                collection(firestore, 'doctors'),
+                where('crm', '==', _doctorCrm),
+              );
+              const snap = await getDocs(q);
+              if (!snap.empty) {
+                doctorId = snap.docs[0].id;
+                const d = snap.docs[0].data();
+                doctorName = d.fullName || d.firstName || '';
+                doctorCrm = d.crm || _doctorCrm;
+              }
+            } catch { /* ignore */ }
+          }
+
+          // Resolve rep
+          let repId: string | undefined;
+          let repName = '';
+          if (_repEmail) {
+            try {
+              const q = query(
+                collection(firestore, 'users'),
+                where('email', '==', _repEmail),
+              );
+              const snap = await getDocs(q);
+              if (!snap.empty) {
+                repId = snap.docs[0].id;
+                repName = snap.docs[0].data().displayName || '';
+              }
+            } catch { /* ignore */ }
+          }
+
+          // Create main order doc
+          const orderRef = doc(collection(firestore, 'orders'));
+          batch.set(orderRef, {
+            ...orderData,
+            createdById: user!.uid,
+            createdAt: now,
+            updatedAt: now,
+            batchImportId: `csv-import-${Date.now()}`,
+          });
+
+          // Customer subcollection
+          if (clientName || clientId) {
+            const custRef = doc(collection(firestore, 'orders', orderRef.id, 'customer'));
+            batch.set(custRef, {
+              id: custRef.id,
+              name: clientName || _clientDocument,
+              document: _clientDocument,
+              orderId: orderRef.id,
+              userId: clientId || '',
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+
+          // Doctor subcollection
+          if (doctorName || doctorId) {
+            const docRef2 = doc(collection(firestore, 'orders', orderRef.id, 'doctor'));
+            batch.set(docRef2, {
+              id: docRef2.id,
+              name: doctorName,
+              crm: doctorCrm,
+              orderId: orderRef.id,
+              userId: doctorId || '',
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+
+          // Representative subcollection
+          if (repName || repId) {
+            const repRef = doc(collection(firestore, 'orders', orderRef.id, 'representative'));
+            batch.set(repRef, {
+              id: repRef.id,
+              name: repName,
+              code: '',
+              saleId: orderRef.id,
+              userId: repId || '',
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
         }
       }
 
@@ -211,9 +322,10 @@ export default function ImportarPage() {
             <TabsTrigger value="doctors">Médicos</TabsTrigger>
             <TabsTrigger value="clients">Clientes</TabsTrigger>
             <TabsTrigger value="users">Usuários</TabsTrigger>
+            <TabsTrigger value="orders">Pedidos</TabsTrigger>
           </TabsList>
 
-          {(['doctors', 'clients', 'users'] as const).map((type) => (
+          {(['doctors', 'clients', 'users', 'orders'] as const).map((type) => (
             <TabsContent key={type} value={type}>
               <Card>
                 <CardHeader>
