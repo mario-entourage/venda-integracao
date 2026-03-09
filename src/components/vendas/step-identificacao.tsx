@@ -17,7 +17,8 @@ import { SearchableSelect } from '@/components/shared/searchable-select';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
-import type { Client, Doctor, Product, User } from '@/types';
+import { computeFileHash } from '@/lib/file-hash';
+import type { Client, Doctor, Product, Representante } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 
@@ -98,6 +99,8 @@ export interface Step1State {
   doctorIsNew: boolean;
   prescriptionFile: File | null;
   prescriptionFileName: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection). */
+  prescriptionHash: string;
   /** Date printed on the prescription (YYYY-MM-DD), extracted by AI or null if not found. */
   prescriptionDate: string;
   products: ProductLine[];
@@ -144,6 +147,9 @@ export function StepIdentificacao({
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
   const [editingTotals, setEditingTotals] = useState<Record<string, string>>({});
+
+  // Local editing state for the all-product order total — same pattern as editingTotals.
+  const [editingOrderTotal, setEditingOrderTotal] = useState<string | null>(null);
 
   // Generate a blob URL for image preview (revoked on file change / unmount)
   const previewUrl = useMemo(() => {
@@ -233,6 +239,37 @@ export function StepIdentificacao({
     const listPriceBRL = line.listPrice * exchangeRate;
     const negotiatedPrice = parseFloat((listPriceBRL * (1 - clampedDiscount / 100)).toFixed(2));
     updateLine(lineId, { discount: clampedDiscount, negotiatedPrice });
+  };
+
+  /**
+   * When the user edits the ALL-PRODUCT order total, compute a single target
+   * discount percentage and apply it uniformly to every product line.
+   * This ensures all lines share the same Desc %.
+   */
+  const handleOrderTotalChange = (newTotal: number) => {
+    const activeLines = state.products.filter((p) => p.productId);
+    if (activeLines.length === 0) return;
+
+    // Total list price in BRL across all active lines
+    const totalListBRL = activeLines.reduce(
+      (s, p) => s + p.listPrice * exchangeRate * p.quantity, 0,
+    );
+
+    // Uniform discount %: clamp between 0–100
+    const targetDiscount = totalListBRL > 0
+      ? Math.max(0, Math.min(100, ((totalListBRL - Math.max(0, newTotal)) / totalListBRL) * 100))
+      : 0;
+
+    const updated = state.products.map((line) => {
+      if (!line.productId) return line;
+
+      const listPriceBRL = line.listPrice * exchangeRate;
+      const unitPriceBRL = parseFloat((listPriceBRL * (1 - targetDiscount / 100)).toFixed(2));
+
+      return { ...line, negotiatedPrice: unitPriceBRL, discount: targetDiscount };
+    });
+
+    onChange({ products: updated });
   };
 
   // ── AI extraction ─────────────────────────────────────────────────────────
@@ -330,8 +367,10 @@ export function StepIdentificacao({
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
     const file = acceptedFiles[0];
-    onChange({ prescriptionFile: file, prescriptionFileName: file.name });
+    onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
     runExtraction(file);
+    // Compute SHA-256 hash in parallel (for duplicate prescription detection)
+    computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
   }, [onChange, runExtraction]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -628,11 +667,29 @@ export function StepIdentificacao({
               </div>
             ))}
 
-            {/* Total */}
-            <div className="flex justify-end border-t pt-3 pr-2">
-              <p className="text-sm font-medium">
-                Total: <span className="text-base font-bold text-primary">{fmtBRL(orderTotal)}</span>
-              </p>
+            {/* Total — editable, distributes changes equally across product lines */}
+            <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
+              <label className="text-sm font-medium">Total:</label>
+              <div className="relative w-36">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
+                <Input
+                  type="number" min={0} step="0.01"
+                  value={
+                    editingOrderTotal !== null
+                      ? editingOrderTotal
+                      : parseFloat(orderTotal.toFixed(2))
+                  }
+                  onFocus={() => setEditingOrderTotal(orderTotal.toFixed(2))}
+                  onChange={(e) => setEditingOrderTotal(e.target.value)}
+                  onBlur={() => {
+                    if (editingOrderTotal !== null) {
+                      handleOrderTotalChange(parseFloat(editingOrderTotal) || 0);
+                    }
+                    setEditingOrderTotal(null);
+                  }}
+                  className="pl-8 text-right font-bold text-primary"
+                />
+              </div>
             </div>
           </div>
         )}

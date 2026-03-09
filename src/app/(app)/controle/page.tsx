@@ -686,14 +686,8 @@ export default function ControlePage() {
                       {/* CRM / CRO / RQE */}
                       <TableCell>{row.crmCroRqe}</TableCell>
 
-                      {/* Forma de envio — editable */}
-                      <TableCell>
-                        <InlineSelect
-                          value={row.formaEnvio}
-                          options={FORMA_ENVIO_OPTIONS}
-                          onChange={(v) => handleFieldChange(row.id, 'formaEnvio', v)}
-                        />
-                      </TableCell>
+                      {/* Forma de envio — read-only */}
+                      <TableCell>{row.formaEnvio || '—'}</TableCell>
 
                       {/* Endereço */}
                       <TableCell className="max-w-[250px] truncate" title={row.endereco}>
@@ -711,21 +705,11 @@ export default function ControlePage() {
                         />
                       </TableCell>
 
-                      {/* Data do Envio — editable */}
-                      <TableCell>
-                        <InlineDateInput
-                          value={row.dataEnvio}
-                          onChange={(v) => handleFieldChange(row.id, 'dataEnvio', v)}
-                        />
-                      </TableCell>
+                      {/* Data do Envio — read-only */}
+                      <TableCell>{row.dataEnvio || '—'}</TableCell>
 
-                      {/* Previsão de Entrega — editable */}
-                      <TableCell>
-                        <InlineDateInput
-                          value={row.previsaoEntrega}
-                          onChange={(v) => handleFieldChange(row.id, 'previsaoEntrega', v)}
-                        />
-                      </TableCell>
+                      {/* Previsão de Entrega — read-only */}
+                      <TableCell>{row.previsaoEntrega || '—'}</TableCell>
 
                       {/* Código de Rastreio — editable */}
                       <TableCell>

@@ -15,6 +15,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { OrderChecklist } from '@/components/controle/order-checklist';
+import { FileUpload } from '@/components/shared/file-upload';
+import { createDocumentRecord } from '@/services/documents.service';
 import { OrderStatus } from '@/types';
 import type { Order, OrderCustomer, OrderDoctor } from '@/types';
 
@@ -110,6 +112,30 @@ export default function OrderDetailPage() {
         setSubLoading(false);
       });
   }, [firestore, orderId]);
+
+  // ── document uploads ─────────────────────────────────────────────────────────
+  const [uploadedDocs, setUploadedDocs] = useState<{ name: string; url: string }[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleDocumentUploaded = async (result: { path: string; url: string; name: string }) => {
+    if (!firestore) return;
+    try {
+      await createDocumentRecord(firestore, {
+        type: 'general',
+        holder: customer?.name ?? '',
+        key: result.path,
+        number: '',
+        metadata: { fileName: result.name, url: result.url },
+        userId: customer?.userId ?? '',
+        orderId,
+      });
+      setUploadedDocs((prev) => [...prev, { name: result.name, url: result.url }]);
+      setUploadError(null);
+    } catch (err) {
+      console.error('[OrderDetailPage] doc record error:', err);
+      setUploadError('Arquivo enviado mas erro ao salvar registro.');
+    }
+  };
 
   // ── manual status override ───────────────────────────────────────────────────
   const [isUpdating, setIsUpdating] = useState(false);
@@ -258,6 +284,41 @@ export default function OrderDetailPage() {
 
       {/* ── Order Checklist ── */}
       <OrderChecklist order={order} />
+
+      {/* ── Document Upload ── */}
+      {!isCancelledOrder && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Enviar Documentos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Envie documentos adicionais para este pedido (receita, identidade, comprovante, etc).
+            </p>
+            <FileUpload
+              storagePath={`documents/${orderId}`}
+              onUploadComplete={handleDocumentUploaded}
+              onError={(err) => setUploadError(err.message)}
+            />
+            {uploadError && (
+              <p className="text-sm text-destructive">{uploadError}</p>
+            )}
+            {uploadedDocs.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Enviados nesta sessão:</p>
+                {uploadedDocs.map((doc, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs text-green-700">
+                    <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    {doc.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Products ── */}
       <Card>

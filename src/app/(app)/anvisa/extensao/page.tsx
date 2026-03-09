@@ -1,7 +1,8 @@
-import { Download, ExternalLink, Monitor, Chrome } from 'lucide-react';
+import { Download, ExternalLink, Monitor, Chrome, FileUp, ListChecks, ChevronDown } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export default function ExtensaoPage() {
   return (
@@ -15,10 +16,13 @@ export default function ExtensaoPage() {
         {/* Download card */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Download className="h-5 w-5" />
-              Baixar Extensão
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Download className="h-5 w-5" />
+                Baixar Extensão
+              </CardTitle>
+              <Badge variant="secondary">v1.3.0</Badge>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
@@ -95,13 +99,66 @@ export default function ExtensaoPage() {
             <div className="space-y-1">
               <p className="font-medium">2. Envie para a extensão</p>
               <p className="text-muted-foreground">
-                Na etapa de validação, clique em <strong>Enviar para extensão</strong> para transferir os dados extraídos.
+                Na etapa de validação, os dados extraídos e os arquivos são enviados automaticamente para a extensão.
               </p>
             </div>
             <div className="space-y-1">
               <p className="font-medium">3. Preencha o formulário</p>
               <p className="text-muted-foreground">
-                Acesse o portal ANVISA e a extensão preenche o formulário automaticamente com os dados recebidos.
+                Acesse o portal ANVISA e a extensão preenche campos de texto, dropdowns e faz upload dos documentos automaticamente.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Capabilities */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ListChecks className="h-5 w-5" />
+            Funcionalidades
+          </CardTitle>
+          <CardDescription>O que a extensão v1.3.0 faz no formulário ANVISA</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            {/* Text + select fields */}
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600">
+                  <ListChecks className="h-4 w-4" />
+                </div>
+                <p className="font-medium text-sm">Campos de Texto e Selects</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Preenche automaticamente 25+ campos incluindo dados do paciente, solicitante e prescritor. Suporta <strong>selects nativos</strong>, <strong>DS Gov (br-select)</strong> e <strong>react-select</strong>.
+              </p>
+            </div>
+
+            {/* Cascading dropdowns */}
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600">
+                  <ChevronDown className="h-4 w-4" />
+                </div>
+                <p className="font-medium text-sm">Dropdowns em Cascata</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Ao selecionar o <strong>Estado</strong>, a extensão aguarda o carregamento das cidades e seleciona o <strong>Município</strong> correto automaticamente.
+              </p>
+            </div>
+
+            {/* File uploads */}
+            <div className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-green-100 text-green-600">
+                  <FileUp className="h-4 w-4" />
+                </div>
+                <p className="font-medium text-sm">Upload de Documentos</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Faz upload automático dos documentos (RG, comprovante de residência, receita médica, procuração) diretamente do sistema para o formulário ANVISA.
               </p>
             </div>
           </div>

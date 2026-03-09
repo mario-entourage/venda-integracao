@@ -23,7 +23,7 @@ import {
 
 const orderNavItems = [
   { href: '/dashboard', icon: Home, label: 'Dashboard' },
-  { href: '/remessas', icon: Send, label: 'Vendas' },
+  { href: '/remessas', icon: Send, label: 'Nova Venda' },
   { href: '/pedidos', icon: Truck, label: 'Pedidos' },
   { href: '/controle', icon: ClipboardList, label: 'Controle' },
   { href: '/clientes', icon: Users, label: 'Clientes' },

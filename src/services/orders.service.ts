@@ -65,6 +65,8 @@ export interface CreateOrderData {
   type?: string;
   shippingAddress?: ShippingAddress;
   prescriptionDocId?: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection) */
+  prescriptionHash?: string;
   allowedPaymentMethods?: {
     creditCard: boolean;
     debitCard: boolean;
@@ -123,6 +125,7 @@ export async function createOrder(
     documentsComplete: false,
     tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',
+    prescriptionHash: orderData.prescriptionHash || '',
     ...(orderData.allowedPaymentMethods && { allowedPaymentMethods: orderData.allowedPaymentMethods }),
     createdById,
     updatedById: createdById,
@@ -291,6 +294,23 @@ export function getAnvisaEligibleOrdersQuery(db: Firestore): Query {
     where('prescriptionDocId', '!=', ''),
     orderBy('createdAt', 'desc'),
   );
+}
+
+/**
+ * Find an active (non-cancelled, non-soft-deleted) order that has the same
+ * prescription file hash.  Returns the first match, or `null` if none.
+ */
+export async function findActiveOrderByPrescriptionHash(
+  db: Firestore,
+  hash: string,
+): Promise<(Order & { id: string }) | null> {
+  if (!hash) return null;
+  const q = query(getOrdersRef(db), where('prescriptionHash', '==', hash));
+  const snap = await getDocs(q);
+  const match = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Order & { id: string }))
+    .find((o) => o.status !== 'cancelled' && !o.softDeleted);
+  return match ?? null;
 }
 
 // ---------------------------------------------------------------------------
