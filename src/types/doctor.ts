@@ -16,6 +16,8 @@ export interface Doctor {
   phone?: string;
   /** Celular do prescritor */
   mobilePhone?: string;
+  /** User ID of the assigned sales rep */
+  repUserId?: string;
   active: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;

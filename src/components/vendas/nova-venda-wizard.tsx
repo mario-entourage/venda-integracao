@@ -22,7 +22,7 @@ import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
-import type { Client, Doctor, Product, Representante } from '@/types';
+import type { Client, Doctor, Product, User } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -135,15 +135,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     () => (firestore ? getActiveProductsQuery(firestore) : null),
     [firestore],
   );
-  const representantesQ = useMemoFirebase(
-    () => (firestore ? getActiveRepresentantesQuery(firestore) : null),
+  const repUsersQ = useMemoFirebase(
+    () => (firestore ? getActiveRepUsersQuery(firestore) : null),
     [firestore],
   );
 
   const { data: clients } = useCollection<Client>(clientsQ);
   const { data: doctors } = useCollection<Doctor>(doctorsQ);
   const { data: products } = useCollection<Product>(productsQ);
-  const { data: representantes } = useCollection<Representante>(representantesQ);
+  const { data: repUsers } = useCollection<User>(repUsersQ);
 
   // ── wizard state ────────────────────────────────────────────────────────
   const [state, setState] = useState<WizardState>(INITIAL_STATE);
@@ -487,7 +487,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             exchangeRateLoading={state.exchangeRateLoading}
             exchangeRateError={state.exchangeRateError}
             exchangeRateDate={state.exchangeRateDate}
-            representantes={representantes ?? []}
+            repUsers={repUsers ?? []}
             selectedRepresentanteId={state.selectedRepresentanteId}
             onRepresentanteChange={handleRepresentanteChange}
           />
@@ -511,6 +511,9 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             frete={state.frete}
             onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
+            repDisplayName={state.selectedRepresentanteName !== 'Venda Direta' ? state.selectedRepresentanteName : undefined}
+            repUserId={state.selectedRepresentanteId || undefined}
+            repEmail={(repUsers ?? []).find((r) => r.id === state.selectedRepresentanteId)?.email}
           />
         )}
 

@@ -41,6 +41,7 @@ export async function createDoctor(
     city: data.city || '',
     phone: data.phone || '',
     mobilePhone: data.mobilePhone || '',
+    repUserId: data.repUserId || '',
     active: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -90,6 +91,18 @@ export function getActiveDoctorsQuery(db: Firestore): Query {
 /**
  * Fetch a single doctor document by ID. Returns `null` if not found.
  */
+/**
+ * Query for active doctors assigned to a specific sales rep.
+ */
+export function getDoctorsByRepQuery(db: Firestore, repUserId: string): Query {
+  return query(
+    getDoctorsRef(db),
+    where('repUserId', '==', repUserId),
+    where('active', '==', true),
+    orderBy('fullName', 'asc'),
+  );
+}
+
 export async function getDoctorById(
   db: Firestore,
   doctorId: string,

@@ -55,6 +55,7 @@
     "react-hook-form": "^7.71.2",
     "react-input-mask": "^2.0.4",
     "react-number-format": "^5.4.4",
+    "resend": "^6.9.3",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "zod": "^3.25.76"

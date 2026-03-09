@@ -33,10 +33,13 @@ export async function createPreregistration(
   db: Firestore,
   email: string,
   groupId: string,
+  options?: { isRepresentante?: boolean; displayName?: string },
 ): Promise<void> {
   await setDoc(getPreregistrationRef(db, email), {
     email,
     groupId,
+    ...(options?.isRepresentante ? { isRepresentante: true } : {}),
+    ...(options?.displayName ? { displayName: options.displayName } : {}),
     createdAt: serverTimestamp(),
   });
 }
@@ -84,15 +87,17 @@ export async function ensureUser(
   db: Firestore,
   uid: string,
   email: string,
+  displayName?: string,
 ): Promise<boolean> {
   const userRef = doc(db, 'users', uid);
   const snap = await getDoc(userRef);
 
   if (snap.exists()) {
-    // Always update lastLogin + backfill active flag on every sign-in
+    // Always update lastLogin + backfill active flag + displayName on every sign-in
     const data = snap.data();
     const updates: Record<string, unknown> = { lastLogin: serverTimestamp() };
     if (data.active !== true) updates.active = true;
+    if (displayName && !data.displayName) updates.displayName = displayName;
     await updateDoc(userRef, updates);
     return false;
   }
@@ -100,15 +105,16 @@ export async function ensureUser(
   // Check if there is a pre-registration for this email
   const preregRef = getPreregistrationRef(db, email);
   const preregSnap = await getDoc(preregRef);
-  const groupId = preregSnap.exists()
-    ? (preregSnap.data() as Preregistration).groupId
-    : 'user';
+  const preregData = preregSnap.exists() ? preregSnap.data() as Record<string, unknown> : null;
+  const groupId = preregData?.groupId as string || 'user';
 
   const batch = writeBatch(db);
 
   batch.set(userRef, {
     email,
     groupId,
+    displayName: displayName || '',
+    isRepresentante: preregData?.isRepresentante === true ? true : false,
     active: true,
     lastLogin: serverTimestamp(),
     createdAt: serverTimestamp(),
@@ -120,10 +126,10 @@ export async function ensureUser(
     batch.delete(preregRef);
   }
 
-  // Profile defaults to Caio's information.
+  // Profile
   const profileRef = doc(getUserProfilesRef(db, uid));
   batch.set(profileRef, {
-    fullName: 'Caio Santos Abreu',
+    fullName: displayName || email,
     email,
     sex: null,
     birthDate: null,
@@ -221,4 +227,34 @@ export async function getUserProfiles(
 ): Promise<(UserProfile & { id: string })[]> {
   const snap = await getDocs(getUserProfilesRef(db, userId));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as UserProfile & { id: string });
+}
+
+// ---------------------------------------------------------------------------
+// Sales rep (representante) queries
+// ---------------------------------------------------------------------------
+
+/**
+ * Return a Firestore query for all active users who are sales reps.
+ */
+export function getActiveRepUsersQuery(db: Firestore): Query {
+  return query(
+    getUsersRef(db),
+    where('isRepresentante', '==', true),
+    where('active', '==', true),
+    orderBy('displayName', 'asc'),
+  );
+}
+
+/**
+ * Get a user's display name by ID (for rep name lookups).
+ */
+export async function getUserDisplayName(
+  db: Firestore,
+  userId: string,
+): Promise<string> {
+  const user = await getUserById(db, userId);
+  if (user?.displayName) return user.displayName;
+  // Fallback to profile
+  const profiles = await getUserProfiles(db, userId);
+  return profiles[0]?.fullName || user?.email || '';
 }

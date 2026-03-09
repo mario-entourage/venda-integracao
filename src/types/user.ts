@@ -6,11 +6,26 @@ export interface User {
   email: string;
   /** Role: 'admin' | 'user' | 'view_only' */
   groupId: string;
+  /** Display name (from Google OAuth / profile). Used for rep name lookups. */
+  displayName?: string;
+  /** Whether this user is a sales rep (representante). */
+  isRepresentante?: boolean;
+  /** Legacy representante doc ID (for migration traceability). */
+  legacyRepresentanteId?: string;
+  /** Notification preferences (defaults to all true if absent). */
+  notificationPreferences?: NotificationPreferences;
   active: boolean;
   lastLogin?: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   removedAt?: Timestamp;
+}
+
+export interface NotificationPreferences {
+  emailOnPaymentLinkCreated: boolean;
+  emailOnPaymentReceived: boolean;
+  inAppOnPaymentLinkCreated: boolean;
+  inAppOnPaymentReceived: boolean;
 }
 
 export interface UserProfile {
