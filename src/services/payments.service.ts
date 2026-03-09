@@ -1,6 +1,6 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, serverTimestamp, Firestore, Timestamp,
+  collection, collectionGroup, doc, addDoc, updateDoc, getDoc, getDocs,
+  query, where, orderBy, serverTimestamp, Firestore, Timestamp, Query,
 } from 'firebase/firestore';
 import type { Payment, PaymentLink } from '@/types';
 
@@ -35,6 +35,11 @@ export async function createPaymentLink(
     paymentUrl: string;
     provider?: string;
     expiresAt?: Date;
+    /** Denormalized metadata for Pagamentos list */
+    doctorName?: string;
+    repName?: string;
+    invoice?: string;
+    clientName?: string;
   },
 ): Promise<string> {
   const linksRef = getOrderPaymentLinksRef(db, orderId);
@@ -50,6 +55,11 @@ export async function createPaymentLink(
     secretKey: '',
     orderId,
     expiresAt: data.expiresAt ? Timestamp.fromDate(data.expiresAt) : null,
+    // Denormalized metadata
+    ...(data.doctorName ? { doctorName: data.doctorName } : {}),
+    ...(data.repName ? { repName: data.repName } : {}),
+    ...(data.invoice ? { invoice: data.invoice } : {}),
+    ...(data.clientName ? { clientName: data.clientName } : {}),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -172,4 +182,18 @@ export async function getPaymentById(
   const snap = await getDoc(ref);
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as Payment & { id: string };
+}
+
+// ---------------------------------------------------------------------------
+// Collection group queries (for Pagamentos page)
+// ---------------------------------------------------------------------------
+
+/**
+ * Query all payment links across all orders, ordered by creation date (newest first).
+ */
+export function getAllPaymentLinksQuery(db: Firestore): Query {
+  return query(
+    collectionGroup(db, 'paymentLinks'),
+    orderBy('createdAt', 'desc'),
+  );
 }

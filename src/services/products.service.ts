@@ -182,6 +182,14 @@ export async function updateStockQuantity(
 }
 
 /**
+ * Return a reactive query for stock-products at a given stock location.
+ * Use with `useCollection<StockProduct>(query)` for real-time binding.
+ */
+export function getStockProductsByStockQuery(db: Firestore, stockId: string): Query {
+  return query(getStockProductsRef(db), where('stockId', '==', stockId));
+}
+
+/**
  * Fetch all stock-products for a given stock.
  */
 export async function getStockProductsByStock(

@@ -3,33 +3,28 @@
 import { useRouter } from 'next/navigation';
 import { useFirebase, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getActiveRepresentantesQuery } from '@/services/representantes.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { DataTable } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import type { ColumnDef } from '@/components/shared/data-table';
-import type { Representante } from '@/types/representante';
+import type { User } from '@/types/user';
 
-const columns: ColumnDef<Representante>[] = [
+const columns: ColumnDef<User>[] = [
   {
-    key: 'name',
+    key: 'displayName',
     header: 'Nome',
     sortable: true,
+    render: (item) => item.displayName || item.email,
   },
   {
     key: 'email',
     header: 'Email',
-    render: (item) => item.email || '—',
   },
   {
-    key: 'phone',
-    header: 'Telefone',
-    render: (item) => item.phone || '—',
-  },
-  {
-    key: 'estado',
-    header: 'Estado',
-    render: (item) => item.estado || '—',
+    key: 'groupId',
+    header: 'Grupo',
+    render: (item) => item.groupId === 'admin' ? 'Admin' : item.groupId === 'view_only' ? 'Somente Leitura' : 'Usuário',
   },
 ];
 
@@ -38,28 +33,28 @@ export default function RepresentantesPage() {
   const router = useRouter();
   const { isAdmin } = useFirebase();
 
-  const representantesQuery = useMemoFirebase(
-    () => getActiveRepresentantesQuery(db),
+  const repUsersQuery = useMemoFirebase(
+    () => getActiveRepUsersQuery(db),
     [db],
   );
 
-  const { data: representantes, isLoading } = useCollection<Representante>(representantesQuery);
+  const { data: repUsers, isLoading } = useCollection<User>(repUsersQuery);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Representantes"
-        action={isAdmin ? { label: 'Novo Representante', href: '/representantes/novo' } : undefined}
+        action={isAdmin ? { label: 'Novo Representante', href: '/usuarios' } : undefined}
       />
       <Card>
         <CardContent className="pt-6">
           <DataTable
             columns={columns}
-            data={representantes || []}
+            data={repUsers || []}
             loading={isLoading}
             searchPlaceholder="Buscar por nome, email..."
             emptyMessage="Nenhum representante cadastrado ainda."
-            onRowClick={(r) => router.push(`/representantes/${r.id}`)}
+            onRowClick={(r) => router.push(`/usuarios/${r.id}`)}
           />
         </CardContent>
       </Card>

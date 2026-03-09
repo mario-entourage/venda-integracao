@@ -10,6 +10,7 @@ import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { updateOrder } from '@/services/orders.service';
 import { generatePaymentLink } from '@/server/actions/payment.actions';
+import { notifyPaymentLinkCreated } from '@/services/notifications.service';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,12 @@ interface StepPagamentoProps {
     boleto: boolean;
     pix: boolean;
   };
+  /** Rep display name for invoice number generation */
+  repDisplayName?: string;
+  /** Rep user ID for notifications */
+  repUserId?: string;
+  /** Rep email for email notifications */
+  repEmail?: string;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -56,6 +63,9 @@ export function StepPagamento({
   frete,
   onFreteChange,
   allowedPaymentMethods,
+  repDisplayName,
+  repUserId,
+  repEmail,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -83,6 +93,7 @@ export function StepPagamento({
         clientEmail || undefined,
         clientDocument || undefined,
         allowedPaymentMethods,
+        repDisplayName || undefined,
       );
 
       if (result.error || !result.paymentUrl) {
@@ -104,6 +115,10 @@ export function StepPagamento({
           paymentUrl: result.paymentUrl,
           provider: 'globalpay',
           expiresAt,
+          // Denormalized metadata for Pagamentos page
+          repName: repDisplayName,
+          invoice: result.invoiceNumber,
+          clientName: clientName || undefined,
         });
 
         // Save frete to order document
@@ -113,6 +128,18 @@ export function StepPagamento({
       }
 
       onPaymentGenerated(result.paymentUrl, result.gpOrderId);
+
+      // Notify rep (fire-and-forget)
+      if (firestore && repUserId && repEmail) {
+        notifyPaymentLinkCreated(firestore, {
+          recipientUserId: repUserId,
+          recipientEmail: repEmail,
+          orderId,
+          invoiceNumber: result.invoiceNumber,
+          amount: totalWithFrete,
+          currency,
+        }).catch(() => {});
+      }
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Erro ao gerar link de pagamento.';

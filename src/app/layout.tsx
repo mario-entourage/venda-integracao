@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   title: 'ENTOURΛGE',
   description: 'Plataforma de gestao de vendas e importacao de produtos regulados.',
   icons: {
-    icon: '/favicon.png',
-    apple: '/favicon.png',
+    icon: '/favicon.ico',
+    apple: '/favicon.ico',
   },
 };
 

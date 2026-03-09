@@ -22,6 +22,7 @@ export interface PaymentLink {
   amount: number;
   referenceId?: string;
   paymentMethod?: string;
+  paymentUrl?: string;
   exchangeAtPayment?: number;
   feeForMerchant: boolean;
   installmentMerchant: number;
@@ -32,6 +33,11 @@ export interface PaymentLink {
   expiresAt: Timestamp;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  /** Denormalized fields for Pagamentos list view */
+  doctorName?: string;
+  repName?: string;
+  invoice?: string;
+  clientName?: string;
 }
 
 export interface ExchangeQuote {

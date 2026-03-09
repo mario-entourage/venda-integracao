@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { USER_GROUP_LABELS } from '@/lib/constants';
 import { UserGroupType } from '@/types/enums';
@@ -67,6 +68,7 @@ type UserRow = (User & { id: string; pending?: false }) | {
   groupId: string;
   active: boolean;
   pending: true;
+  isRepresentante?: boolean;
   lastLogin?: undefined;
   createdAt: unknown;
 };
@@ -120,6 +122,16 @@ export default function UsuariosPage() {
     } catch (err) {
       console.error(err);
       toast({ title: 'Erro ao atualizar status.', variant: 'destructive' });
+    }
+  };
+
+  const handleRepToggle = async (userId: string, isRep: boolean) => {
+    try {
+      await updateUser(db, userId, { isRepresentante: isRep });
+      toast({ title: isRep ? 'Marcado como representante.' : 'Representante removido.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao atualizar representante.', variant: 'destructive' });
     }
   };
 
@@ -181,6 +193,19 @@ export default function UsuariosPage() {
           </div>
         );
       },
+    },
+    {
+      key: 'isRepresentante',
+      header: 'Representante',
+      render: (item) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Switch
+            checked={!!item.isRepresentante}
+            onCheckedChange={(val) => handleRepToggle(item.id, val)}
+            disabled={!!item.pending}
+          />
+        </div>
+      ),
     },
     {
       key: 'lastLogin',

@@ -10,11 +10,13 @@ import {
   getUserRef,
   getUserProfilesRef,
   softDeleteUser,
+  updateUser,
 } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { USER_GROUP_LABELS } from '@/lib/constants';
@@ -117,6 +119,22 @@ export default function UsuarioDetailPage() {
               <Badge variant={userData.active ? 'default' : 'destructive'}>
                 {userData.active ? 'Ativo' : 'Inativo'}
               </Badge>
+            }
+          />
+          <InfoRow
+            label="Representante"
+            value={
+              <Switch
+                checked={!!userData.isRepresentante}
+                onCheckedChange={async (val) => {
+                  try {
+                    await updateUser(db, id, { isRepresentante: val });
+                    toast({ title: val ? 'Marcado como representante.' : 'Representante removido.' });
+                  } catch {
+                    toast({ title: 'Erro ao atualizar.', variant: 'destructive' });
+                  }
+                }}
+              />
             }
           />
         </CardContent>
