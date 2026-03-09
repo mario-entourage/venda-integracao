@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/firebase/admin';
 import { getGlobalPayTransaction } from '@/server/integrations/globalpay';
 
@@ -9,7 +9,7 @@ import { getGlobalPayTransaction } from '@/server/integrations/globalpay';
  * Manually trigger a GlobalPay status sync for all pending payment links.
  * Mirrors the scheduled Cloud Function (check-payments.ts) but callable on demand.
  *
- * - Queries all paymentLinks with status === 'created' from the last 48 hours
+ * - Queries ALL paymentLinks with status === 'created' (no time cutoff)
  * - For each, calls GlobalPay's query endpoint using the stored referenceId
  * - On approved: marks link as 'paid', creates payment record, advances order to 'paid'
  * - On terminal (expired/cancelled/failed): marks link accordingly
@@ -23,12 +23,11 @@ const TERMINAL_STATUSES = new Set(['expired', 'cancelled', 'failed', 'rejected']
 export async function POST() {
   try {
     const db = adminDb;
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000); // last 48 h
 
+    // No time cutoff — check ALL pending links regardless of age
     const pendingSnap = await db
       .collectionGroup('paymentLinks')
       .where('status', '==', 'created')
-      .where('createdAt', '>', Timestamp.fromDate(cutoff))
       .get();
 
     let checked = 0;
@@ -39,10 +38,22 @@ export async function POST() {
 
     for (const linkDoc of pendingSnap.docs) {
       const linkData = linkDoc.data();
-      const gpOrderId  = String(linkData.referenceId ?? '');
-      const orderId    = String(linkData.orderId ?? '');
+      const gpOrderId = String(linkData.referenceId ?? '');
 
-      if (!gpOrderId || !orderId) continue;
+      // Extract orderId from stored field, falling back to the document path
+      // Path structure: orders/{orderId}/paymentLinks/{linkId}
+      const orderId = String(
+        linkData.orderId ?? linkDoc.ref.parent?.parent?.id ?? '',
+      );
+
+      if (!gpOrderId) {
+        console.warn(`[payments/sync] Skipping ${linkDoc.id}: no referenceId`);
+        continue;
+      }
+      if (!orderId) {
+        console.warn(`[payments/sync] Skipping ${linkDoc.id}: cannot resolve orderId`);
+        continue;
+      }
       checked++;
 
       try {
