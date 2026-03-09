@@ -181,10 +181,104 @@ export function transformUserRow(row: Record<string, string>) {
 }
 
 // ---------------------------------------------------------------------------
+// Order
+// ---------------------------------------------------------------------------
+
+export const ORDER_COLUMNS = [
+  'clientDocument', 'clientName', 'currency', 'amount', 'discount',
+  'type', 'status', 'legalGuardian', 'doctorCrm', 'repEmail',
+  'meioPagamento', 'lead', 'formaEnvio', 'lote',
+  'codigoRastreio', 'dataEnvio', 'invoice',
+] as const;
+
+export const ORDER_COLUMN_LABELS: Record<string, string> = {
+  clientDocument: 'CPF / Doc. cliente',
+  clientName: 'Nome do cliente',
+  currency: 'Moeda (BRL/USD)',
+  amount: 'Valor total',
+  discount: 'Desconto',
+  type: 'Tipo (sale/return/exchange)',
+  status: 'Status',
+  legalGuardian: 'Responsável legal? (sim/não)',
+  doctorCrm: 'CRM do médico',
+  repEmail: 'Email do representante',
+  meioPagamento: 'Meio de pagamento',
+  lead: 'Lead (1ª compra / recompra)',
+  formaEnvio: 'Forma de envio',
+  lote: 'Lote',
+  codigoRastreio: 'Código de rastreio',
+  dataEnvio: 'Data de envio',
+  invoice: 'Invoice',
+};
+
+const VALID_ORDER_TYPES = new Set(['sale', 'return', 'exchange', 'venda', 'retorno', 'troca']);
+const VALID_ORDER_STATUSES = new Set([
+  'pending', 'processing', 'awaiting_documents', 'documents_complete',
+  'awaiting_payment', 'paid', 'shipped', 'delivered', 'cancelled',
+]);
+
+export function validateOrderRow(row: Record<string, string>): RowValidation {
+  const errors: string[] = [];
+  if (!row.clientDocument?.trim() && !row.clientName?.trim())
+    errors.push('CPF do cliente ou Nome é obrigatório');
+  if (!row.currency?.trim()) errors.push('Moeda é obrigatória');
+  const amount = parseNumber(row.amount);
+  if (!row.amount?.trim() || amount <= 0) errors.push('Valor deve ser maior que zero');
+  if (row.type?.trim() && !VALID_ORDER_TYPES.has(row.type.trim().toLowerCase()))
+    errors.push(`Tipo inválido: "${row.type}" (use sale, return ou exchange)`);
+  if (row.status?.trim() && !VALID_ORDER_STATUSES.has(row.status.trim().toLowerCase()))
+    errors.push(`Status inválido: "${row.status}"`);
+  if (row.dataEnvio?.trim() && !parseDate(row.dataEnvio))
+    errors.push('Data de envio inválida (use AAAA-MM-DD ou DD/MM/AAAA)');
+  return { valid: errors.length === 0, errors };
+}
+
+/** Map localised type aliases → canonical OrderType values */
+function normaliseOrderType(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  if (v === 'venda') return 'sale';
+  if (v === 'retorno') return 'return';
+  if (v === 'troca') return 'exchange';
+  return v || 'sale';
+}
+
+export function transformOrderRow(row: Record<string, string>) {
+  const legalGuardian = ['sim', 'yes', 'true', '1', 'x']
+    .includes((row.legalGuardian ?? '').trim().toLowerCase());
+  const dataEnvio = row.dataEnvio?.trim() ? parseDate(row.dataEnvio) : null;
+
+  return {
+    // Core order fields
+    currency:       (row.currency ?? 'BRL').trim().toUpperCase(),
+    amount:         parseNumber(row.amount),
+    discount:       parseNumber(row.discount),
+    type:           normaliseOrderType(row.type ?? 'sale'),
+    status:         (row.status ?? 'pending').trim().toLowerCase(),
+    legalGuardian,
+    invoice:        (row.invoice ?? '').trim(),
+    documentsComplete: false,
+
+    // Controle fields
+    meioPagamento:  (row.meioPagamento ?? '').trim(),
+    lead:           (row.lead ?? '').trim(),
+    formaEnvio:     (row.formaEnvio ?? '').trim(),
+    lote:           (row.lote ?? '').trim(),
+    codigoRastreio: (row.codigoRastreio ?? '').trim(),
+    dataEnvio:      dataEnvio ? dataEnvio.toISOString().split('T')[0] : '',
+
+    // Lookup keys — used in the import page to resolve references
+    _clientDocument: (row.clientDocument ?? '').trim(),
+    _clientName:     (row.clientName ?? '').trim(),
+    _doctorCrm:      (row.doctorCrm ?? '').trim(),
+    _repEmail:       (row.repEmail ?? '').trim().toLowerCase(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Entity type config
 // ---------------------------------------------------------------------------
 
-export type ImportEntityType = 'doctors' | 'clients' | 'users';
+export type ImportEntityType = 'doctors' | 'clients' | 'users' | 'orders';
 
 export const ENTITY_CONFIG: Record<ImportEntityType, {
   label: string;
@@ -209,5 +303,11 @@ export const ENTITY_CONFIG: Record<ImportEntityType, {
     columns: USER_COLUMNS,
     columnLabels: USER_COLUMN_LABELS,
     validate: validateUserRow,
+  },
+  orders: {
+    label: 'Pedidos',
+    columns: ORDER_COLUMNS,
+    columnLabels: ORDER_COLUMN_LABELS,
+    validate: validateOrderRow,
   },
 };
