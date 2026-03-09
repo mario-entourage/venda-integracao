@@ -10,6 +10,13 @@ import {
   Form, FormField, FormItem, FormLabel, FormControl, FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { getActiveRepUsersQuery } from '@/services/users.service';
+import type { User } from '@/types';
 
 interface DoctorFormProps {
   onSubmit: (data: DoctorFormValues) => void | Promise<void>;
@@ -26,10 +33,14 @@ export function DoctorForm({
   submitLabel = 'Salvar Medico',
   compact = false,
 }: DoctorFormProps) {
+  const db = useFirestore();
   const form = useForm<DoctorFormValues>({
     resolver: zodResolver(doctorSchema),
     defaultValues: defaultValues || {},
   });
+
+  const repUsersQuery = useMemoFirebase(() => getActiveRepUsersQuery(db), [db]);
+  const { data: repUsers } = useCollection<User>(repUsersQuery);
 
   const fields = (
     <div className="space-y-4">
@@ -95,6 +106,29 @@ export function DoctorForm({
           </FormControl><FormMessage /></FormItem>
         )} />
       </div>
+
+      {/* Rep association */}
+      <FormField control={form.control} name="repUserId" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Representante Responsável <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+          <Select value={field.value ?? ''} onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
+            <FormControl>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um representante" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {(repUsers ?? []).map((rep) => (
+                <SelectItem key={rep.id} value={rep.id}>
+                  {rep.displayName || rep.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      )} />
     </div>
   );
 
