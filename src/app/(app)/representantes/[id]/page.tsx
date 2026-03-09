@@ -3,27 +3,16 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { query, where, orderBy } from 'firebase/firestore';
 import { useFirebase, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { useCollection } from '@/firebase';
-import {
-  getRepresentanteRef,
-  updateRepresentante,
-  softDeleteRepresentante,
-} from '@/services/representantes.service';
-import { getUsersRef } from '@/services/users.service';
+import { getUserRef, updateUser } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
-import { SearchableSelect } from '@/components/shared/searchable-select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import type { Representante } from '@/types/representante';
-import type { User } from '@/types';
+import type { User } from '@/types/user';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -41,36 +30,13 @@ export default function RepresentanteDetailPage() {
   const { toast } = useToast();
   const { isAdmin } = useFirebase();
 
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [removing, setRemoving] = useState(false);
 
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '',
-    estado: '',
-    userId: '',
-  });
-
-  // ── Fetch active users for optional linking ──
-  const usersQ = useMemoFirebase(
-    () => db ? query(getUsersRef(db), where('active', '==', true), orderBy('email', 'asc')) : null,
-    [db],
-  );
-  const { data: users } = useCollection<User>(usersQ);
-
-  const userOptions = (users ?? []).map((u) => ({
-    value: u.id,
-    label: u.email,
-    sublabel: u.groupId === 'admin' ? 'Admin' : undefined,
-  }));
-
-  const representanteRef = useMemoFirebase(
-    () => getRepresentanteRef(db, id),
+  const userRef = useMemoFirebase(
+    () => getUserRef(db, id),
     [db, id],
   );
-  const { data: representante, isLoading } = useDoc<Representante>(representanteRef);
+  const { data: user, isLoading } = useDoc<User>(userRef);
 
   if (isLoading) {
     return (
@@ -87,7 +53,7 @@ export default function RepresentanteDetailPage() {
     );
   }
 
-  if (!representante) {
+  if (!user) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-2">
         <p className="text-lg font-semibold">Representante não encontrado</p>
@@ -98,179 +64,44 @@ export default function RepresentanteDetailPage() {
     );
   }
 
-  const handleStartEdit = () => {
-    setForm({
-      name: representante.name,
-      email: representante.email || '',
-      phone: representante.phone || '',
-      estado: representante.estado || '',
-      userId: representante.userId || '',
-    });
-    setEditing(true);
-  };
-
-  const handleChange = (field: keyof typeof form) => (
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => setForm((prev) => ({ ...prev, [field]: e.target.value }));
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) {
-      toast({ title: 'Nome é obrigatório.', variant: 'destructive' });
-      return;
-    }
-    setSaving(true);
+  const handleRemoveRep = async () => {
+    setRemoving(true);
     try {
-      await updateRepresentante(db, id, {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        estado: form.estado.trim(),
-        userId: form.userId || '',
-      });
-      toast({ title: 'Representante atualizado com sucesso.' });
-      setEditing(false);
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Erro ao atualizar representante.', variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeactivate = async () => {
-    setDeleting(true);
-    try {
-      await softDeleteRepresentante(db, id);
-      toast({ title: 'Representante desativado.' });
+      await updateUser(db, id, { isRepresentante: false });
+      toast({ title: 'Representante removido.' });
       router.push('/representantes');
     } catch (err) {
       console.error(err);
-      toast({ title: 'Erro ao desativar representante.', variant: 'destructive' });
-      setDeleting(false);
+      toast({ title: 'Erro ao remover representante.', variant: 'destructive' });
+      setRemoving(false);
     }
   };
 
-  if (editing) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-            ← Cancelar
-          </Button>
-          <PageHeader title={`Editar: ${representante.name}`} />
-        </div>
-
-        <form onSubmit={handleSave}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Dados do Representante</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={form.name}
-                    onChange={handleChange('name')}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={form.email}
-                    onChange={handleChange('email')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Telefone</Label>
-                  <Input
-                    id="phone"
-                    value={form.phone}
-                    onChange={handleChange('phone')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="estado">Estado</Label>
-                  <Input
-                    id="estado"
-                    placeholder="Ex: SP"
-                    value={form.estado}
-                    onChange={handleChange('estado')}
-                  />
-                </div>
-              </div>
-
-              {/* ── Vincular a Usuário (opcional) ── */}
-              <div className="space-y-2">
-                <Label>Vincular a um Usuário (opcional)</Label>
-                <SearchableSelect
-                  options={userOptions}
-                  value={form.userId}
-                  onChange={(v) => setForm((prev) => ({ ...prev, userId: v }))}
-                  placeholder="Nenhum — sem vínculo"
-                  searchPlaceholder="Buscar por email…"
-                  emptyMessage="Nenhum usuário encontrado"
-                />
-                {form.userId && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-muted-foreground"
-                    onClick={() => setForm((prev) => ({ ...prev, userId: '' }))}
-                  >
-                    Remover vínculo
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <Button type="submit" disabled={saving}>
-                  {saving ? 'Salvando…' : 'Salvar Alterações'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <PageHeader title={representante.name} />
+      <PageHeader title={user.displayName || user.email} />
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle>Dados do Representante</CardTitle>
-          {isAdmin && (
-            <Button variant="outline" size="sm" onClick={handleStartEdit}>
-              Editar
-            </Button>
-          )}
         </CardHeader>
         <CardContent>
-          <InfoRow label="Email" value={representante.email} />
-          <InfoRow label="Telefone" value={representante.phone} />
-          <InfoRow label="Estado" value={representante.estado} />
+          <InfoRow label="Nome" value={user.displayName} />
+          <InfoRow label="Email" value={user.email} />
+          <InfoRow label="Grupo" value={user.groupId === 'admin' ? 'Admin' : user.groupId === 'view_only' ? 'Somente Leitura' : 'Usuário'} />
           <InfoRow
-            label="Usuário Vinculado"
+            label="Representante"
             value={
-              representante.userId
-                ? (users ?? []).find((u) => u.id === representante.userId)?.email ?? representante.userId
-                : null
+              <Badge variant={user.isRepresentante ? 'default' : 'secondary'}>
+                {user.isRepresentante ? 'Sim' : 'Não'}
+              </Badge>
             }
           />
           <InfoRow
             label="Status"
             value={
-              <Badge variant={representante.active ? 'default' : 'destructive'}>
-                {representante.active ? 'Ativo' : 'Inativo'}
+              <Badge variant={user.active ? 'default' : 'destructive'}>
+                {user.active ? 'Ativo' : 'Inativo'}
               </Badge>
             }
           />
@@ -281,9 +112,9 @@ export default function RepresentanteDetailPage() {
         <Button variant="outline" asChild>
           <Link href="/representantes">← Voltar</Link>
         </Button>
-        {isAdmin && representante.active && (
-          <Button variant="destructive" onClick={handleDeactivate} disabled={deleting}>
-            {deleting ? 'Desativando...' : 'Desativar Representante'}
+        {isAdmin && user.isRepresentante && (
+          <Button variant="destructive" onClick={handleRemoveRep} disabled={removing}>
+            {removing ? 'Removendo…' : 'Remover como Representante'}
           </Button>
         )}
       </div>

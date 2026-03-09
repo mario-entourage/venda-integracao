@@ -40,6 +40,7 @@ export const doctorSchema = z.object({
   city: z.string().optional(),
   phone: z.string().optional(),
   mobilePhone: z.string().optional(),
+  repUserId: z.string().optional(),
 });
 export type DoctorFormValues = z.infer<typeof doctorSchema>;
 

@@ -40,7 +40,7 @@ const documentNavItems = [
 ];
 
 const paymentNavItems = [
-  { href: '/checkout', icon: CreditCard, label: 'Pagamentos' },
+  { href: '/pagamentos', icon: CreditCard, label: 'Pagamentos' },
 ];
 
 const anvisaNavItems = [
@@ -52,6 +52,7 @@ const anvisaNavItems = [
 
 const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
+  { href: '/importar', icon: Upload, label: 'Importar CSV' },
 ];
 
 const helpNavItems = [

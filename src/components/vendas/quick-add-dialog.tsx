@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { collection, addDoc, serverTimestamp, Timestamp, query, where, orderBy } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
@@ -16,14 +16,9 @@ import { Button } from '@/components/ui/button';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
-import { SearchableSelect } from '@/components/shared/searchable-select';
-import { useFirebase, useMemoFirebase } from '@/firebase/provider';
-import { useCollection } from '@/firebase';
-import { getUsersRef } from '@/services/users.service';
+import { useFirebase } from '@/firebase/provider';
 import { useToast } from '@/hooks/use-toast';
 import { BRAZILIAN_STATES } from '@/lib/constants';
-import type { User } from '@/types';
-
 // ─── Client dialog ─────────────────────────────────────────────────────────────
 
 const clientQuickSchema = z.object({
@@ -281,167 +276,6 @@ export function QuickAddClientDialog({
                 </FormItem>
               )} />
             </div>
-
-            <Button type="submit" disabled={isSubmitting} className="w-full">
-              {isSubmitting ? 'Cadastrando…' : 'Cadastrar e Selecionar'}
-            </Button>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Representante dialog ───────────────────────────────────────────────────────
-
-const representanteQuickSchema = z.object({
-  name: z.string().min(1, 'Nome obrigatório'),
-  email: z.string().email('E-mail inválido').optional().or(z.literal('')),
-  phone: z.string().optional(),
-  estado: z.string().optional(),
-  userId: z.string().optional(),
-});
-
-type RepresentanteQuickValues = z.infer<typeof representanteQuickSchema>;
-
-interface QuickAddRepresentanteDialogProps {
-  open: boolean;
-  onClose: () => void;
-  onCreated: (representanteId: string, name: string) => void;
-}
-
-export function QuickAddRepresentanteDialog({
-  open,
-  onClose,
-  onCreated,
-}: QuickAddRepresentanteDialogProps) {
-  const { firestore } = useFirebase();
-  const { toast } = useToast();
-
-  // ── Fetch active users for optional linking ──
-  const usersQ = useMemoFirebase(
-    () => firestore ? query(getUsersRef(firestore), where('active', '==', true), orderBy('email', 'asc')) : null,
-    [firestore],
-  );
-  const { data: users } = useCollection<User>(usersQ);
-
-  const userOptions = useMemo(
-    () => (users ?? []).map((u) => ({
-      value: u.id,
-      label: u.email,
-      sublabel: u.groupId === 'admin' ? 'Admin' : undefined,
-    })),
-    [users],
-  );
-
-  const form = useForm<RepresentanteQuickValues>({
-    resolver: zodResolver(representanteQuickSchema),
-    defaultValues: { name: '', email: '', phone: '', estado: '', userId: '' },
-  });
-
-  useEffect(() => {
-    if (open) form.reset({ name: '', email: '', phone: '', estado: '', userId: '' });
-  }, [open, form]);
-
-  const { formState: { isSubmitting } } = form;
-
-  const handleSubmit = async (data: RepresentanteQuickValues) => {
-    if (!firestore) return;
-    try {
-      const ref = await addDoc(collection(firestore, 'representantes'), {
-        name: data.name.trim(),
-        email: data.email ?? '',
-        phone: data.phone ?? '',
-        estado: data.estado ?? '',
-        userId: data.userId ?? '',
-        active: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      toast({ title: 'Representante cadastrado com sucesso.' });
-      onCreated(ref.id, data.name.trim());
-      form.reset();
-      onClose();
-    } catch (err) {
-      console.error('Error creating representante:', err);
-      toast({ title: 'Erro ao cadastrar representante.', variant: 'destructive' });
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) { form.reset(); onClose(); } }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Cadastrar Novo Representante</DialogTitle>
-          <DialogDescription>
-            Preencha os dados do representante. Campos marcados com * são obrigatórios.
-          </DialogDescription>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 pt-1">
-            <FormField control={form.control} name="name" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Nome <span className="text-red-500">*</span></FormLabel>
-                <FormControl><Input placeholder="João Silva" {...field} value={field.value ?? ''} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField control={form.control} name="email" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl><Input type="email" placeholder="rep@exemplo.com" {...field} value={field.value ?? ''} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="phone" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Telefone</FormLabel>
-                  <FormControl><Input placeholder="(11) 99999-9999" {...field} value={field.value ?? ''} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-            </div>
-
-            <FormField control={form.control} name="estado" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Estado</FormLabel>
-                <FormControl><Input placeholder="Ex: SP" {...field} value={field.value ?? ''} /></FormControl>
-                <FormMessage />
-              </FormItem>
-            )} />
-
-            {/* ── Vincular a Usuário (opcional) ── */}
-            <FormField control={form.control} name="userId" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Vincular a um Usuário (opcional)</FormLabel>
-                <FormControl>
-                  <SearchableSelect
-                    options={userOptions}
-                    value={field.value ?? ''}
-                    onChange={field.onChange}
-                    placeholder="Nenhum — sem vínculo"
-                    searchPlaceholder="Buscar por email…"
-                    emptyMessage="Nenhum usuário encontrado"
-                  />
-                </FormControl>
-                {field.value && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-xs text-muted-foreground h-auto p-0"
-                    onClick={() => field.onChange('')}
-                  >
-                    Remover vínculo
-                  </Button>
-                )}
-                <FormMessage />
-              </FormItem>
-            )} />
 
             <Button type="submit" disabled={isSubmitting} className="w-full">
               {isSubmitting ? 'Cadastrando…' : 'Cadastrar e Selecionar'}

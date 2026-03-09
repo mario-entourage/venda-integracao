@@ -5,7 +5,7 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getUserRef, getUserProfilesRef } from '@/services/users.service';
+import { getUserRef, getUserProfilesRef, updateUser } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,9 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { BRAZILIAN_STATES } from '@/lib/constants';
-import type { User, UserProfile } from '@/types';
+import type { User, UserProfile, NotificationPreferences } from '@/types';
 
 export default function PerfilPage() {
   const { user, isUserLoading } = useUser();
@@ -321,6 +322,100 @@ export default function PerfilPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Notification preferences — only shown for reps */}
+      {userData?.isRepresentante && (
+        <NotificationPreferencesCard
+          db={db}
+          userId={user?.uid ?? ''}
+          prefs={userData?.notificationPreferences}
+        />
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Notification Preferences Card (for reps)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_PREFS: NotificationPreferences = {
+  emailOnPaymentLinkCreated: true,
+  emailOnPaymentReceived: true,
+  inAppOnPaymentLinkCreated: true,
+  inAppOnPaymentReceived: true,
+};
+
+function NotificationPreferencesCard({
+  db,
+  userId,
+  prefs,
+}: {
+  db: ReturnType<typeof useFirestore>;
+  userId: string;
+  prefs?: NotificationPreferences;
+}) {
+  const { toast } = useToast();
+  const current = prefs ?? DEFAULT_PREFS;
+
+  const toggle = async (key: keyof NotificationPreferences) => {
+    if (!userId) return;
+    try {
+      await updateUser(db, userId, {
+        notificationPreferences: { ...current, [key]: !current[key] },
+      });
+    } catch {
+      toast({ title: 'Erro ao salvar preferência.', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Preferências de Notificação</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Link de pagamento criado (in-app)</p>
+            <p className="text-xs text-muted-foreground">Receber notificação no sistema</p>
+          </div>
+          <Switch
+            checked={current.inAppOnPaymentLinkCreated}
+            onCheckedChange={() => toggle('inAppOnPaymentLinkCreated')}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Link de pagamento criado (email)</p>
+            <p className="text-xs text-muted-foreground">Receber notificação por email</p>
+          </div>
+          <Switch
+            checked={current.emailOnPaymentLinkCreated}
+            onCheckedChange={() => toggle('emailOnPaymentLinkCreated')}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Pagamento recebido (in-app)</p>
+            <p className="text-xs text-muted-foreground">Receber notificação no sistema</p>
+          </div>
+          <Switch
+            checked={current.inAppOnPaymentReceived}
+            onCheckedChange={() => toggle('inAppOnPaymentReceived')}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Pagamento recebido (email)</p>
+            <p className="text-xs text-muted-foreground">Receber notificação por email</p>
+          </div>
+          <Switch
+            checked={current.emailOnPaymentReceived}
+            onCheckedChange={() => toggle('emailOnPaymentReceived')}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
