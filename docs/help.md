@@ -33,19 +33,28 @@ VENDAS (menu: Vendas | rota: /remessas)
   Modulo central para gerenciamento de vendas.
 
   Lista de Vendas:
-  - Tabela com colunas: Pedido, Cliente, Medico, Status,
-    Valor, Data.
+  - Cada linha mostra: Invoice (ou ID curto), Data, Cliente,
+    CPF, Representante, Cidade/Estado, Status, Valor.
+  - Invoice no formato ETGANS##### exibido quando presente.
   - Filtros por status e busca por nome do cliente.
   - Botao "Nova Venda" inicia o wizard de criacao.
   - Botao "Retomar" aparece para pedidos incompletos.
 
-  Nova Venda - Wizard de 3 Etapas:
+  Nova Venda - Wizard de 5 Etapas:
 
     Etapa 1 - Identificacao
     - Selecionar ou cadastrar Paciente (cliente).
     - Selecionar ou cadastrar Medico prescritor.
-    - Upload opcional da receita medica.
-    - Selecionar produtos e quantidades.
+    - Upload da receita medica com extracao automatica por IA.
+      Ao arrastar um arquivo sobre a pagina, a area de Receita
+      fica verde ("Solte a receita aqui!") e a area de Produtos
+      fica vermelha ("Nao solte aqui") para guiar o usuario.
+    - Selecionar produtos e quantidades (dropdown expandido
+      mostra nomes completos dos produtos).
+    - Selecionar Representante (dropdown com usuarios marcados
+      como Sales Rep). Padrao: "Venda Direta".
+    - Definir frete (custo de envio incluido no link GlobalPay).
+    - Escolher metodos de pagamento permitidos.
     - Escolher opcao ANVISA:
       * Regular - importacao com autorizacao padrao
       * Excepcional - importacao excepcional
@@ -53,13 +62,11 @@ VENDAS (menu: Vendas | rota: /remessas)
 
     Etapa 2 - Pagamento
     - Gera link de pagamento GlobalPay para o paciente.
+    - Numero de invoice gerado automaticamente no formato
+      ETGANS##### (ex: ETGAMB00042) quando ha representante.
     - Opcao de gerar Procuracao ZapSign (SIM/NAO, padrao NAO).
       Se SIM, a procuracao sera gerada automaticamente na
       etapa seguinte, apos receber todos os documentos.
-    - Selecionar Representante (opcional, padrao "Venda Direta").
-    - Possibilidade de cadastrar novo Representante inline
-      clicando em "+ Novo Representante" (nome, codigo,
-      email, telefone, vinculo opcional com usuario).
 
     Etapa 3 - Documentacao
     - Upload de documentos obrigatorios via drag-and-drop
@@ -112,8 +119,13 @@ CONTROLE (menu: Controle | rota: /controle)
   Visao detalhada de cada pedido.
   - Todas as informacoes: cliente, medico, produtos,
     documentos, pagamento, envio.
-  - Status de cada documento (pendente, recebido, aprovado).
-  - Historico de atualizacoes do pedido.
+  - Seletor de representante (dropdown para alterar rep).
+  - Upload de documentos com seletor de tipo (Receita,
+    Identidade, Comprovante, Laudo, NF, ANVISA, Geral).
+  - Sincronizar pagamento com GlobalPay.
+  - Marcar como pago, procuracao assinada, comprovante
+    assinado manualmente.
+  - Cancelar venda ou continuar wizard.
 
 CLIENTES (menu: Clientes | rota: /clientes)
   Cadastro e gerenciamento de pacientes.
@@ -194,25 +206,37 @@ DOCUMENTOS
 
 DOCUMENTOS (menu: Documentos | rota: /documentos)
   Repositorio central de todos os documentos do sistema.
-  - Lista com filtros por tipo e status.
-  - Visualizacao detalhada de cada documento.
+  - Colunas: Tipo, Pedido, Medico, Enviado por, Data.
+  - Clique em um documento para ver todos os metadados.
+  - Upload de documentos na pagina do pedido com seletor
+    de tipo (Receita, Identidade, Comprovante de Endereco,
+    Laudo Medico, Nota Fiscal, Autorizacao ANVISA, Geral).
   - Tipos suportados:
+    * Prescricao (Receita Medica)
     * Identidade (RG/CNH)
-    * Comprovante de Residencia
-    * Receita Medica
+    * Comprovante de Endereco
+    * Laudo Medico
+    * Nota Fiscal
     * Autorizacao ANVISA
+    * Geral (para documentos nao classificados)
   - Formatos aceitos: PDF, JPG, JPEG, PNG.
 
 ----------------------------------------------------------
 FINANCEIRO
 ----------------------------------------------------------
 
-PAGAMENTOS (menu: Pagamentos | rota: /checkout)
+PAGAMENTOS (menu: Pagamentos | rota: /pagamentos)
   Gerenciamento de pagamentos e links de cobranca.
   - Integracao com GlobalPay para geracao de links.
+  - Colunas: Invoice, Valor, Cliente, Representante, Data,
+    Status.
+  - Invoice no formato ETGANS##### (ex: ETGAMB00042).
+  - Busca por invoice, representante, cliente ou medico.
+  - Filtro por status: Pendente, Pago, Expirado, Cancelado,
+    Falhou.
+  - Cards de resumo: Total, Pendentes, Pagos.
+  - Botao "Sincronizar GlobalPay" para atualizar status.
   - Moedas: BRL, USD.
-  - Status de pagamento: pendente, pago, cancelado.
-  - Historico de transacoes.
   - Webhook automatico atualiza status ao receber
     confirmacao do GlobalPay.
 
@@ -487,7 +511,7 @@ PROTOCOLO DE COMUNICACAO (TECNICO)
 ==========================================================
 ENTOURAGE LAB - REQUISITOS DE NEGOCIO
 ==========================================================
-Atualizado em: 03/03/2026
+Atualizado em: 10/03/2026
 Reflete o estado atual do aplicativo e banco de dados.
 
 ----------------------------------------------------------
@@ -636,7 +660,8 @@ STATUS E FLUXOS
 
   Tipos de Documento (DocumentType):
     prescription, identity, medical_report,
-    proof_of_address, invoice, anvisa_authorization
+    proof_of_address, invoice, anvisa_authorization,
+    general
 
   Status de Pagamento:
     created -> pending -> processing -> approved
@@ -650,7 +675,7 @@ STATUS E FLUXOS
     pending -> sent -> delivered (returned)
 
   Metodos de Envio:
-    TRISTAR, LOCAL_MAIL (Correios), MOTOBOY
+    TRISTAR, LOCAL_MAIL (Correios), MOTOBOY, OTHER
 
 ----------------------------------------------------------
 INTEGRACOES EXTERNAS

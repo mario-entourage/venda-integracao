@@ -1,7 +1,7 @@
 # QA Document
 
 > Entourage Lab — Sales Integration Platform
-> Last updated: 2026-03-06
+> Last updated: 2026-03-10
 
 ---
 
@@ -278,19 +278,29 @@ Use this checklist when deploying significant changes. Each item should be verif
 
 ### 5.1 Nova Venda (New Sale) Flow
 
-- [ ] **Step 0 — Identification**: Select existing client, doctor, representative. Add 2+ products with custom pricing. Upload a prescription image. Verify PTAX rate appears.
-- [ ] **Step 1 — Payment**: Generate GlobalPay payment link. Set frete. Toggle payment methods. Verify link URL is generated and displayed.
-- [ ] **Step 2 — Documents**: Create Comprovante de Vinculo with Signatario details. Verify ZapSign document is created and signing URL appears.
-- [ ] **Step 3 — Send to Client**: Verify summary shows all created links. Click WhatsApp share button — verify message contains payment link + signing URL.
+- [ ] **Step 0 — Identification**: Select existing client, doctor, representative (from users with `isRepresentante` flag). Add 2+ products with custom pricing. Upload a prescription image. Verify PTAX rate appears.
+- [ ] **Step 0 — Rep dropdown**: Verify that users tagged as sales reps appear in the Representante dropdown. Verify "Venda Direta" option is available.
+- [ ] **Step 0 — Product dropdown width**: Open the Produto dropdown. Verify full product names are visible without truncation (dropdown expands beyond the trigger width up to 400px).
+- [ ] **Step 0 — Drag feedback (green zone)**: Drag a file from the desktop onto the page. Verify the Receita drop zone highlights green with pulsing border, shows a green upload icon, and displays "Solte a receita aqui!" text.
+- [ ] **Step 0 — Drag feedback (red zone)**: While dragging a file, verify the Produtos area shows a red overlay with a prohibition icon and "Não solte aqui" / "Arraste para a área de Receita acima" text. Verify the overlay disappears when the drag ends.
+- [ ] **Step 0 — Drag feedback (drop)**: Drop the file on the green Receita zone. Verify the file is accepted and the prescription preview appears. Verify both overlays disappear.
+- [ ] **Step 1 — Shipping**: Set frete value. Select shipping method. Enter shipping address. Verify data persists to Step 4 summary.
+- [ ] **Step 2 — Payment**: Generate GlobalPay payment link. Toggle payment methods. Verify link URL is generated with invoice in `ETGANS#####` format.
+- [ ] **Step 3 — Documents**: Create Comprovante de Vinculo with Signatario details. Verify ZapSign document is created and signing URL appears.
+- [ ] **Step 4 — Send to Client**: Verify summary shows all created links. Click WhatsApp share button — verify message contains payment link + signing URL.
 - [ ] **Atomic creation**: After completing the wizard, verify the order appears in Pedidos with all subcollections populated (customer, doctor, representative, products, paymentLinks).
+- [ ] **Invoice format**: Verify the generated invoice number follows `ETGANS#####` format (e.g., `ETGAMB00042`) where N and S are the rep's initials.
 
 ### 5.2 Pedidos (Order Tracker)
 
+- [ ] **Invoice display**: Verify orders with invoice numbers show the `ETGANS#####` format prominently. Orders without invoices show a truncated order ID.
+- [ ] **Rep display**: Verify each order row shows the assigned representative's name.
 - [ ] **Status filters**: Switch between "Todos em andamento", "Pronto p/ envio", and individual statuses. Verify correct orders appear.
 - [ ] **Granular badges**: Verify unpaid orders show "Falta Pagamento", orders missing ANVISA show "Falta ANVISA", exempt orders do NOT show "Falta ANVISA".
 - [ ] **Ready-to-ship highlight**: Create an order that meets all 5 conditions (paid, docs complete, ANVISA exempt/concluded, ZapSign signed). Verify it has emerald accent styling.
 - [ ] **Pre-ship actions**: For orders NOT ready to ship, verify Mark as Paid, upload Documents, ANVISA, and ZapSign buttons appear.
 - [ ] **Shipping actions**: For orders that ARE ready to ship, verify TriStar, Correios, and Motoboy shipping buttons appear.
+- [ ] **Regenerate payment link**: Click "Regenerar link" on an order. Verify a new invoice number is generated and the payment link is recreated.
 - [ ] **Batch operations** (admin only): Select multiple orders, click delete. Verify confirmation dialog appears and soft-deletes work.
 
 ### 5.3 Payment Webhook
@@ -303,6 +313,12 @@ Use this checklist when deploying significant changes. Each item should be verif
 
 - [ ] **End-to-end signing**: Open the signing URL as if you were the client. Complete the signature. Verify the order's `zapsignCvStatus` changes to "signed" in the platform.
 - [ ] **Idempotency**: Trigger the webhook twice. Verify no errors and the status remains "signed".
+
+### 5.4a Controle (Order Detail)
+
+- [ ] **Rep selector**: Verify the order detail page shows a representative dropdown. Change the rep and verify the change persists.
+- [ ] **Document type selector**: Upload a document from the order detail page. Verify the document type dropdown appears with options (Receita, Identidade, Laudo Médico, Comprovante de Endereço, Nota Fiscal, Autorização ANVISA, Outro/Geral). Select a type and upload — verify the document is tagged with the selected type.
+- [ ] **Document type display**: Navigate to Documentos page. Verify uploaded documents show the correct type badge (not "Geral" when a specific type was selected).
 
 ### 5.5 ANVISA Workflow
 

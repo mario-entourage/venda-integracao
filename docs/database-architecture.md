@@ -24,7 +24,7 @@ The central collection. Each document represents one sales order. The document I
 | Field | Type | Description |
 |---|---|---|
 | `status` | `OrderStatus` enum | pending, processing, awaiting_documents, documents_complete, awaiting_payment, paid, shipped, delivered, cancelled |
-| `invoice` | string | Invoice / payment reference number |
+| `invoice` | string | Invoice number in ETGANS##### format (e.g. ETGAMB00042). Generated when a sales rep is assigned. |
 | `type` | `OrderType` enum | sale, return, exchange |
 | `currency` | string | BRL or USD |
 | `amount` | number | Total order value |
@@ -74,7 +74,7 @@ The central collection. Each document represents one sales order. The document I
 | `shipping` | 0–1 doc | Address, tracking, carrier info, TriStar fields |
 | `documentRequests` | N docs | Required document checklist: type, status, `receivedAt` |
 | `payments` | N docs | Payment records: provider, amount, status |
-| `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey` |
+| `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey`, denormalized `repName`, `invoice`, `clientName`, `doctorName` |
 
 **Indexes:** `(status ASC, createdAt DESC)`, `(createdById ASC, createdAt DESC)`
 
@@ -179,12 +179,14 @@ Document ID = Firebase Auth UID.
 | Field | Type | Description |
 |---|---|---|
 | `email` | string | Google OAuth email |
+| `displayName` | string? | Display name (from Google OAuth / profile) |
 | `groupId` | string | Role: admin, user, view_only |
+| `isRepresentante` | boolean? | Whether this user is a sales rep |
 | `active` | boolean | Account active |
 | `lastLogin` | Timestamp | Last sign-in |
 | `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
 
-**Index:** `(active ASC, email ASC)`
+**Indexes:** `(active ASC, email ASC)`, `(isRepresentante ASC, active ASC, displayName ASC)`, `(groupId ASC, active ASC, createdAt DESC)`
 
 ---
 
@@ -235,6 +237,7 @@ Each request has subcollections: `pacienteDocuments`, `procuracaoDocuments`, `co
 
 | Collection | Purpose |
 |---|---|
+| `counters/invoice` | Atomic counter for invoice number generation (`nextValue` field) |
 | `roles_admin/{userId}` | Dynamic admin role assignments |
 | `exchangeQuotes/{quoteId}` | Currency exchange quotes for payments |
 | `paymentMethods/{paymentMethodId}` | Payment method configurations and installment plans |
