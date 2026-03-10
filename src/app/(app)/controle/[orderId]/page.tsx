@@ -3,22 +3,32 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { getDocs } from 'firebase/firestore';
-import { useFirebase, useMemoFirebase, useDoc } from '@/firebase';
+import { useFirebase, useMemoFirebase, useDoc, useCollection } from '@/firebase';
 import {
   getOrderRef,
   getOrderSubcollectionRef,
   updateOrderStatus,
   updateOrder,
+  updateOrderRepresentative,
 } from '@/services/orders.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord } from '@/services/documents.service';
 import { OrderStatus } from '@/types';
-import type { Order, OrderCustomer, OrderDoctor } from '@/types';
+import type { Order, OrderCustomer, OrderDoctor, OrderRepresentative } from '@/types';
+import type { User } from '@/types';
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -74,9 +84,17 @@ export default function OrderDetailPage() {
   );
   const { data: order, isLoading: orderLoading } = useDoc<Order>(orderRef);
 
+  // Rep users (for the representative selector)
+  const repUsersQ = useMemoFirebase(
+    () => (firestore ? getActiveRepUsersQuery(firestore) : null),
+    [firestore],
+  );
+  const { data: repUsers } = useCollection<User>(repUsersQ);
+
   // Subcollection data (loaded once on mount)
   const [customer, setCustomer] = useState<OrderCustomer | null>(null);
   const [doctor, setDoctor] = useState<OrderDoctor | null>(null);
+  const [representative, setRepresentative] = useState<OrderRepresentative | null>(null);
   const [products, setProducts] = useState<StoredProduct[]>([]);
   const [subLoading, setSubLoading] = useState(true);
 
@@ -86,9 +104,10 @@ export default function OrderDetailPage() {
     Promise.all([
       getDocs(getOrderSubcollectionRef(firestore, orderId, 'customer')),
       getDocs(getOrderSubcollectionRef(firestore, orderId, 'doctor')),
+      getDocs(getOrderSubcollectionRef(firestore, orderId, 'representative')),
       getDocs(getOrderSubcollectionRef(firestore, orderId, 'products')),
     ])
-      .then(([customerSnap, doctorSnap, productsSnap]) => {
+      .then(([customerSnap, doctorSnap, repSnap, productsSnap]) => {
         setCustomer(
           customerSnap.docs[0]
             ? ({ id: customerSnap.docs[0].id, ...customerSnap.docs[0].data() } as unknown as OrderCustomer)
@@ -97,6 +116,11 @@ export default function OrderDetailPage() {
         setDoctor(
           doctorSnap.docs[0]
             ? ({ id: doctorSnap.docs[0].id, ...doctorSnap.docs[0].data() } as unknown as OrderDoctor)
+            : null,
+        );
+        setRepresentative(
+          repSnap.docs[0]
+            ? ({ id: repSnap.docs[0].id, ...repSnap.docs[0].data() } as unknown as OrderRepresentative)
             : null,
         );
         setProducts(
@@ -160,6 +184,33 @@ export default function OrderDetailPage() {
       setSyncMsg('Erro ao sincronizar. Tente novamente.');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // ── representative change ───────────────────────────────────────────────────
+  const [repSaving, setRepSaving] = useState(false);
+
+  const handleRepChange = async (userId: string) => {
+    if (!firestore) return;
+    const isNone = userId === '__none__';
+    const repUser = isNone ? null : (repUsers ?? []).find((r) => r.id === userId);
+    const name = repUser?.displayName || repUser?.email || 'Venda Direta';
+
+    setRepSaving(true);
+    try {
+      await updateOrderRepresentative(firestore, orderId, {
+        name: isNone ? 'Venda Direta' : name,
+        userId: isNone ? '' : userId,
+      });
+      setRepresentative((prev) =>
+        prev
+          ? { ...prev, name: isNone ? 'Venda Direta' : name, userId: isNone ? '' : userId }
+          : null,
+      );
+    } catch (err) {
+      console.error('[OrderDetailPage] rep update error:', err);
+    } finally {
+      setRepSaving(false);
     }
   };
 
@@ -303,6 +354,31 @@ export default function OrderDetailPage() {
             <div>
               <dt className="text-muted-foreground">Data do Pedido</dt>
               <dd className="mt-0.5 font-medium">{fmtDate(order.createdAt)}</dd>
+            </div>
+            <div className="col-span-2 sm:col-span-3">
+              <dt className="text-muted-foreground mb-1">Representante</dt>
+              <dd>
+                <Select
+                  value={representative?.userId || '__none__'}
+                  onValueChange={handleRepChange}
+                  disabled={repSaving || isCancelledOrder}
+                >
+                  <SelectTrigger className="w-full max-w-xs">
+                    <SelectValue placeholder="Selecionar representante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
+                    {(repUsers ?? []).map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.displayName || rep.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {repSaving && (
+                  <p className="text-xs text-muted-foreground mt-1">Salvando…</p>
+                )}
+              </dd>
             </div>
           </dl>
         </CardContent>
