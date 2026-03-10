@@ -4,7 +4,7 @@ import type { OrderShipping } from './order';
 // Shipping method identifiers
 // ---------------------------------------------------------------------------
 
-export type ShippingMethod = 'TRISTAR' | 'LOCAL_MAIL' | 'MOTOBOY';
+export type ShippingMethod = 'TRISTAR' | 'LOCAL_MAIL' | 'MOTOBOY' | 'OTHER';
 
 export type ManualShippingStatus = 'pending' | 'sent' | 'received' | 'lost' | 'suspended' | 'returned';
 

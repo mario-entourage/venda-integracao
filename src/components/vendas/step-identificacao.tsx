@@ -130,6 +130,9 @@ interface StepIdentificacaoProps {
   selectedRepresentanteId: string;
   /** Called when the user picks a rep */
   onRepresentanteChange: (id: string, name: string) => void;
+  /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
+  frete: number;
+  onFreteChange: (value: number) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -138,11 +141,15 @@ export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
+  frete, onFreteChange,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
+
+  // Local editing state for the frete (shipping cost) input field
+  const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
 
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
@@ -755,6 +762,29 @@ export function StepIdentificacao({
             </label>
           ))}
         </div>
+      </div>
+
+      {/* ── Frete ───────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
+        <p className="text-xs text-muted-foreground">
+          Custo de envio incluído no valor do link de pagamento GlobalPay.
+        </p>
+        <Input
+          id="frete-input"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="0,00"
+          value={freteInput}
+          onChange={(e) => setFreteInput(e.target.value)}
+          onBlur={() => {
+            const parsed = parseFloat(freteInput) || 0;
+            onFreteChange(Math.max(0, parsed));
+            setFreteInput(parsed > 0 ? String(parsed) : '');
+          }}
+          className="max-w-[200px]"
+        />
       </div>
 
       </div>

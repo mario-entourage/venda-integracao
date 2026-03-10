@@ -137,6 +137,32 @@ export default function OrderDetailPage() {
     }
   };
 
+  // ── GlobalPay payment sync ───────────────────────────────────────────────────
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  const handlePaymentSync = async () => {
+    setIsSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch('/api/payments/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      });
+      const data = await res.json() as { checked?: number; approved?: number; errors?: number };
+      setSyncMsg(
+        data.approved
+          ? `✓ Pagamento confirmado!`
+          : `${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`,
+      );
+    } catch {
+      setSyncMsg('Erro ao sincronizar. Tente novamente.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // ── manual status override ───────────────────────────────────────────────────
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
@@ -384,6 +410,33 @@ export default function OrderDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── GlobalPay payment sync ── */}
+      {canMarkAsPaid && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sincronizar Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Consulta o GlobalPay e atualiza o status do link de pagamento pendente.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isSyncing}
+                onClick={handlePaymentSync}
+              >
+                {isSyncing ? 'Sincronizando…' : '↻ Sincronizar GlobalPay'}
+              </Button>
+              {syncMsg && (
+                <p className="text-sm text-muted-foreground">{syncMsg}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Manual payment status override ── */}
       {showPaymentActions && (

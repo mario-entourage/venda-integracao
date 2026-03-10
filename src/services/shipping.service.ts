@@ -8,8 +8,9 @@ import {
   Firestore,
   query,
   limit,
+  where,
 } from 'firebase/firestore';
-import type { ShippingRecord } from '@/types/shipping';
+import type { ShippingRecord, ShippingMethod } from '@/types/shipping';
 import { getOrderSubcollectionRef, updateOrderStatus } from './orders.service';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,63 @@ export async function getShippingRecord(
 
   const docSnap = snap.docs[0];
   return { id: docSnap.id, ...docSnap.data() } as ShippingRecord & { id: string };
+}
+
+/**
+ * Deduct inventory for all products in an order from the correct stock location.
+ *
+ * - TRISTAR  → stock whose name contains "miami"
+ * - LOCAL_MAIL → stock whose name contains "brasil"
+ * - OTHER / MOTOBOY → no deduction
+ */
+export async function deductInventoryOnShip(
+  db: Firestore,
+  orderId: string,
+  method: ShippingMethod,
+): Promise<void> {
+  if (method === 'OTHER' || method === 'MOTOBOY') return;
+
+  const nameFragment = method === 'TRISTAR' ? 'miami' : 'brasil';
+
+  // Find the target stock by name pattern
+  const stocksSnap = await getDocs(collection(db, 'stocks'));
+  const targetStock = stocksSnap.docs.find((d) =>
+    String(d.data().name ?? '').toLowerCase().includes(nameFragment),
+  );
+  if (!targetStock) {
+    console.warn(`[deductInventoryOnShip] No stock found for method=${method} (looking for "${nameFragment}")`);
+    return;
+  }
+  const stockId = targetStock.id;
+
+  // Get order products
+  const productsSnap = await getDocs(getOrderSubcollectionRef(db, orderId, 'products'));
+  if (productsSnap.empty) return;
+
+  for (const productDoc of productsSnap.docs) {
+    const { stockProductId, quantity } = productDoc.data() as { stockProductId?: string; quantity?: number };
+    if (!stockProductId || !quantity) continue;
+
+    // Find the stockProducts document that links this product to the stock
+    const spSnap = await getDocs(
+      query(
+        collection(db, 'stockProducts'),
+        where('stockId', '==', stockId),
+        where('productId', '==', stockProductId),
+        limit(1),
+      ),
+    );
+    if (spSnap.empty) {
+      console.warn(`[deductInventoryOnShip] stockProduct not found: stockId=${stockId} productId=${stockProductId}`);
+      continue;
+    }
+
+    const spDoc = spSnap.docs[0];
+    const currentQty: number = (spDoc.data().quantity as number) ?? 0;
+    const newQty = Math.max(0, currentQty - quantity);
+
+    await updateDoc(spDoc.ref, { quantity: newQty, updatedAt: serverTimestamp() });
+  }
 }
 
 /**

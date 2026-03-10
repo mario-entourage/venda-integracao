@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { saveShippingRecord } from '@/services/shipping.service';
+import { saveShippingRecord, deductInventoryOnShip } from '@/services/shipping.service';
+import { notifyShipmentTracking } from '@/services/notifications.service';
 import { SHIPPING_API_ROUTES } from '@/lib/shipping-routes';
 import {
   TRISTAR_ITEM_TYPES,
@@ -26,6 +27,10 @@ interface TriStarDialogProps {
   customer: OrderCustomer | null;
   shippingAddress: ShippingAddress | null;
   onSuccess: () => void;
+  /** If provided, sends the rep an in-app + email notification with the tracking code */
+  repUserId?: string;
+  repEmail?: string;
+  repInvoice?: string;
 }
 
 function AddressBlock({ address }: { address: ShippingAddress | null }) {
@@ -53,6 +58,9 @@ export function TriStarDialog({
   customer,
   shippingAddress,
   onSuccess,
+  repUserId,
+  repEmail,
+  repInvoice,
 }: TriStarDialogProps) {
   const { firestore, user } = useFirebase();
 
@@ -144,6 +152,24 @@ export function TriStarDialog({
         },
         user.uid,
       );
+
+      // Deduct inventory from Miami stock (fire-and-forget)
+      if (firestore) {
+        deductInventoryOnShip(firestore, order.id, 'TRISTAR').catch((e) =>
+          console.warn('[TriStarDialog] inventory deduction failed:', e),
+        );
+      }
+
+      // Notify rep with tracking code (fire-and-forget)
+      if (firestore && repUserId && repEmail && responseData.tracking_code) {
+        notifyShipmentTracking(firestore, {
+          recipientUserId: repUserId,
+          recipientEmail: repEmail,
+          orderId: order.id,
+          trackingCode: responseData.tracking_code,
+          invoiceNumber: repInvoice,
+        }).catch(() => {});
+      }
 
       setSuccessData(responseData);
       onSuccess();
