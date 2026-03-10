@@ -141,6 +141,7 @@ export function PedidoRow({
   // ── load subcollections ─────────────────────────────────────────────────
   const [customer, setCustomer] = useState<OrderCustomer | null>(null);
   const [shippingAddress, setShippingAddress] = useState<ShippingAddress | null>(null);
+  const [repName, setRepName] = useState<string | null>(null);
   const [loadingSub, setLoadingSub] = useState(true);
 
   useEffect(() => {
@@ -150,13 +151,16 @@ export function PedidoRow({
     async function load() {
       if (!firestore) return;
       try {
-        const [customers, shippings] = await Promise.all([
+        const [customers, shippings, reps] = await Promise.all([
           getOrderSubcollectionDocs<OrderCustomer>(firestore, order.id, 'customer'),
           getOrderSubcollectionDocs<OrderShipping>(firestore, order.id, 'shipping'),
+          getOrderSubcollectionDocs<{ name?: string }>(firestore, order.id, 'representative'),
         ]);
         if (cancelled) return;
         setCustomer(customers[0] ?? null);
         setShippingAddress(shippings[0]?.address ?? null);
+        const rn = reps[0]?.name;
+        setRepName(rn && rn !== 'Venda Direta' ? rn : null);
       } catch (err) {
         console.error('[PedidoRow] subcollection load:', err);
       } finally {
@@ -332,6 +336,14 @@ export function PedidoRow({
               <p className="text-xs text-muted-foreground">CPF: {customer.document}</p>
             )}
           </div>
+
+          {/* Sales rep */}
+          {repName && (
+            <div className="hidden sm:block w-28 flex-shrink-0">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Rep</p>
+              <p className="text-xs font-medium truncate">{repName}</p>
+            </div>
+          )}
 
           {/* Location (if available) */}
           {locationStr && (
