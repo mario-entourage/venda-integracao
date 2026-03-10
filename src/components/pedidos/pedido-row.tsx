@@ -248,6 +248,8 @@ export function PedidoRow({
         undefined,
         undefined,
         customer?.document || undefined,
+        undefined, // allowedPaymentMethods
+        repName || undefined, // repDisplayName → generates invoice number
       );
       if (result.error || !result.paymentUrl) {
         throw new Error(result.error || 'Link nao retornado.');
@@ -257,10 +259,13 @@ export function PedidoRow({
       await createPaymentLink(firestore, order.id, {
         amount: order.amount,
         currency: order.currency || 'USD',
-        referenceId: result.gpOrderId,
+        referenceId: result.invoiceNumber || result.gpOrderId,
         paymentUrl: result.paymentUrl,
         provider: 'globalpay',
         expiresAt,
+        repName: repName || undefined,
+        invoice: result.invoiceNumber,
+        clientName: customer?.name || undefined,
       });
       try {
         await navigator.clipboard.writeText(result.paymentUrl);
@@ -319,11 +324,17 @@ export function PedidoRow({
           className="flex flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded min-w-0 sm:gap-3"
           onClick={() => router.push(`/controle/${order.id}`)}
         >
-          {/* ID + date */}
-          <div className="flex-shrink-0 w-[4.5rem]">
-            <p className="text-xs font-mono text-muted-foreground">
-              #{order.id.slice(0, 8).toUpperCase()}
-            </p>
+          {/* ID + invoice + date */}
+          <div className="flex-shrink-0 w-[5.5rem]">
+            {order.invoice ? (
+              <p className="text-xs font-mono font-semibold text-primary truncate">
+                {order.invoice}
+              </p>
+            ) : (
+              <p className="text-xs font-mono text-muted-foreground">
+                #{order.id.slice(0, 8).toUpperCase()}
+              </p>
+            )}
             <p className="text-[10px] text-muted-foreground">
               {fmtDate(order.createdAt as unknown as { seconds: number })}
             </p>

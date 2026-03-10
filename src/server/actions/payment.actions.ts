@@ -11,7 +11,7 @@ import { adminDb } from '@/firebase/admin';
  * The amount is passed in the currency's major unit (e.g. 199.99 USD).
  *
  * When repDisplayName is provided, a programmatic invoice number is generated
- * in the format "ETGA NS #####" and used as the referenceId instead of the orderId.
+ * in the format "ETGANS#####" and used as the referenceId instead of the orderId.
  */
 export async function generatePaymentLink(
   orderId: string,
