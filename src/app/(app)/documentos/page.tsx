@@ -21,6 +21,7 @@ const DOC_TYPE_LABELS: Record<string, { label: string; className: string }> = {
   proof_of_address:     { label: 'Comprov. de Endereço',  className: 'border-amber-300 text-amber-700 bg-amber-50' },
   invoice:              { label: 'Nota Fiscal',            className: 'border-orange-300 text-orange-700 bg-orange-50' },
   anvisa_authorization: { label: 'Autorização ANVISA',    className: 'border-green-300 text-green-700 bg-green-50' },
+  general:              { label: 'Geral',                  className: 'border-gray-300 text-gray-600 bg-gray-50' },
 };
 
 function docTypeConfig(type: string) {
