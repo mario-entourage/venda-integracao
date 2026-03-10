@@ -21,8 +21,6 @@ import { computeFileHash } from '@/lib/file-hash';
 import type { Client, Doctor, Product, Representante, User } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
-import type { OcrProductRow } from '@/lib/parse-ocr-prescription';
-import type { OcrVisionResult } from '@/app/api/ai/ocr-vision/route';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -149,8 +147,6 @@ export function StepIdentificacao({
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
-  const [ocrRows, setOcrRows] = useState<OcrProductRow[]>([]);
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
 
   // Local editing state for the frete (shipping cost) input field
   const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
@@ -375,43 +371,14 @@ export function StepIdentificacao({
     }
   }, [clients, doctors, allProducts, onChange, exchangeRate]);
 
-  const runOcrVision = useCallback(async (file: File) => {
-    setIsOcrLoading(true);
-    setOcrRows([]);
-    try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve((reader.result as string).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch('/api/ai/ocr-vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
-      });
-      const data: OcrVisionResult = await res.json();
-      setOcrRows(data.rows ?? []);
-    } catch {
-      setOcrRows([{
-        id: crypto.randomUUID(),
-        stockProductId: 'n/a', productName: 'n/a',
-        quantity: 'n/a', price: 'n/a', discount: 'n/a',
-      }]);
-    } finally {
-      setIsOcrLoading(false);
-    }
-  }, []);
-
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
     const file = acceptedFiles[0];
     onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
     runExtraction(file);
-    runOcrVision(file);
     // Compute SHA-256 hash in parallel (for duplicate prescription detection)
     computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
-  }, [onChange, runExtraction, runOcrVision]);
+  }, [onChange, runExtraction]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -615,45 +582,8 @@ export function StepIdentificacao({
         )}
 
         {state.products.length === 0 ? (
-          /* ── OCR results table — always visible, populated after Vision OCR ── */
-          <div className="rounded-lg border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/40 border-b">
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Product ID</th>
-                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Product Name</th>
-                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Quantity</th>
-                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Price</th>
-                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Discount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {isOcrLoading ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                      <span className="inline-flex items-center gap-2">
-                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                        Processando OCR…
-                      </span>
-                    </td>
-                  </tr>
-                ) : ocrRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">—</td>
-                  </tr>
-                ) : (
-                  ocrRows.map((row) => (
-                    <tr key={row.id} className="border-b last:border-0 hover:bg-muted/20">
-                      <td className="px-3 py-2 font-mono text-muted-foreground">{row.stockProductId}</td>
-                      <td className="px-3 py-2">{row.productName}</td>
-                      <td className="px-3 py-2 text-center">{row.quantity}</td>
-                      <td className="px-3 py-2 text-center text-muted-foreground">{row.price}</td>
-                      <td className="px-3 py-2 text-center text-muted-foreground">{row.discount}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center">
+            <p className="text-sm text-muted-foreground">Envie uma receita acima para preencher os produtos automaticamente.</p>
           </div>
         ) : (
           <div className="space-y-2">
