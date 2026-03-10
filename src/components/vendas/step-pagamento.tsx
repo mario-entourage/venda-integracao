@@ -4,8 +4,7 @@ import React, { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-// Select removed — representante moved to Step 0
+// Select, Label removed — frete/representante moved to Step 0
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { updateOrder } from '@/services/orders.service';
@@ -28,9 +27,8 @@ interface StepPagamentoProps {
   paymentUrl: string;
   gpOrderId: string;
   onPaymentGenerated: (paymentUrl: string, gpOrderId: string) => void;
-  /** Frete cost (BRL) */
+  /** Frete cost (BRL) — set in Step 0, read-only here */
   frete: number;
-  onFreteChange: (value: number) => void;
   /** Allowed payment methods from Step 0 (for display) */
   allowedPaymentMethods: {
     creditCard: boolean;
@@ -61,7 +59,6 @@ export function StepPagamento({
   gpOrderId,
   onPaymentGenerated,
   frete,
-  onFreteChange,
   allowedPaymentMethods,
   repDisplayName,
   repUserId,
@@ -72,7 +69,6 @@ export function StepPagamento({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
-  const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
   const hasGenerated = useRef(false);
 
   const totalWithFrete = orderAmount + frete;
@@ -213,28 +209,6 @@ export function StepPagamento({
           </div>
         </CardContent>
       </Card>
-
-      {/* Frete input */}
-      <div className="space-y-2">
-        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
-        <p className="text-xs text-muted-foreground">Deixe em branco ou 0 para não adicionar frete ao link de pagamento.</p>
-        <Input
-          id="frete-input"
-          type="number"
-          min={0}
-          step="0.01"
-          placeholder="0,00"
-          value={freteInput}
-          onChange={(e) => setFreteInput(e.target.value)}
-          onBlur={() => {
-            const parsed = parseFloat(freteInput) || 0;
-            onFreteChange(Math.max(0, parsed));
-            setFreteInput(parsed > 0 ? String(parsed) : '');
-          }}
-          disabled={!!paymentUrl}
-          className="max-w-[200px]"
-        />
-      </div>
 
       {/* Payment link section */}
       <div className="space-y-3">

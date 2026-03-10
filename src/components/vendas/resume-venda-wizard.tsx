@@ -177,7 +177,6 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             }}
             allowedPaymentMethods={{ creditCard: true, debitCard: true, boleto: true, pix: true }}
             frete={0}
-            onFreteChange={() => {}}
           />
         )}
 

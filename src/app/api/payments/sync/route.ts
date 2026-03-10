@@ -20,15 +20,25 @@ import { getGlobalPayTransaction } from '@/server/integrations/globalpay';
 const APPROVED_STATUSES = new Set(['approved', 'paid', 'completed', 'success']);
 const TERMINAL_STATUSES = new Set(['expired', 'cancelled', 'failed', 'rejected']);
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const db = adminDb;
+    const body = await request.json().catch(() => ({})) as { orderId?: string };
+    const targetOrderId = body.orderId ?? null;
 
-    // No time cutoff — check ALL pending links regardless of age
-    const pendingSnap = await db
-      .collectionGroup('paymentLinks')
-      .where('status', '==', 'created')
-      .get();
+    // When orderId is provided, only check that order's payment links.
+    // Otherwise check ALL pending links across every order (no time cutoff).
+    const pendingSnap = targetOrderId
+      ? await db
+          .collection('orders')
+          .doc(targetOrderId)
+          .collection('paymentLinks')
+          .where('status', '==', 'created')
+          .get()
+      : await db
+          .collectionGroup('paymentLinks')
+          .where('status', '==', 'created')
+          .get();
 
     let checked = 0;
     let approved = 0;

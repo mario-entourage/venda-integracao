@@ -11,7 +11,7 @@ import {
 export interface Notification {
   id: string;
   recipientUserId: string;
-  type: 'payment_link_created' | 'payment_received';
+  type: 'payment_link_created' | 'payment_received' | 'shipment_tracking';
   title: string;
   body: string;
   orderId: string;
@@ -101,6 +101,48 @@ export async function markAllNotificationsRead(
 // ---------------------------------------------------------------------------
 // Trigger helpers (client-side convenience)
 // ---------------------------------------------------------------------------
+
+/**
+ * Notify a rep that a TriStar shipment was created and include the tracking code.
+ */
+export async function notifyShipmentTracking(
+  db: Firestore,
+  opts: {
+    recipientUserId: string;
+    recipientEmail: string;
+    orderId: string;
+    trackingCode: string;
+    invoiceNumber?: string;
+  },
+): Promise<void> {
+  const ref = opts.invoiceNumber || opts.orderId.slice(0, 8).toUpperCase();
+  const title = 'Remessa criada — código de rastreio disponível';
+  const body = `Pedido ${ref} — Rastreio TriStar: ${opts.trackingCode}`;
+
+  await createNotification(db, {
+    recipientUserId: opts.recipientUserId,
+    type: 'shipment_tracking',
+    title,
+    body,
+    orderId: opts.orderId,
+    read: false,
+    emailSent: false,
+  });
+
+  try {
+    await fetch('/api/notifications/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: opts.recipientEmail,
+        subject: `${title} — Pedido ${ref}`,
+        html: `<p>Olá,</p><p>A remessa TriStar do pedido <strong>${ref}</strong> foi criada com sucesso.</p><p><strong>Código de rastreio:</strong> ${opts.trackingCode}</p><p>Acesse o sistema para baixar a etiqueta.</p>`,
+      }),
+    });
+  } catch {
+    // Email failure is non-fatal
+  }
+}
 
 /**
  * Create an in-app notification and optionally send an email for payment link creation.

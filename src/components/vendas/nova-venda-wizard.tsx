@@ -21,6 +21,7 @@ import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
 import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
+import { StepEnvio } from './step-envio';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
 import type { Client, Doctor, Product, User, Representante } from '@/types';
@@ -59,7 +60,7 @@ interface WizardState {
   // Comprovante de Vínculo — Signatário info
   cvSignatarioName: string;
   cvSignatarioCpf: string;
-  // Frete (entered in step 2 — Pagamento)
+  // Frete (entered in step 0 — Identificação; included in GlobalPay link amount)
   frete: number;
   // PTAX exchange rate (fetched once on mount)
   exchangeRate: number;
@@ -111,6 +112,7 @@ const STEPS = [
   { label: 'Pagamento', description: 'Gerar link GlobalPay' },
   { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
   { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
+  { label: 'Envio', description: 'Método de entrega' },
 ];
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -436,8 +438,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     if (isSubmitting) return false;
     if (currentStep === 0) return step1Valid && state.exchangeRate > 0;
     if (currentStep === 1) return state.paymentUrl !== '';
-    if (currentStep === 2) return true; // ZapSign step — always allow advance (optional)
-    return true; // step 3 — always allow finalize
+    if (currentStep === 2) return true; // ZapSign — always allow advance (optional)
+    return true; // steps 3 and 4 — always allow (skippable)
   })();
 
   // ── render ──────────────────────────────────────────────────────────────
@@ -491,6 +493,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             repUsers={repUsers ?? []}
             selectedRepresentanteId={state.selectedRepresentanteId}
             onRepresentanteChange={handleRepresentanteChange}
+            frete={state.frete}
+            onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
           />
         )}
 
@@ -510,7 +514,6 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
               setState((prev) => ({ ...prev, paymentUrl, gpOrderId }))
             }
             frete={state.frete}
-            onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
             repDisplayName={state.selectedRepresentanteName !== 'Venda Direta' ? state.selectedRepresentanteName : undefined}
             repUserId={state.selectedRepresentanteId || undefined}
@@ -541,6 +544,19 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             clientName={state.step1.clientName}
             clientPhone={state.step1.clientPhone}
             paymentUrl={state.paymentUrl}
+          />
+        )}
+
+        {currentStep === 4 && (
+          <StepEnvio
+            orderId={state.orderId}
+            orderAmount={state.orderAmount}
+            clientName={state.step1.clientName}
+            clientDocument={state.step1.clientDocument}
+            clientAddress={(clients ?? []).find((c) => c.id === state.step1.clientId)?.address}
+            repUserId={state.selectedRepresentanteId || undefined}
+            repEmail={(repUsers ?? []).find((r) => r.id === state.selectedRepresentanteId)?.email}
+            repInvoice={state.gpOrderId || undefined}
           />
         )}
       </StepWizard>
