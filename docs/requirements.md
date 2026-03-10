@@ -1,7 +1,7 @@
 # Entourage Lab — Sales Integration Platform
 
 > Comprehensive requirements document for developer handoff.
-> Last updated: 2026-03-06
+> Last updated: 2026-03-10
 
 ---
 
@@ -26,7 +26,7 @@ Entourage Lab is a Brazilian pharmaceutical company that imports cannabis-based 
 
 ### What the platform does
 
-1. **Creates sales orders** via a guided 4-step wizard (select patient/doctor/products, generate payment link, create e-signature documents, send everything to the client).
+1. **Creates sales orders** via a guided 5-step wizard (select patient/doctor/products, configure shipping, generate payment link, create e-signature documents, send everything to the client).
 2. **Tracks order progress** through a multi-condition checklist: payment confirmation, document signing, ANVISA authorization, document completeness, and shipping.
 3. **Automates ANVISA submissions** by extracting data from uploaded documents via AI (Google Gemini OCR) and auto-filling the ANVISA government portal via a Chrome browser extension.
 4. **Manages inventory** across two physical locations: Miami (USA, via TriStar Express warehouse) and Brazil (local).
@@ -52,7 +52,7 @@ This platform consolidates all of those workflows into one system.
 | Principle | Rationale |
 |---|---|
 | **Single source of truth** | Every piece of order data lives in one Firestore document tree. No data is duplicated across spreadsheets or external systems. |
-| **Wizard-driven creation, checklist-driven tracking** | Creation is synchronous (4 wizard steps in one session). Tracking is asynchronous (operator monitors a checklist that updates as the client pays, signs, etc.). |
+| **Wizard-driven creation, checklist-driven tracking** | Creation is synchronous (5 wizard steps in one session). Tracking is asynchronous (operator monitors a checklist that updates as the client pays, signs, etc.). |
 | **Fail gracefully, never lose data** | Non-critical operations (ZapSign creation, prescription upload) are non-fatal. If they fail, the order is still created and the operator can retry from the detail page. |
 | **Soft deletes everywhere** | No data is ever physically deleted. Records are flagged as inactive/deleted, preserving full audit trails for regulatory compliance. |
 | **Atomic writes for consistency** | The entire order (root document + 8 subcollections) is created in a single Firestore batch write. It either all succeeds or all fails. |
@@ -85,7 +85,7 @@ This platform consolidates all of those workflows into one system.
 |---|---|
 | **Patients (clients)** | Receive payment links and e-signature requests via WhatsApp. Access the customer-facing checkout page (`/checkout/{orderId}`) to complete payment. Never log into the platform. |
 | **Doctors** | Their prescription and CRM data are stored in the system. They never interact with the platform directly. |
-| **Sales representatives** | May or may not have platform accounts. Their contact info is recorded on each order. |
+| **Sales representatives** | Have platform accounts with `isRepresentante: true` in the `users` collection. Their name and user ID are recorded on each order. |
 | **ANVISA** | Government regulatory body. Operators submit import authorization requests through the ANVISA gov.br portal. The Chrome extension auto-fills the portal form. |
 | **GlobalPay** | Payment gateway. Sends webhook notifications when payments are completed. |
 | **ZapSign** | E-signature provider. Sends webhook notifications when documents are signed. |
@@ -108,13 +108,20 @@ The platform follows a two-phase order lifecycle:
 
 ```
 Step 0  Identification    Select client, doctor, representative, products.
-                          Upload prescription. Fetch PTAX exchange rate.
-Step 1  Payment           Create GlobalPay payment link. Set frete (shipping cost).
+                          Upload prescription (drag-and-drop with green/red
+                          visual feedback). Fetch PTAX exchange rate.
+                          Representative is selected from users with
+                          isRepresentante flag.
+Step 1  Shipping          Set frete (shipping cost). Select shipping method
+                          (TriStar, Correios, Motoboy, Other). Enter
+                          shipping address and carrier details.
+Step 2  Payment           Create GlobalPay payment link. Invoice number
+                          auto-generated in ETGANS##### format.
                           Configure allowed payment methods.
-Step 2  Documents         Create ZapSign e-signature documents if needed
+Step 3  Documents         Create ZapSign e-signature documents if needed
                           (Comprovante de Vinculo and/or Procuracao).
                           Enter Signatario details (name + CPF).
-Step 3  Send to Client    Review summary. Copy/share payment + signing links
+Step 4  Send to Client    Review summary. Copy/share payment + signing links
                           via WhatsApp. Order created atomically.
 ```
 
@@ -149,21 +156,22 @@ When an order is ready to ship, the UI highlights it with an emerald accent and 
 
 | ID | Requirement |
 |---|---|
-| FR-01.1 | A 4-step wizard guides the operator through order setup: Identification, Payment, Documents, Send to Client. The wizard is completed in a single session. |
-| FR-01.2 | **Step 0 — Identification**: Select or create a client (patient), doctor, representative. Add products with negotiated BRL pricing. Upload a prescription image. |
+| FR-01.1 | A 5-step wizard guides the operator through order setup: Identification, Shipping, Payment, Documents, Send to Client. The wizard is completed in a single session. |
+| FR-01.2 | **Step 0 — Identification**: Select or create a client (patient), doctor, representative. Representatives are selected from users with `isRepresentante` flag (not the legacy `representantes` collection). Add products with negotiated BRL pricing via a searchable dropdown that shows full product names. Upload a prescription image via drag-and-drop. When dragging a file, the Receita drop zone highlights green with "Solte a receita aqui!" text, while the Produtos area shows a red "Não solte aqui" overlay to prevent misplacement. |
 | FR-01.3 | The system fetches the current PTAX exchange rate (BCB) and stores it with the order for USD/BRL conversion. |
-| FR-01.4 | **Step 1 — Payment**: A payment link is generated via GlobalPay. The user sets frete (shipping cost) and configures allowed payment methods (credit card, debit card, boleto, PIX). |
-| FR-01.5 | **Step 2 — Documents**: The user indicates whether a Comprovante de Vinculo or Procuracao is needed. If yes, the user enters Signatario details (name + CPF) and the system creates ZapSign document(s). |
-| FR-01.6 | **Step 3 — Send to Client**: Displays a summary of everything created (payment link, ZapSign links if any). Provides copy/share buttons (including WhatsApp deep link) to send all links to the client. |
-| FR-01.7 | The order, all subcollections, and the prescription record are created atomically in a single Firestore batch write. The order and prescription share the same document ID (Receita ID). |
-| FR-01.8 | Resume mode: An incomplete order can be resumed via `?resume={orderId}` URL parameter. This renders a simplified wizard that picks up where the operator left off. |
+| FR-01.4 | **Step 1 — Shipping**: Set frete (shipping cost), select shipping method (TriStar, Correios, Motoboy, Other), enter shipping address and carrier details. |
+| FR-01.5 | **Step 2 — Payment**: A payment link is generated via GlobalPay. An invoice number in `ETGANS#####` format (e.g., `ETGAMB00042`) is auto-generated from the rep's initials + an atomic counter. Configures allowed payment methods (credit card, debit card, boleto, PIX). |
+| FR-01.6 | **Step 3 — Documents**: The user indicates whether a Comprovante de Vinculo or Procuracao is needed. If yes, the user enters Signatario details (name + CPF) and the system creates ZapSign document(s). |
+| FR-01.7 | **Step 4 — Send to Client**: Displays a summary of everything created (payment link, ZapSign links if any). Provides copy/share buttons (including WhatsApp deep link) to send all links to the client. |
+| FR-01.8 | The order, all subcollections, and the prescription record are created atomically in a single Firestore batch write. The order and prescription share the same document ID (Receita ID). |
+| FR-01.9 | Resume mode: An incomplete order can be resumed via `?resume={orderId}` URL parameter. This renders a simplified wizard that picks up where the operator left off. |
 
 #### FR-02 Pedidos (Consolidated Order Tracker)
 
 | ID | Requirement |
 |---|---|
 | FR-02.1 | Display a filterable list of all in-progress orders. Filter options: "Todos em andamento" (all), "Pronto p/ envio" (ready to ship), and individual status values. |
-| FR-02.2 | Each order row shows a granular status badge computed from checklist state (e.g., "Falta Pagamento + Documentos", "Pronto para Envio"). Missing items are shown as colored pills. |
+| FR-02.2 | Each order row shows: the invoice number (e.g., `ETGAMB00042`) or short order ID, representative name, and a granular status badge computed from checklist state (e.g., "Falta Pagamento + Documentos", "Pronto para Envio"). Missing items are shown as colored pills. |
 | FR-02.3 | Orders that satisfy `isReadyToShip()` are visually highlighted with an emerald accent ring/background. |
 | FR-02.4 | **Pre-ship actions** (shown when order is NOT ready to ship): Mark as Paid, upload Documents, trigger ANVISA, open ZapSign signing URLs. |
 | FR-02.5 | **Shipping actions** (shown when order IS ready to ship): Create TriStar shipment, create Correios (Sedex/PAC) shipment, assign Motoboy delivery. |
@@ -180,7 +188,8 @@ When an order is ready to ship, the UI highlights it with an emerald accent and 
 | FR-03.3 | Manual "Mark as Paid" action for advancing order status when payment is confirmed outside the webhook flow. |
 | FR-03.4 | "Iniciar ANVISA" action is enabled only when payment is confirmed AND ZapSign is signed (if applicable). Links to ANVISA Solicitacao with the order pre-selected. |
 | FR-03.5 | Upload area for ANVISA Autorizacao document. Marks `anvisaStatus` as CONCLUIDO when uploaded. |
-| FR-03.6 | Upload area for remaining required documents (patient ID, proof of residence). Tracks per-document status (pending, received, approved, rejected). |
+| FR-03.6 | Upload area for remaining required documents (patient ID, proof of residence). A document type selector allows choosing the type (prescription, identity, medical report, proof of address, invoice, ANVISA authorization, general) before uploading. Tracks per-document status (pending, received, approved, rejected). |
+| FR-03.6a | Representative selector on the order detail page allows assigning/changing the sales rep from users with `isRepresentante` flag. |
 | FR-03.7 | CSV bulk import (admin-only): column mapping, validation, duplicate detection via `batchImportId`, batch creation in chunks of 80 rows (within Firestore's 500-operation batch limit). |
 | FR-03.8 | Date-range filtering for order lists. |
 
@@ -202,9 +211,9 @@ When an order is ready to ship, the UI highlights it with an emerald accent and 
 
 | ID | Requirement |
 |---|---|
-| FR-05.1 | CRUD operations for clients (patients), doctors, and sales representatives. |
+| FR-05.1 | CRUD operations for clients (patients) and doctors. Sales representatives are managed as users with `isRepresentante: true` in the `users` collection (merged from the legacy `representantes` collection). |
 | FR-05.2 | Search by name with active-only filtering. |
-| FR-05.3 | Representatives can optionally be linked to a system user account. |
+| FR-05.3 | Representative selectors throughout the app query users with `isRepresentante == true` and `active == true`, ordered by `displayName`. |
 | FR-05.4 | Client address stored for document generation (Comprovante de Vinculo). |
 | FR-05.5 | Client records include: CPF, RG, name, email, phone, birth date, full address. |
 | FR-05.6 | Doctor records include: CRM number, specialty, state, city, contact info. |
@@ -304,7 +313,7 @@ When an order is ready to ship, the UI highlights it with an emerald accent and 
 
 | ID | Requirement |
 |---|---|
-| NFR-04.1 | Firestore composite indexes support all query patterns without full-collection scans. 7 composite indexes currently defined. |
+| NFR-04.1 | Firestore composite indexes support all query patterns without full-collection scans. 9 composite indexes currently defined (including `users` indexes for rep queries and group queries). |
 | NFR-04.2 | CSV import processes orders in batches of 80 to stay within Firestore's 500-operation batch limit. |
 | NFR-04.3 | Firebase App Hosting with auto-scaling: 0-4 instances, 1 CPU, 512 MiB memory, 100 concurrency per instance. |
 
@@ -354,7 +363,7 @@ When an order is ready to ship, the UI highlights it with an emerald accent and 
 | | `POST /paymentapi/order/{gpOrderId}/cancel` — cancel transaction |
 | **Success code** | `statusCode === 1` (not HTTP 200 — this is a GlobalPay-specific convention) |
 | **Error handling** | 40+ error codes mapped to Portuguese messages in the codebase |
-| **Webhook** | `POST /api/webhooks/payment` — receives payment events. Parses `invoice` (= orderId), `gpOrderId`, `status`, `amount`. Approved statuses: `approved`, `paid`, `completed`, `success`. Creates payment audit record, updates order status to `paid` (idempotent). |
+| **Webhook** | `POST /api/webhooks/payment` — receives payment events. Parses `invoice` (= `ETGANS#####` format invoice number), `gpOrderId`, `status`, `amount`. Looks up the order by querying `orders` where `invoice == body.invoice`, with fallback to `referenceId` for legacy links. Approved statuses: `approved`, `paid`, `completed`, `success`. Creates payment audit record, updates order status to `paid` (idempotent). |
 | **Env vars** | `GLOBALPAY_API_URL` (secret), `GLOBALPAY_PUB_KEY` (secret), `GLOBALPAYS_MERCHANT_CODE` (plain: `4912`) |
 
 #### INT-02 ZapSign — Electronic Document Signing

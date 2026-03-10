@@ -148,6 +148,37 @@ export function StepIdentificacao({
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
 
+  // Track when an external file is being dragged over the window
+  const [isDraggingOnPage, setIsDraggingOnPage] = useState(false);
+  const dragCounter = React.useRef(0);
+
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      // Only react to external file drags
+      if (e.dataTransfer?.types?.includes('Files')) {
+        dragCounter.current++;
+        if (dragCounter.current === 1) setIsDraggingOnPage(true);
+      }
+    };
+    const handleDragLeave = () => {
+      dragCounter.current = Math.max(0, dragCounter.current - 1);
+      if (dragCounter.current === 0) setIsDraggingOnPage(false);
+    };
+    const handleDrop = () => {
+      dragCounter.current = 0;
+      setIsDraggingOnPage(false);
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
   // Local editing state for the frete (shipping cost) input field
   const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
 
@@ -538,15 +569,19 @@ export function StepIdentificacao({
             className={cn(
               'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
               isDragActive
-                ? 'border-primary bg-primary/5 scale-[1.01]'
-                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+                ? 'border-green-500 bg-green-50 scale-[1.01] ring-2 ring-green-400'
+                : isDraggingOnPage
+                  ? 'border-green-400 bg-green-50/60 ring-2 ring-green-300 animate-pulse'
+                  : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
             )}
           >
             <input {...getInputProps()} />
-            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <svg className={cn('mb-3 h-10 w-10', isDraggingOnPage ? 'text-green-600' : 'text-muted-foreground')} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
-            <p className="text-sm font-semibold">Arraste a receita aqui</p>
+            <p className={cn('text-sm font-semibold', isDraggingOnPage && 'text-green-700')}>
+              {isDraggingOnPage ? 'Solte a receita aqui!' : 'Arraste a receita aqui'}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">A IA preencherá os campos automaticamente · PDF, JPG, PNG (máx 5MB)</p>
           </div>
         )}
@@ -559,7 +594,20 @@ export function StepIdentificacao({
       </div>
 
       {/* ── Products ──────────────────────────────────────────────── */}
-      <div className="space-y-3">
+      <div className="relative space-y-3">
+        {/* Red overlay when dragging a file — guides user to the Receita zone */}
+        {isDraggingOnPage && !state.prescriptionFile && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-red-400 bg-red-50/90 pointer-events-none">
+            <div className="text-center">
+              <svg className="mx-auto mb-2 h-10 w-10 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              <p className="text-lg font-bold text-red-600">Não solte aqui</p>
+              <p className="text-sm text-red-500">Arraste para a área de Receita acima</p>
+            </div>
+          </div>
+        )}
+
         <Label className="text-sm font-semibold">Produtos <span className="text-red-500">*</span></Label>
 
         {/* Exchange rate banner */}
