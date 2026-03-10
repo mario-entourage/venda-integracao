@@ -3,15 +3,17 @@
 import { adminDb } from '@/firebase/admin';
 
 /**
- * Generate next invoice number in format "ETGA NS #####"
+ * Generate next invoice number in format "ETGANS#####"
  * where:
  *   E = Entourage
  *   T = (brand)
  *   G = GlobalPay
  *   A = Automated
- *   N = first letter of rep's first name
- *   S = first letter of rep's last name (surname)
+ *   N = first letter of rep's first name (uppercase)
+ *   S = first letter of rep's last name / surname (uppercase)
  *   ##### = zero-padded sequential counter (auto-expands beyond 99999)
+ *
+ * Example: rep "Mario Bonifacio" + counter 42 → "ETGAMB00042"
  */
 export async function generateInvoiceNumber(
   repDisplayName: string,
@@ -32,5 +34,5 @@ export async function generateInvoiceNumber(
 
   // Pad to at least 5 digits (auto-expands beyond 99999)
   const padded = String(result).padStart(5, '0');
-  return `ETGA ${firstInitial}${lastInitial} ${padded}`;
+  return `ETGA${firstInitial}${lastInitial}${padded}`;
 }
