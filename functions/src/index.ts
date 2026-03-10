@@ -224,3 +224,6 @@ export const anvisaProcessDocumentOnUpload = functions
     });
 
 export const anvisaListUsers = listUsersFunction;
+
+// ── Scheduled payment checker ─────────────────────────────────────────
+export { checkPendingPayments } from './check-payments';

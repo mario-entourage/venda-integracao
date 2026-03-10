@@ -23,7 +23,7 @@ import {
 
 const orderNavItems = [
   { href: '/dashboard', icon: Home, label: 'Dashboard' },
-  { href: '/remessas', icon: Send, label: 'Vendas' },
+  { href: '/remessas', icon: Send, label: 'Nova Venda' },
   { href: '/pedidos', icon: Truck, label: 'Pedidos' },
   { href: '/controle', icon: ClipboardList, label: 'Controle' },
   { href: '/clientes', icon: Users, label: 'Clientes' },
@@ -40,7 +40,7 @@ const documentNavItems = [
 ];
 
 const paymentNavItems = [
-  { href: '/checkout', icon: CreditCard, label: 'Pagamentos' },
+  { href: '/pagamentos', icon: CreditCard, label: 'Pagamentos' },
 ];
 
 const anvisaNavItems = [
@@ -52,6 +52,7 @@ const anvisaNavItems = [
 
 const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
+  { href: '/importar', icon: Upload, label: 'Importar CSV' },
 ];
 
 const helpNavItems = [

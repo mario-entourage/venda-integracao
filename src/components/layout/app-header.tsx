@@ -13,6 +13,7 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { LogOut } from 'lucide-react';
+import { NotificationBell } from './notification-bell';
 
 export function AppHeader() {
   const { user } = useUser();
@@ -32,6 +33,8 @@ export function AppHeader() {
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
       <div className="flex-1" />
+
+      <NotificationBell />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

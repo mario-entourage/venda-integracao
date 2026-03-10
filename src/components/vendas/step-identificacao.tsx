@@ -15,7 +15,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchableSelect } from '@/components/shared/searchable-select';
 import { ImageViewer } from '@/components/shared/image-viewer';
-import { QuickAddClientDialog, QuickAddDoctorDialog, QuickAddRepresentanteDialog } from './quick-add-dialog';
+import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import type { Client, Doctor, Product, Representante } from '@/types';
@@ -124,11 +124,11 @@ interface StepIdentificacaoProps {
   exchangeRateLoading: boolean;
   exchangeRateError: string | null;
   exchangeRateDate: string;
-  /** List of active representantes */
-  representantes: Representante[];
-  /** Currently selected representante ID */
+  /** List of active rep users (isRepresentante === true) */
+  repUsers: User[];
+  /** Currently selected rep user ID */
   selectedRepresentanteId: string;
-  /** Called when the user picks or creates a representante */
+  /** Called when the user picks a rep */
   onRepresentanteChange: (id: string, name: string) => void;
 }
 
@@ -137,13 +137,12 @@ interface StepIdentificacaoProps {
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
-  representantes, selectedRepresentanteId, onRepresentanteChange,
+  repUsers, selectedRepresentanteId, onRepresentanteChange,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
-  const [showAddRepresentante, setShowAddRepresentante] = useState(false);
 
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
@@ -396,14 +395,6 @@ export function StepIdentificacao({
   return (
     <div>
       {/* Quick-add dialogs */}
-      <QuickAddRepresentanteDialog
-        open={showAddRepresentante}
-        onClose={() => setShowAddRepresentante(false)}
-        onCreated={(id, name) => {
-          onRepresentanteChange(id, name);
-          setShowAddRepresentante(false);
-        }}
-      />
       <QuickAddClientDialog
         open={showAddClient}
         onClose={() => setShowAddClient(false)}
@@ -706,23 +697,9 @@ export function StepIdentificacao({
 
       {/* ── Representante ──────────────────────────────────────── */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-sm font-semibold">Representante</Label>
-            <p className="text-xs text-muted-foreground">Opcional. Associe esta venda a um representante.</p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="text-xs gap-1"
-            onClick={() => setShowAddRepresentante(true)}
-          >
-            <svg className="h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            Novo Representante
-          </Button>
+        <div>
+          <Label className="text-sm font-semibold">Representante</Label>
+          <p className="text-xs text-muted-foreground">Opcional. Associe esta venda a um representante.</p>
         </div>
         <Select
           value={selectedRepresentanteId || '__none__'}
@@ -731,9 +708,9 @@ export function StepIdentificacao({
               onRepresentanteChange('', 'Venda Direta');
               return;
             }
-            const rep = representantes.find((r) => r.id === val);
+            const rep = repUsers.find((r) => r.id === val);
             if (rep) {
-              onRepresentanteChange(rep.id, rep.name);
+              onRepresentanteChange(rep.id, rep.displayName || rep.email);
             }
           }}
         >
@@ -742,9 +719,9 @@ export function StepIdentificacao({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
-            {representantes.map((rep) => (
+            {repUsers.map((rep) => (
               <SelectItem key={rep.id} value={rep.id}>
-                {rep.name}{rep.estado ? ` — ${rep.estado}` : ''}
+                {rep.displayName || rep.email}
               </SelectItem>
             ))}
           </SelectContent>

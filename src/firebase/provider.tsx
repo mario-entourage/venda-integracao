@@ -178,7 +178,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     const tryEnsure = async (retries = 3) => {
       for (let i = 0; i < retries; i++) {
         try {
-          await ensureUser(firestore!, userAuthState.user!.uid, userAuthState.user!.email!);
+          await ensureUser(firestore!, userAuthState.user!.uid, userAuthState.user!.email!, userAuthState.user!.displayName || undefined);
           return;
         } catch (err) {
           console.warn(`[FirebaseProvider] ensureUser attempt ${i + 1} failed:`, err);
