@@ -41,6 +41,24 @@
       ]
     },
     {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isRepresentante", "order": "ASCENDING" },
+        { "fieldPath": "active",          "order": "ASCENDING" },
+        { "fieldPath": "displayName",     "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "groupId",   "order": "ASCENDING" },
+        { "fieldPath": "active",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "orders",
       "queryScope": "COLLECTION",
       "fields": [
