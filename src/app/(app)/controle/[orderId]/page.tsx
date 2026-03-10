@@ -138,6 +138,17 @@ export default function OrderDetailPage() {
   }, [firestore, orderId]);
 
   // ── document uploads ─────────────────────────────────────────────────────────
+  const DOC_TYPE_OPTIONS = [
+    { value: 'prescription',         label: 'Receita / Prescrição' },
+    { value: 'identity',             label: 'Identidade (RG / CNH)' },
+    { value: 'medical_report',       label: 'Laudo Médico' },
+    { value: 'proof_of_address',     label: 'Comprovante de Endereço' },
+    { value: 'invoice',              label: 'Nota Fiscal' },
+    { value: 'anvisa_authorization', label: 'Autorização ANVISA' },
+    { value: 'general',              label: 'Outro / Geral' },
+  ] as const;
+
+  const [selectedDocType, setSelectedDocType] = useState<string>('prescription');
   const [uploadedDocs, setUploadedDocs] = useState<{ name: string; url: string }[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -145,12 +156,12 @@ export default function OrderDetailPage() {
     if (!firestore) return;
     try {
       await createDocumentRecord(firestore, {
-        type: 'general',
+        type: selectedDocType,
         holder: customer?.name ?? '',
         key: result.path,
         number: '',
-        metadata: { fileName: result.name, url: result.url },
-        userId: customer?.userId ?? '',
+        metadata: { fileName: result.name, url: result.url, doctorName: doctor?.name ?? '' },
+        userId: user?.uid ?? '',
         orderId,
       });
       setUploadedDocs((prev) => [...prev, { name: result.name, url: result.url }]);
@@ -395,8 +406,25 @@ export default function OrderDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Envie documentos adicionais para este pedido (receita, identidade, comprovante, etc).
+              Selecione o tipo e envie documentos para este pedido.
             </p>
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+                Tipo:
+              </label>
+              <Select value={selectedDocType} onValueChange={setSelectedDocType}>
+                <SelectTrigger className="w-[240px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPE_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <FileUpload
               storagePath={`documents/${orderId}`}
               onUploadComplete={handleDocumentUploaded}
