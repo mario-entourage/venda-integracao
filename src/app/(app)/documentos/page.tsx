@@ -6,9 +6,11 @@ import { query, where } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getDocumentsRef } from '@/services/documents.service';
+import { getActiveUsersQuery } from '@/services/users.service';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { DocumentRecord } from '@/types';
+import type { User } from '@/types';
 
 // ─── type labels ─────────────────────────────────────────────────────────────
 
@@ -58,6 +60,22 @@ export default function DocumentosPage() {
   );
 
   const { data: rawDocs, isLoading } = useCollection<DocumentRecord>(docsQ);
+
+  // Load all active users so we can resolve "Uploaded by" from userId
+  const usersQ = useMemoFirebase(
+    () => (firestore ? getActiveUsersQuery(firestore) : null),
+    [firestore],
+  );
+  const { data: allUsers } = useCollection<User>(usersQ);
+
+  // userId → displayName lookup
+  const userMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of allUsers ?? []) {
+      m.set(u.id, u.displayName || u.email || u.id);
+    }
+    return m;
+  }, [allUsers]);
 
   const docs = useMemo(
     () => sortByCreatedAtDesc(rawDocs ?? []),
@@ -120,20 +138,17 @@ export default function DocumentosPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="pb-2 pl-6 text-left font-medium text-muted-foreground">Tipo</th>
-                    <th className="pb-2 text-left font-medium text-muted-foreground">Cliente</th>
-                    {isAdmin && (
-                      <th className="pb-2 text-left font-medium text-muted-foreground hidden md:table-cell">
-                        Pedido
-                      </th>
-                    )}
-                    <th className="pb-2 pr-6 text-right font-medium text-muted-foreground">
-                      Data de Envio
-                    </th>
+                    <th className="pb-2 text-left font-medium text-muted-foreground">Pedido</th>
+                    <th className="pb-2 text-left font-medium text-muted-foreground hidden md:table-cell">Médico</th>
+                    <th className="pb-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Enviado por</th>
+                    <th className="pb-2 pr-6 text-right font-medium text-muted-foreground">Data</th>
                   </tr>
                 </thead>
                 <tbody>
                   {docs.map((doc) => {
                     const cfg = docTypeConfig(doc.type);
+                    const doctorName = (doc.metadata?.doctorName as string) || '';
+                    const uploaderName = doc.userId ? (userMap.get(doc.userId) ?? doc.userId.slice(0, 8)) : '—';
                     return (
                       <tr
                         key={doc.id}
@@ -145,26 +160,27 @@ export default function DocumentosPage() {
                             {cfg.label}
                           </Badge>
                         </td>
-                        <td className="py-3 font-medium">
-                          {doc.holder || <span className="text-muted-foreground">—</span>}
+                        <td className="py-3">
+                          {doc.orderId ? (
+                            <span
+                              className="font-mono text-xs text-primary hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                router.push(`/controle/${doc.orderId}`);
+                              }}
+                            >
+                              #{(doc.orderId as string).slice(0, 8).toUpperCase()}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">—</span>
+                          )}
                         </td>
-                        {isAdmin && (
-                          <td className="py-3 hidden md:table-cell">
-                            {doc.orderId ? (
-                              <span
-                                className="font-mono text-xs text-primary hover:underline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  router.push(`/controle/${doc.orderId}`);
-                                }}
-                              >
-                                #{(doc.orderId as string).slice(0, 8).toUpperCase()}
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">—</span>
-                            )}
-                          </td>
-                        )}
+                        <td className="py-3 hidden md:table-cell">
+                          {doctorName || <span className="text-muted-foreground">—</span>}
+                        </td>
+                        <td className="py-3 hidden lg:table-cell text-muted-foreground">
+                          {uploaderName}
+                        </td>
                         <td className="py-3 pr-6 text-right text-muted-foreground">
                           {fmtDate(doc.createdAt)}
                         </td>
