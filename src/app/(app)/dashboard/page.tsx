@@ -519,9 +519,23 @@ function UserDashboard() {
 export default function DashboardPage() {
   const { isAdmin } = useFirebase();
 
+  const buildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
+  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE;
+  const buildMsg = process.env.NEXT_PUBLIC_BUILD_MSG;
+  const buildDateFmt = buildDate
+    ? new Date(buildDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null;
+
   return (
     <div className="space-y-6">
-      <h1 className="font-headline text-2xl font-bold">Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="font-headline text-2xl font-bold">Dashboard</h1>
+        {buildSha && (
+          <span className="text-xs text-muted-foreground font-mono" title={buildMsg || undefined}>
+            Build {buildSha} {buildDateFmt ? `\u00b7 ${buildDateFmt}` : ''}
+          </span>
+        )}
+      </div>
       {isAdmin ? <AdminDashboard /> : <UserDashboard />}
     </div>
   );
