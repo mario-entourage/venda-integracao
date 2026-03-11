@@ -48,7 +48,10 @@ VENDAS (menu: Vendas | rota: /remessas)
     - Upload da receita medica com extracao automatica por IA.
       Ao arrastar um arquivo sobre a pagina, a area de Receita
       fica verde ("Solte a receita aqui!") e a area de Produtos
-      fica vermelha com textos grandes "NAO!" para guiar o usuario.
+      fica vermelha com icone de proibicao e "Nao solte aqui".
+      Se o usuario mover o arquivo sobre a area de Produtos,
+      o aviso escala para textos grandes repetidos "NAO!" para
+      deixar claro que nao deve soltar ali.
     - Deteccao de receita duplicada: o sistema calcula o hash
       SHA-256 da receita e bloqueia reutilizacao com vendas ativas.
       Se a receita ja estiver vinculada a outro pedido ativo, o
