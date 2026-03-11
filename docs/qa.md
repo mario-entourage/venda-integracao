@@ -1,7 +1,7 @@
 # QA Document
 
 > Entourage Lab — Sales Integration Platform
-> Last updated: 2026-03-10
+> Last updated: 2026-03-11
 
 ---
 
@@ -278,7 +278,8 @@ Use this checklist when deploying significant changes. Each item should be verif
 
 ### 5.1 Nova Venda (New Sale) Flow
 
-- [ ] **Step 0 — Identification**: Select existing client, doctor, representative (from users with `isRepresentante` flag). Add 2+ products with custom pricing. Upload a prescription image. Verify PTAX rate appears.
+- [ ] **Step 0 — Identification**: Select existing client, doctor, representative (from users with `isRepresentante` flag). Add 2+ products with custom pricing. Set frete (shipping cost). Upload a prescription image. Verify PTAX rate appears.
+- [ ] **Step 0 — Frete**: Set a frete value. Verify it appears in the payment total on Step 2 and in the Step 4 summary.
 - [ ] **Step 0 — Rep dropdown**: Verify that users tagged as sales reps appear in the Representante dropdown. Verify "Venda Direta" option is available.
 - [ ] **Step 0 — Product dropdown width**: Open the Produto dropdown. Verify full product names are visible without truncation (dropdown expands beyond the trigger width up to 400px).
 - [ ] **Step 0 — Drag feedback (green zone)**: Drag a file from the desktop onto the page. Verify the Receita drop zone highlights green with pulsing border, shows a green upload icon, and displays "Solte a receita aqui!" text.
@@ -325,12 +326,28 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Document type selector**: Upload a document from the order detail page. Verify the document type dropdown appears with options (Receita, Identidade, Laudo Médico, Comprovante de Endereço, Nota Fiscal, Autorização ANVISA, Outro/Geral). Select a type and upload — verify the document is tagged with the selected type.
 - [ ] **Document type display**: Navigate to Documentos page. Verify uploaded documents show the correct type badge (not "Geral" when a specific type was selected).
 
+### 5.4b Controle (Order List & Filters)
+
+- [ ] **Controle list**: Navigate to /controle. Verify the order list loads with date-range filters (default: last 30 days).
+- [ ] **Pagination**: Verify the entries-per-page dropdown defaults to 30. Switch to 50, 100. Select "All" — verify a warning dialog appears asking "are you sure?".
+- [ ] **Date filters**: Change start/end date range. Verify only orders within the selected range appear.
+- [ ] **Status filter**: Filter by order status. Verify correct orders appear.
+- [ ] **CSV bulk import** (admin only): Import a CSV file. Verify column mapping dialog appears, validation runs, and orders are created in chunks. Verify duplicate detection via `batchImportId`.
+- [ ] **Mark as Paid**: Click "Mark as Paid" on an unpaid order. Verify status changes to `paid`.
+- [ ] **Mark as Signed**: Click "Mark as Signed" for a Comprovante de Vinculo document. Verify `zapsignCvStatus` updates.
+- [ ] **ANVISA link**: Verify "Iniciar ANVISA" is enabled only when payment is confirmed AND ZapSign is signed (if applicable). Click — verify it opens ANVISA Solicitacao with the order pre-selected.
+- [ ] **ANVISA upload**: Upload an ANVISA Autorizacao document. Verify `anvisaStatus` changes to CONCLUIDO.
+- [ ] **Document upload**: Upload remaining required documents. Verify per-document status tracking (pending → received).
+
 ### 5.5 ANVISA Workflow
 
 - [ ] **Order picker**: Navigate to Nova Solicitacao. Verify only eligible orders appear (has prescription, paid, ZapSign signed if applicable, no existing ANVISA request).
 - [ ] **Prescription pre-loading**: Select an order. Verify prescription data is imported without re-upload.
 - [ ] **Document upload**: Upload a patient ID image. Verify AI classifies and extracts OCR data.
-- [ ] **Chrome extension**: Click "Enviar para extensao". Open the ANVISA portal. Verify the extension auto-fills form fields.
+- [ ] **Modelo Solicitante**: Navigate to /anvisa/perfil. Verify all fields are present: Nome, Email, RG, Sexo/Genero, Data de Nascimento, Endereco, CEP, Estado, Municipio, Celular, Telefone Fixo. Fill and save. Verify data persists on reload.
+- [ ] **Modelo Solicitante in payload**: Send data to extension. Verify the popup shows all requester fields (Nome, Email, RG, Sexo, DOB, Estado, Municipio, etc.) separately from patient fields.
+- [ ] **CEP-to-state derivation**: Submit a patient with CEP but no state (e.g., 35400-012). Verify patientState auto-populates as "MG" in the validation form.
+- [ ] **Chrome extension (v1.3.5)**: Click "Enviar para extensao". Open the ANVISA portal. Verify the extension auto-fills form fields. Verify solicitante section fills from profile data (not patient OCR data). Verify patient section fills from OCR data.
 
 ### 5.6 Estoque (Inventory)
 
@@ -339,13 +356,25 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Inline editing**: Click a quantity, change it, save. Verify Firestore is updated.
 - [ ] **Auto-create prompt**: If a stock location doesn't exist, verify the "create" prompt appears.
 
-### 5.7 Access Control
+### 5.7 Dashboard
+
+- [ ] **Build number**: Verify the dashboard shows a build version (git SHA + date) so users know which deployment is running.
+- [ ] **Overview metrics**: Verify sales summary, active users count, and quick-access links are displayed.
+
+### 5.8 Documents
+
+- [ ] **Document list**: Navigate to /documentos. Verify documents are listed with columns: Tipo, Pedido, Medico, Enviado por, Data.
+- [ ] **Date filter**: Filter by date range. Verify only documents within the range appear.
+- [ ] **Type filter**: Filter by document type. Verify correct documents appear.
+- [ ] **User scoping**: As a non-admin user, verify only your own uploaded documents appear. As admin, verify all documents appear.
+
+### 5.9 Access Control
 
 - [ ] **Domain restriction**: Attempt login with a non-`@entouragelab.com` Google account. Verify immediate sign-out.
 - [ ] **Admin-only operations**: Log in as a non-admin user. Verify delete buttons, user management, and CSV import are hidden/disabled.
 - [ ] **Pre-registration**: Create a pre-registration record. Log in with that email for the first time. Verify the assigned role is applied.
 
-### 5.8 Deployment
+### 5.10 Deployment
 
 - [ ] **Auto-deploy**: Push to `main` branch. Verify Firebase App Hosting triggers a new rollout within 5 minutes.
 - [ ] **Manual deploy**: Run `firebase apphosting:rollouts:create vend-backend --git-branch main`. Verify rollout succeeds.

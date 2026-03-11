@@ -28,6 +28,8 @@ DASHBOARD
   - Usuarios ativos: quantidade de usuarios ativos.
   - Acesso rapido: links para criar nova venda e acessar
     modulos principais.
+  - Versao do build: exibe o SHA do commit e data do deploy
+    para que o usuario saiba qual versao esta em uso.
 
 VENDAS (menu: Vendas | rota: /remessas)
   Modulo central para gerenciamento de vendas.
@@ -125,16 +127,30 @@ ENVIO (menu: Envio | rota: /envio)
   - Metodos: TriStar, Correios (Sedex/PAC), Motoboy.
 
 CONTROLE (menu: Controle | rota: /controle)
-  Visao detalhada de cada pedido.
+  Lista de pedidos com filtros robustos e visao detalhada.
+
+  Lista de Pedidos:
+  - Filtros: Data Inicio, Data Fim, Status do Pedido.
+  - Datas padrao: ultimos 30 dias.
+  - Paginacao: 30 (padrao), 50, 100, ou Todos.
+    Ao selecionar "Todos", exibe aviso de confirmacao.
+
+  Detalhe do Pedido:
   - Todas as informacoes: cliente, medico, produtos,
     documentos, pagamento, envio.
   - Seletor de representante (dropdown para alterar rep).
   - Upload de documentos com seletor de tipo (Receita,
     Identidade, Comprovante, Laudo, NF, ANVISA, Geral).
   - Sincronizar pagamento com GlobalPay.
-  - Marcar como pago, procuracao assinada, comprovante
-    assinado manualmente.
+  - Marcar como pago manualmente.
+  - Marcar comprovante de vinculo como assinado.
+  - Iniciar ANVISA (habilitado quando pagamento confirmado
+    e ZapSign assinado, se aplicavel).
+  - Upload de Autorizacao ANVISA (marca como CONCLUIDO).
+  - Upload de documentos restantes com status individual.
   - Cancelar venda ou continuar wizard.
+  - CSV bulk import (admin): mapeamento de colunas,
+    validacao, deteccao de duplicatas via batchImportId.
 
 CLIENTES (menu: Clientes | rota: /clientes)
   Cadastro e gerenciamento de pacientes.
@@ -300,11 +316,15 @@ MODELO SOLICITANTE (menu: Modelo Solicitante | rota: /anvisa/perfil)
   Perfil padrao do solicitante para solicitacoes ANVISA.
   - Dados pre-preenchidos do solicitante (quem faz a
     solicitacao junto a ANVISA em nome do paciente).
-  - Campos: Nome, Email, RG, Endereco, CEP, Telefone,
-    Telefone Fixo.
+  - Campos: Nome, Email, RG, Sexo/Genero, Data de
+    Nascimento, Endereco, CEP, Estado (UF), Municipio,
+    Celular, Telefone Fixo.
+  - Estado e municipio usados no formulario ANVISA para
+    preencher os dados do solicitante (nao do paciente).
   - Editavel pelo usuario.
   - Incluido automaticamente no payload enviado para
-    a extensao.
+    a extensao. Os dados do solicitante sao separados
+    dos dados do paciente (extraidos por OCR).
 
 ----------------------------------------------------------
 ADMINISTRACAO
@@ -463,8 +483,11 @@ DADOS ENVIADOS PARA A EXTENSAO
   - Nome
   - Email
   - RG
+  - Sexo / Genero
+  - Data de Nascimento
   - Endereco / CEP
-  - Telefone / Telefone fixo
+  - Estado / Municipio
+  - Celular / Telefone fixo
 
 ----------------------------------------------------------
 SOLUCAO DE PROBLEMAS
