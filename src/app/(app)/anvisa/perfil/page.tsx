@@ -36,14 +36,21 @@ const optionalPhone = z.string().refine(
   "Formato invalido. Ex: (31) 99999-9999"
 );
 
+const optionalDate = z.string().refine(
+  (val) => !val || /^\d{2}\/\d{2}\/\d{4}$/.test(val),
+  "Formato invalido (DD/MM/AAAA)."
+);
+
 const profileSchema = z.object({
   requesterName: z.string().default(''),
   requesterEmail: z.string().email("Email invalido").or(z.literal('')).default(''),
   requesterRg: optionalRg.default(''),
   requesterSexo: z.string().default(''),
+  requesterDob: optionalDate.default(''),
   requesterAddress: z.string().default(''),
   requesterCep: optionalCep.default(''),
   requesterEstado: z.string().default(''),
+  requesterMunicipio: z.string().default(''),
   requesterPhone: optionalPhone.default(''),
   requesterLandline: z.string().default(''),
 });
@@ -64,9 +71,11 @@ export default function AnvisaPerfilPage() {
       requesterEmail: '',
       requesterRg: '',
       requesterSexo: '',
+      requesterDob: '',
       requesterAddress: '',
       requesterCep: '',
       requesterEstado: '',
+      requesterMunicipio: '',
       requesterPhone: '',
       requesterLandline: '',
     },
@@ -87,9 +96,11 @@ export default function AnvisaPerfilPage() {
             requesterEmail: data.requesterEmail || '',
             requesterRg: data.requesterRg || '',
             requesterSexo: data.requesterSexo || '',
+            requesterDob: data.requesterDob || '',
             requesterAddress: data.requesterAddress || '',
             requesterCep: data.requesterCep || '',
             requesterEstado: data.requesterEstado || '',
+            requesterMunicipio: data.requesterMunicipio || '',
             requesterPhone: data.requesterPhone || '',
             requesterLandline: data.requesterLandline || '',
           });
@@ -274,6 +285,21 @@ export default function AnvisaPerfilPage() {
 
               <FormField
                 control={form.control}
+                name="requesterDob"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data de Nascimento *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="DD/MM/AAAA" {...field} disabled={isSaving} />
+                    </FormControl>
+                    <FormDescription>Data de nascimento do solicitante (formato DD/MM/AAAA)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="requesterAddress"
                 render={({ field }) => (
                   <FormItem>
@@ -325,6 +351,21 @@ export default function AnvisaPerfilPage() {
                       </SelectContent>
                     </Select>
                     <FormDescription>Estado do solicitante (usado no formulario da ANVISA)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="requesterMunicipio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Municipio *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Belo Horizonte" {...field} disabled={isSaving} />
+                    </FormControl>
+                    <FormDescription>Municipio do solicitante</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
