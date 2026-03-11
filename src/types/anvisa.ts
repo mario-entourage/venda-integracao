@@ -109,8 +109,10 @@ export type AnvisaUserProfile = {
   requesterName: string;
   requesterEmail: string;
   requesterRg: string;
+  requesterSexo: string;
   requesterAddress: string;
   requesterCep: string;
+  requesterEstado: string;
   requesterPhone: string;
   requesterLandline: string;
 };

@@ -875,8 +875,10 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             data.requesterName = userProfile.requesterName;
             data.requesterEmail = userProfile.requesterEmail;
             data.requesterRg = userProfile.requesterRg;
+            data.requesterSexo = userProfile.requesterSexo;
             data.requesterAddress = userProfile.requesterAddress;
             data.requesterCep = userProfile.requesterCep;
+            data.requesterEstado = userProfile.requesterEstado;
             data.requesterPhone = userProfile.requesterPhone;
             data.requesterLandline = userProfile.requesterLandline;
         }
