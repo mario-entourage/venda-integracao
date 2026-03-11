@@ -282,7 +282,8 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Step 0 — Rep dropdown**: Verify that users tagged as sales reps appear in the Representante dropdown. Verify "Venda Direta" option is available.
 - [ ] **Step 0 — Product dropdown width**: Open the Produto dropdown. Verify full product names are visible without truncation (dropdown expands beyond the trigger width up to 400px).
 - [ ] **Step 0 — Drag feedback (green zone)**: Drag a file from the desktop onto the page. Verify the Receita drop zone highlights green with pulsing border, shows a green upload icon, and displays "Solte a receita aqui!" text.
-- [ ] **Step 0 — Drag feedback (red zone)**: While dragging a file, verify the Produtos area shows a bold red overlay with 4 large "NÃO!" texts and an instruction "Arraste para a área de Receita acima". Verify the overlay disappears when the drag ends.
+- [ ] **Step 0 — Drag feedback (red zone, level 1)**: While dragging a file on the page (but NOT over the Produtos area), verify the Produtos area shows a light red overlay with a prohibition icon and "Não solte aqui" text.
+- [ ] **Step 0 — Drag feedback (red zone, level 2)**: Move the dragged file INTO the Produtos area. Verify the overlay escalates to bold red with 4 large "NÃO!" texts. Move the file OUT of the Produtos area — verify it de-escalates back to the small prohibition icon.
 - [ ] **Step 0 — Drag feedback (drop)**: Drop the file on the green Receita zone. Verify the file is accepted and the prescription preview appears. Verify both overlays disappear.
 - [ ] **Step 1 — Shipping**: Set frete value. Select shipping method. Enter shipping address. Verify data persists to Step 4 summary.
 - [ ] **Step 2 — Payment**: Generate GlobalPay payment link. Toggle payment methods. Verify link URL is generated with invoice in `ETGANS#####` format.
