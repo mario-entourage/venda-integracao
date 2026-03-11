@@ -48,7 +48,13 @@ VENDAS (menu: Vendas | rota: /remessas)
     - Upload da receita medica com extracao automatica por IA.
       Ao arrastar um arquivo sobre a pagina, a area de Receita
       fica verde ("Solte a receita aqui!") e a area de Produtos
-      fica vermelha ("Nao solte aqui") para guiar o usuario.
+      fica vermelha com textos grandes "NAO!" para guiar o usuario.
+    - Deteccao de receita duplicada: o sistema calcula o hash
+      SHA-256 da receita e bloqueia reutilizacao com vendas ativas.
+      Se a receita ja estiver vinculada a outro pedido ativo, o
+      usuario deve cancelar o pedido existente primeiro.
+      Administradores podem marcar "Permitir receita duplicada"
+      para prosseguir sem cancelar o pedido anterior.
     - Selecionar produtos e quantidades (dropdown expandido
       mostra nomes completos dos produtos).
     - Selecionar Representante (dropdown com usuarios marcados
