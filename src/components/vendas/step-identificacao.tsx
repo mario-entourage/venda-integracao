@@ -632,11 +632,13 @@ export function StepIdentificacao({
           )}>
             {isDraggingOverProhibited ? (
               <>
-                {/* Escalated: big repeating NÃO! texts */}
-                <p className="text-6xl font-black text-red-500/80 tracking-widest select-none leading-tight">NÃO!</p>
-                <p className="text-6xl font-black text-red-600/90 tracking-widest select-none leading-tight">NÃO!</p>
-                <p className="text-6xl font-black text-red-500/80 tracking-widest select-none leading-tight">NÃO!</p>
-                <p className="text-6xl font-black text-red-600/90 tracking-widest select-none leading-tight">NÃO!</p>
+                {/* Escalated: big NÃO! texts in a single row */}
+                <div className="flex items-center justify-center gap-4 flex-wrap">
+                  <span className="text-5xl font-black text-red-500/80 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-600/90 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-500/80 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-600/90 tracking-widest select-none">NÃO!</span>
+                </div>
                 <p className="mt-2 text-sm font-bold text-red-700">↑ Arraste para a área de Receita acima ↑</p>
               </>
             ) : (
