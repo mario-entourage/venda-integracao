@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { AlertCircle, CheckCircle, Lightbulb, Loader2, Wand2, Check, ExternalLink, ZoomIn, ZoomOut, RotateCw, X, Maximize2, FileText, Copy } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,6 +26,73 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import type { PatientRequest, PacienteDocument, ComprovanteResidenciaDocument, ProcuracaoDocument, ReceitaMedicaDocument, DocumentBase, OcrData, AnvisaRequestStatus, AnvisaUserProfile } from "@/types/anvisa";
 import { ANVISA_ROUTES, ANVISA_API_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
+
+// ─── CEP-to-state derivation ────────────────────────────────────────────────
+// CEP range → UF mapping (first 1-2 digits determine the state)
+function stateFromCep(cep: string | undefined | null): string {
+    if (!cep) return '';
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length < 5) return '';
+    const prefix = parseInt(digits.substring(0, 5), 10);
+    // SP: 01000-19999
+    if (prefix >= 1000 && prefix <= 19999) return 'SP';
+    // RJ: 20000-28999
+    if (prefix >= 20000 && prefix <= 28999) return 'RJ';
+    // ES: 29000-29999
+    if (prefix >= 29000 && prefix <= 29999) return 'ES';
+    // MG: 30000-39999
+    if (prefix >= 30000 && prefix <= 39999) return 'MG';
+    // BA: 40000-48999
+    if (prefix >= 40000 && prefix <= 48999) return 'BA';
+    // SE: 49000-49999
+    if (prefix >= 49000 && prefix <= 49999) return 'SE';
+    // PE: 50000-56999
+    if (prefix >= 50000 && prefix <= 56999) return 'PE';
+    // AL: 57000-57999
+    if (prefix >= 57000 && prefix <= 57999) return 'AL';
+    // PB: 58000-58999
+    if (prefix >= 58000 && prefix <= 58999) return 'PB';
+    // RN: 59000-59999
+    if (prefix >= 59000 && prefix <= 59999) return 'RN';
+    // CE: 60000-63999
+    if (prefix >= 60000 && prefix <= 63999) return 'CE';
+    // PI: 64000-64999
+    if (prefix >= 64000 && prefix <= 64999) return 'PI';
+    // MA: 65000-65999
+    if (prefix >= 65000 && prefix <= 65999) return 'MA';
+    // PA: 66000-68899
+    if (prefix >= 66000 && prefix <= 68899) return 'PA';
+    // AP: 68900-68999
+    if (prefix >= 68900 && prefix <= 68999) return 'AP';
+    // AM: 69000-69299, 69400-69899
+    if (prefix >= 69000 && prefix <= 69299) return 'AM';
+    if (prefix >= 69400 && prefix <= 69899) return 'AM';
+    // RR: 69300-69399
+    if (prefix >= 69300 && prefix <= 69399) return 'RR';
+    // AC: 69900-69999
+    if (prefix >= 69900 && prefix <= 69999) return 'AC';
+    // DF: 70000-72799, 73000-73699
+    if (prefix >= 70000 && prefix <= 72799) return 'DF';
+    if (prefix >= 73000 && prefix <= 73699) return 'DF';
+    // GO: 72800-72999, 73700-76799
+    if (prefix >= 72800 && prefix <= 72999) return 'GO';
+    if (prefix >= 73700 && prefix <= 76799) return 'GO';
+    // TO: 77000-77999
+    if (prefix >= 77000 && prefix <= 77999) return 'TO';
+    // MT: 78000-78899
+    if (prefix >= 78000 && prefix <= 78899) return 'MT';
+    // MS: 79000-79999
+    if (prefix >= 79000 && prefix <= 79999) return 'MS';
+    // RO: 76800-76999
+    if (prefix >= 76800 && prefix <= 76999) return 'RO';
+    // PR: 80000-87999
+    if (prefix >= 80000 && prefix <= 87999) return 'PR';
+    // SC: 88000-89999
+    if (prefix >= 88000 && prefix <= 89999) return 'SC';
+    // RS: 90000-99999
+    if (prefix >= 90000 && prefix <= 99999) return 'RS';
+    return '';
+}
 
 // Optional format validation: validates format only when a value is provided
 const optionalDate = z.string().refine(
@@ -396,7 +463,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
             patientCep: reused.patientCep || combinedData.patientCep || '',
             patientAddress: reused.patientAddress || combinedData.patientAddress || '',
             patientCity: reused.patientCity || combinedData.patientCity || '',
-            patientState: reused.patientState || combinedData.patientState || '',
+            patientState: reused.patientState || combinedData.patientState || stateFromCep(reused.patientCep || combinedData.patientCep) || '',
             patientPhone: reused.patientPhone || combinedData.patientPhone || '',
             patientEmail: reused.patientEmail || combinedData.patientEmail || '',
             doctorName: reused.doctorName || combinedData.doctorName || '',
@@ -808,7 +875,9 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
     const [confirmationNumber, setConfirmationNumber] = useState('');
     const [isCompleting, setIsCompleting] = useState(false);
     const [dataSentToExtension, setDataSentToExtension] = useState(false);
+    const dataSentRef = useRef(false);
     const [autoSent, setAutoSent] = useState(false);
+    const [extensionReady, setExtensionReady] = useState(false);
     const [userProfile, setUserProfile] = useState<AnvisaUserProfile | null>(null);
     const [profileLoaded, setProfileLoaded] = useState(false);
 
@@ -831,18 +900,23 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         loadProfile();
     }, [firestore, user]);
 
-    // Listen for confirmation that extension stored the data (via postMessage)
+    // Listen for extension bridge ready signal + confirmation that extension stored data
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== 'object') return;
+            if (event.data.type === 'anvisa-extension-ready') {
+                setExtensionReady(true);
+                return;
+            }
             if (event.data.type === 'anvisa-extension-data-stored') {
                 if (event.data.success) {
                     setDataSentToExtension(true);
+                    dataSentRef.current = true;
                     toast({
                         title: "Dados enviados para a extensão!",
                         description: `${event.data.fieldCount} campos prontos. Abra o site da ANVISA e clique em "Preencher" na extensão.`,
                     });
-                    setTimeout(() => setDataSentToExtension(false), 5000);
+                    setTimeout(() => { setDataSentToExtension(false); dataSentRef.current = false; }, 5000);
                 } else {
                     toast({
                         variant: 'destructive',
@@ -868,8 +942,12 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             data.requesterName = userProfile.requesterName;
             data.requesterEmail = userProfile.requesterEmail;
             data.requesterRg = userProfile.requesterRg;
+            data.requesterSexo = userProfile.requesterSexo;
+            data.requesterDob = userProfile.requesterDob;
             data.requesterAddress = userProfile.requesterAddress;
             data.requesterCep = userProfile.requesterCep;
+            data.requesterEstado = userProfile.requesterEstado;
+            data.requesterMunicipio = userProfile.requesterMunicipio;
             data.requesterPhone = userProfile.requesterPhone;
             data.requesterLandline = userProfile.requesterLandline;
         }
@@ -931,14 +1009,20 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         return payload;
     }, [fullPayload, resolvedFiles]);
 
-    // Auto-send data to extension once OCR/extraction is done AND profile is loaded
+    // Probe for extension bridge — it may have sent 'ready' before this component mounted.
+    // The bridge re-sends 'ready' in response to a ping.
     useEffect(() => {
-        if (autoSent || isProcessing || !profileLoaded) return;
+        window.postMessage({ type: 'anvisa-extension-ping' }, '*');
+    }, []);
+
+    // Auto-send data to extension once OCR/extraction is done, profile is loaded, AND bridge is ready
+    useEffect(() => {
+        if (autoSent || isProcessing || !profileLoaded || !extensionReady) return;
         const hasData = Object.values(validatedData).some(v => v && String(v).trim().length > 0);
         if (!hasData) return;
         setAutoSent(true);
         window.postMessage({ type: 'anvisa-autofill-data', data: extensionPayload }, '*');
-    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionPayload]);
+    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionReady, extensionPayload]);
 
     const handleSendToExtension = () => {
         // Use postMessage to cross the content script isolation boundary
@@ -947,26 +1031,18 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             '*'
         );
 
-        // If the extension bridge doesn't reply within 2 seconds, the content script
+        // If the extension bridge doesn't reply within 3 seconds, the content script
         // is likely dead (extension was reinstalled/updated). Prompt user to refresh.
+        // Use dataSentRef (not state) to avoid stale closure issues.
         const timeout = setTimeout(() => {
-            if (!dataSentToExtension) {
+            if (!dataSentRef.current) {
                 toast({
                     variant: 'destructive',
                     title: 'Extensão não respondeu',
                     description: 'Recarregue esta página (F5) e tente novamente. A extensão pode ter sido reinstalada.',
                 });
             }
-        }, 2000);
-
-        // Clear timeout if we get a reply (handled by the message listener)
-        const handleReply = (event: MessageEvent) => {
-            if (event.data?.type === 'anvisa-extension-data-stored') {
-                clearTimeout(timeout);
-                window.removeEventListener('message', handleReply);
-            }
-        };
-        window.addEventListener('message', handleReply);
+        }, 3000);
     };
 
     const handleCompleteRequest = () => {
