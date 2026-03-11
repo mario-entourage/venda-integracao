@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { query, where } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -9,6 +9,15 @@ import { getDocumentsRef } from '@/services/documents.service';
 import { getActiveUsersQuery } from '@/services/users.service';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { DocumentRecord } from '@/types';
 import type { User } from '@/types';
 
@@ -46,9 +55,21 @@ function sortByCreatedAtDesc(docs: DocumentRecord[]): DocumentRecord[] {
 
 // ─── component ───────────────────────────────────────────────────────────────
 
+// Default date range: last 30 days
+const today = new Date();
+const thirtyDaysAgo = new Date(today);
+thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+const defaultFrom = thirtyDaysAgo.toISOString().slice(0, 10);
+const defaultTo = today.toISOString().slice(0, 10);
+
 export default function DocumentosPage() {
   const router = useRouter();
   const { firestore, user, isAdmin } = useFirebase();
+
+  // Filters
+  const [dateFrom, setDateFrom] = useState(defaultFrom);
+  const [dateTo, setDateTo] = useState(defaultTo);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
 
   // Admin → all documents; User → only their own
   const docsQ = useMemoFirebase(
@@ -78,10 +99,21 @@ export default function DocumentosPage() {
     return m;
   }, [allUsers]);
 
-  const docs = useMemo(
-    () => sortByCreatedAtDesc(rawDocs ?? []),
-    [rawDocs],
-  );
+  // Apply date range + type filters client-side
+  const docs = useMemo(() => {
+    const sorted = sortByCreatedAtDesc(rawDocs ?? []);
+    const fromTs = new Date(dateFrom + 'T00:00:00').getTime() / 1000;
+    const toTs = new Date(dateTo + 'T23:59:59.999').getTime() / 1000;
+
+    return sorted.filter((d) => {
+      // Date filter
+      const docTs = (d.createdAt as unknown as { seconds: number })?.seconds ?? 0;
+      if (docTs < fromTs || docTs > toTs) return false;
+      // Type filter
+      if (typeFilter !== 'all' && d.type !== typeFilter) return false;
+      return true;
+    });
+  }, [rawDocs, dateFrom, dateTo, typeFilter]);
 
   return (
     <div className="space-y-6">
@@ -93,6 +125,48 @@ export default function DocumentosPage() {
             : 'Documentos que você enviou.'}
         </p>
       </div>
+
+      {/* ── Filters ──────────────────────────────────────────────── */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data — De</Label>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Data — Até</Label>
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="w-[160px]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tipo</Label>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {Object.entries(DOC_TYPE_LABELS).map(([key, { label }]) => (
+                    <SelectItem key={key} value={key}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

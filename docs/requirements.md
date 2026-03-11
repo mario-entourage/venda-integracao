@@ -25,7 +25,7 @@ This platform is the internally facing operations system that manages the entire
 
 ### **What the platform does**
 
-1. Creates sales orders via a guided 4-step wizard (select patient/doctor/products, generate payment link, create e-signature documents, send everything to the client).  
+1. Creates sales orders via a guided 5-step wizard (select patient/doctor/products with shipping cost, generate payment link, create e-signature documents, send everything to the client, and select shipping method).  
 2. Tracks order progress through a multi-condition checklist: payment confirmation, document signing, ANVISA authorization, document completeness, and shipping.  
 3. Automates ANVISA submissions by extracting data from uploaded documents via AI (Google Gemini OCR) and auto-filling the ANVISA government portal via a Chrome browser extension.  
 4. Manages inventory across two physical locations: Miami (USA, via TriStar Express warehouse) and Brazil (local).  
@@ -117,6 +117,7 @@ Step 2  Documents         Create ZapSign e-signature documents if needed        
                           Enter Signatario details (name + CPF).
 Step 3  Send to Client    Review summary. Copy/share payment + signing links
                           via WhatsApp. Order created atomically.
+Step 4  Shipping          Select shipping method (TriStar, Correios, or Motoboy).
 ```
 
 Phase 2 — Async Resolution (Checklist Tracking)
@@ -153,7 +154,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 
 | ID | Requirement |
 | :---- | :---- |
-| FR-01.1 | A 4-step wizard guides the operator through order setup: Identification, Payment, Documents, Send to Client. The wizard may be completed in a single session or multiple sessions. |
+| FR-01.1 | A 5-step wizard guides the operator through order setup: Identification, Payment, Documents, Send to Client, Shipping. The wizard may be completed in a single session or multiple sessions. |
 | FR-01.2 | Step 0 — Identification: Upload a prescription image. Select or create a client (patient), doctor, representative. Add Frete (ship cost). Add products with negotiated BRL pricing and allowed payment methods.  |
 | FR-01.3 | The system fetches the current PTAX exchange rate (BCB) and stores it with the order for contemporaneous USD/BRL conversion. |
 | FR-01.4 | Step 1 — Payment: A payment link is generated via GlobalPay.. The system must submit a programmatically created invoice number of the format AAAAAA\#\#\#\#\# where the first four characters are “ETGA,” the next two characters are the initials of the associated sales rep, and the final five numbers are sequentially increased one at a time across the company. |
@@ -831,7 +832,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 
 ```
 /dashboard          Dashboard (entry point after login)
-/remessas           Nova Venda (4-step wizard, or ?resume={id} for resumption)
+/remessas           Nova Venda (5-step wizard, or ?resume={id} for resumption)
 /pedidos            Pedidos (consolidated order tracker)
 /controle           Controle (order detail & checklist)
 /clientes           Clientes (patient CRUD)
