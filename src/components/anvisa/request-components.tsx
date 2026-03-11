@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { AlertCircle, CheckCircle, Lightbulb, Loader2, Wand2, Check, ExternalLink, ZoomIn, ZoomOut, RotateCw, X, Maximize2, FileText, Copy } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -808,7 +808,9 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
     const [confirmationNumber, setConfirmationNumber] = useState('');
     const [isCompleting, setIsCompleting] = useState(false);
     const [dataSentToExtension, setDataSentToExtension] = useState(false);
+    const dataSentRef = useRef(false);
     const [autoSent, setAutoSent] = useState(false);
+    const [extensionReady, setExtensionReady] = useState(false);
     const [userProfile, setUserProfile] = useState<AnvisaUserProfile | null>(null);
     const [profileLoaded, setProfileLoaded] = useState(false);
 
@@ -831,18 +833,23 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         loadProfile();
     }, [firestore, user]);
 
-    // Listen for confirmation that extension stored the data (via postMessage)
+    // Listen for extension bridge ready signal + confirmation that extension stored data
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== 'object') return;
+            if (event.data.type === 'anvisa-extension-ready') {
+                setExtensionReady(true);
+                return;
+            }
             if (event.data.type === 'anvisa-extension-data-stored') {
                 if (event.data.success) {
                     setDataSentToExtension(true);
+                    dataSentRef.current = true;
                     toast({
                         title: "Dados enviados para a extensão!",
                         description: `${event.data.fieldCount} campos prontos. Abra o site da ANVISA e clique em "Preencher" na extensão.`,
                     });
-                    setTimeout(() => setDataSentToExtension(false), 5000);
+                    setTimeout(() => { setDataSentToExtension(false); dataSentRef.current = false; }, 5000);
                 } else {
                     toast({
                         variant: 'destructive',
@@ -931,14 +938,20 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         return payload;
     }, [fullPayload, resolvedFiles]);
 
-    // Auto-send data to extension once OCR/extraction is done AND profile is loaded
+    // Probe for extension bridge — it may have sent 'ready' before this component mounted.
+    // The bridge re-sends 'ready' in response to a ping.
     useEffect(() => {
-        if (autoSent || isProcessing || !profileLoaded) return;
+        window.postMessage({ type: 'anvisa-extension-ping' }, '*');
+    }, []);
+
+    // Auto-send data to extension once OCR/extraction is done, profile is loaded, AND bridge is ready
+    useEffect(() => {
+        if (autoSent || isProcessing || !profileLoaded || !extensionReady) return;
         const hasData = Object.values(validatedData).some(v => v && String(v).trim().length > 0);
         if (!hasData) return;
         setAutoSent(true);
         window.postMessage({ type: 'anvisa-autofill-data', data: extensionPayload }, '*');
-    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionPayload]);
+    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionReady, extensionPayload]);
 
     const handleSendToExtension = () => {
         // Use postMessage to cross the content script isolation boundary
@@ -947,26 +960,18 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             '*'
         );
 
-        // If the extension bridge doesn't reply within 2 seconds, the content script
+        // If the extension bridge doesn't reply within 3 seconds, the content script
         // is likely dead (extension was reinstalled/updated). Prompt user to refresh.
+        // Use dataSentRef (not state) to avoid stale closure issues.
         const timeout = setTimeout(() => {
-            if (!dataSentToExtension) {
+            if (!dataSentRef.current) {
                 toast({
                     variant: 'destructive',
                     title: 'Extensão não respondeu',
                     description: 'Recarregue esta página (F5) e tente novamente. A extensão pode ter sido reinstalada.',
                 });
             }
-        }, 2000);
-
-        // Clear timeout if we get a reply (handled by the message listener)
-        const handleReply = (event: MessageEvent) => {
-            if (event.data?.type === 'anvisa-extension-data-stored') {
-                clearTimeout(timeout);
-                window.removeEventListener('message', handleReply);
-            }
-        };
-        window.addEventListener('message', handleReply);
+        }, 3000);
     };
 
     const handleCompleteRequest = () => {
