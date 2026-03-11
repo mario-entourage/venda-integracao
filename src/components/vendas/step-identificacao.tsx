@@ -427,8 +427,6 @@ export function StepIdentificacao({
     (sum, p) => sum + p.negotiatedPrice * p.quantity, 0
   );
 
-  const hasPrescription = !!state.prescriptionFile;
-  const showSideBySide = hasPrescription && !!previewUrl;
 
   return (
     <div>
@@ -454,8 +452,8 @@ export function StepIdentificacao({
         }}
       />
 
-      <div className={cn(showSideBySide && 'lg:grid lg:grid-cols-[1fr_minmax(300px,400px)] lg:gap-6 lg:items-start')}>
-      {/* ── Left column ─── */}
+      <div>
+      {/* ── Main column ─── */}
       <div className="space-y-7">
 
       {/* ── Client & Doctor — side by side ─────────────────────────── */}
@@ -547,12 +545,10 @@ export function StepIdentificacao({
           </div>
         ) : previewUrl && state.prescriptionFile?.type?.startsWith('image/') ? (
           /* ── Image viewer with zoom / pan / rotate ─── */
-          <div className={cn(showSideBySide && 'lg:hidden')}>
-            <ImageViewer
-              src={previewUrl}
-              alt={state.prescriptionFileName || 'Receita médica'}
-            />
-          </div>
+          <ImageViewer
+            src={previewUrl}
+            alt={state.prescriptionFileName || 'Receita médica'}
+          />
         ) : state.prescriptionFile ? (
           /* ── PDF or non-image file fallback ─── */
           <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
@@ -837,17 +833,6 @@ export function StepIdentificacao({
 
       </div>
 
-      {/* ── Right column — sticky prescription viewer ─── */}
-      {showSideBySide && (
-        <div className="hidden lg:block lg:sticky lg:top-24 self-start space-y-2">
-          <Label className="text-sm font-semibold">Visualizar Receita</Label>
-          <ImageViewer
-            src={previewUrl!}
-            alt={state.prescriptionFileName || 'Receita médica'}
-          />
-          <p className="text-xs text-muted-foreground text-center truncate">{state.prescriptionFileName}</p>
-        </div>
-      )}
       </div>
 
     </div>
