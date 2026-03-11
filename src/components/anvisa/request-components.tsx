@@ -27,6 +27,73 @@ import type { PatientRequest, PacienteDocument, ComprovanteResidenciaDocument, P
 import { ANVISA_ROUTES, ANVISA_API_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
 
+// ─── CEP-to-state derivation ────────────────────────────────────────────────
+// CEP range → UF mapping (first 1-2 digits determine the state)
+function stateFromCep(cep: string | undefined | null): string {
+    if (!cep) return '';
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length < 5) return '';
+    const prefix = parseInt(digits.substring(0, 5), 10);
+    // SP: 01000-19999
+    if (prefix >= 1000 && prefix <= 19999) return 'SP';
+    // RJ: 20000-28999
+    if (prefix >= 20000 && prefix <= 28999) return 'RJ';
+    // ES: 29000-29999
+    if (prefix >= 29000 && prefix <= 29999) return 'ES';
+    // MG: 30000-39999
+    if (prefix >= 30000 && prefix <= 39999) return 'MG';
+    // BA: 40000-48999
+    if (prefix >= 40000 && prefix <= 48999) return 'BA';
+    // SE: 49000-49999
+    if (prefix >= 49000 && prefix <= 49999) return 'SE';
+    // PE: 50000-56999
+    if (prefix >= 50000 && prefix <= 56999) return 'PE';
+    // AL: 57000-57999
+    if (prefix >= 57000 && prefix <= 57999) return 'AL';
+    // PB: 58000-58999
+    if (prefix >= 58000 && prefix <= 58999) return 'PB';
+    // RN: 59000-59999
+    if (prefix >= 59000 && prefix <= 59999) return 'RN';
+    // CE: 60000-63999
+    if (prefix >= 60000 && prefix <= 63999) return 'CE';
+    // PI: 64000-64999
+    if (prefix >= 64000 && prefix <= 64999) return 'PI';
+    // MA: 65000-65999
+    if (prefix >= 65000 && prefix <= 65999) return 'MA';
+    // PA: 66000-68899
+    if (prefix >= 66000 && prefix <= 68899) return 'PA';
+    // AP: 68900-68999
+    if (prefix >= 68900 && prefix <= 68999) return 'AP';
+    // AM: 69000-69299, 69400-69899
+    if (prefix >= 69000 && prefix <= 69299) return 'AM';
+    if (prefix >= 69400 && prefix <= 69899) return 'AM';
+    // RR: 69300-69399
+    if (prefix >= 69300 && prefix <= 69399) return 'RR';
+    // AC: 69900-69999
+    if (prefix >= 69900 && prefix <= 69999) return 'AC';
+    // DF: 70000-72799, 73000-73699
+    if (prefix >= 70000 && prefix <= 72799) return 'DF';
+    if (prefix >= 73000 && prefix <= 73699) return 'DF';
+    // GO: 72800-72999, 73700-76799
+    if (prefix >= 72800 && prefix <= 72999) return 'GO';
+    if (prefix >= 73700 && prefix <= 76799) return 'GO';
+    // TO: 77000-77999
+    if (prefix >= 77000 && prefix <= 77999) return 'TO';
+    // MT: 78000-78899
+    if (prefix >= 78000 && prefix <= 78899) return 'MT';
+    // MS: 79000-79999
+    if (prefix >= 79000 && prefix <= 79999) return 'MS';
+    // RO: 76800-76999
+    if (prefix >= 76800 && prefix <= 76999) return 'RO';
+    // PR: 80000-87999
+    if (prefix >= 80000 && prefix <= 87999) return 'PR';
+    // SC: 88000-89999
+    if (prefix >= 88000 && prefix <= 89999) return 'SC';
+    // RS: 90000-99999
+    if (prefix >= 90000 && prefix <= 99999) return 'RS';
+    return '';
+}
+
 // Optional format validation: validates format only when a value is provided
 const optionalDate = z.string().refine(
   (val) => !val || /^\d{2}\/\d{2}\/\d{4}$/.test(val),
@@ -396,7 +463,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
             patientCep: reused.patientCep || combinedData.patientCep || '',
             patientAddress: reused.patientAddress || combinedData.patientAddress || '',
             patientCity: reused.patientCity || combinedData.patientCity || '',
-            patientState: reused.patientState || combinedData.patientState || '',
+            patientState: reused.patientState || combinedData.patientState || stateFromCep(reused.patientCep || combinedData.patientCep) || '',
             patientPhone: reused.patientPhone || combinedData.patientPhone || '',
             patientEmail: reused.patientEmail || combinedData.patientEmail || '',
             doctorName: reused.doctorName || combinedData.doctorName || '',
