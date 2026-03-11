@@ -123,7 +123,7 @@ interface NovaVendaWizardProps {
 
 export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   const router = useRouter();
-  const { firestore, storage, user } = useFirebase();
+  const { firestore, storage, user, isAdmin } = useFirebase();
 
   // ── Firebase data ───────────────────────────────────────────────────────
   const clientsQ = useMemoFirebase(
@@ -155,6 +155,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   /** When a duplicate prescription is detected, store the existing order ID for linking. */
   const [duplicateOrderId, setDuplicateOrderId] = useState<string | null>(null);
+  /** Admin override: allow creating an order with a duplicate prescription. */
+  const [adminOverrideDuplicate, setAdminOverrideDuplicate] = useState(false);
   // Post-completion dialog: shown when one or both entities were quick-added
   const [showPostDialog, setShowPostDialog] = useState(false);
   const [completedOrderId, setCompletedOrderId] = useState('');
@@ -192,6 +194,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     if (duplicateOrderId) {
       setDuplicateOrderId(null);
       setSubmitError(null);
+      setAdminOverrideDuplicate(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.step1.prescriptionFile]);
@@ -245,7 +248,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
         const { step1 } = state;
 
         // ── Duplicate prescription check ────────────────────────────────
-        if (step1.prescriptionHash && firestore) {
+        if (step1.prescriptionHash && firestore && !adminOverrideDuplicate) {
           const existing = await findActiveOrderByPrescriptionHash(
             firestore,
             step1.prescriptionHash,
@@ -460,12 +463,27 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <p>{submitError}</p>
           {duplicateOrderId && (
-            <Link
-              href={`/controle/${duplicateOrderId}`}
-              className="mt-1 inline-block font-medium underline text-red-800 hover:text-red-900"
-            >
-              Ver venda existente →
-            </Link>
+            <div className="mt-2 space-y-2">
+              <Link
+                href={`/controle/${duplicateOrderId}`}
+                className="inline-block font-medium underline text-red-800 hover:text-red-900"
+              >
+                Ver venda existente →
+              </Link>
+              {isAdmin && (
+                <label className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={adminOverrideDuplicate}
+                    onChange={(e) => setAdminOverrideDuplicate(e.target.checked)}
+                    className="h-4 w-4 rounded border-amber-400 text-amber-600 focus:ring-amber-500"
+                  />
+                  <span className="text-xs font-semibold text-amber-800">
+                    Admin: Permitir receita duplicada e prosseguir
+                  </span>
+                </label>
+              )}
+            </div>
           )}
         </div>
       )}

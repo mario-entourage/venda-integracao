@@ -597,14 +597,14 @@ export function StepIdentificacao({
       <div className="relative space-y-3">
         {/* Red overlay when dragging a file — guides user to the Receita zone */}
         {isDraggingOnPage && !state.prescriptionFile && (
-          <div className="absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-red-400 bg-red-50/90 pointer-events-none">
-            <div className="text-center">
-              <svg className="mx-auto mb-2 h-10 w-10 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              <p className="text-lg font-bold text-red-600">Não solte aqui</p>
-              <p className="text-sm text-red-500">Arraste para a área de Receita acima</p>
-            </div>
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl border-4 border-dashed border-red-500 bg-red-100/95 pointer-events-none overflow-hidden">
+            {/* Big repeating NÃO! texts */}
+            <p className="text-6xl font-black text-red-500/80 tracking-widest select-none leading-tight">NÃO!</p>
+            <p className="text-6xl font-black text-red-600/90 tracking-widest select-none leading-tight">NÃO!</p>
+            <p className="text-6xl font-black text-red-500/80 tracking-widest select-none leading-tight">NÃO!</p>
+            <p className="text-6xl font-black text-red-600/90 tracking-widest select-none leading-tight">NÃO!</p>
+            {/* Instruction line */}
+            <p className="mt-2 text-sm font-bold text-red-700">↑ Arraste para a área de Receita acima ↑</p>
           </div>
         )}
 
