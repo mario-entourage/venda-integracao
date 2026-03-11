@@ -7,17 +7,11 @@ import { Button } from '@/components/ui/button';
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface ImageViewerProps {
-  /** The image source URL (data: URL, blob URL, or http URL). */
   src: string;
-  /** Alt text for accessibility. */
   alt?: string;
-  /** Optional class name for the outer wrapper. */
   className?: string;
-  /** Minimum zoom level (default 0.25). */
   minZoom?: number;
-  /** Maximum zoom level (default 5). */
   maxZoom?: number;
-  /** Step for each zoom in/out click (default 0.25). */
   zoomStep?: number;
 }
 
@@ -40,13 +34,14 @@ export function ImageViewer({
 }: ImageViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Use dynamic state for the image src so it can be replaced
+  const [currentSrc, setCurrentSrc] = useState(src);
+
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
-
-  // ── Zoom helpers ──────────────────────────────────────────────────────────
 
   const clampZoom = useCallback(
     (z: number) => Math.min(maxZoom, Math.max(minZoom, z)),
@@ -63,20 +58,14 @@ export function ImageViewer({
     [clampZoom, zoomStep],
   );
 
-  // ── Rotation helpers ──────────────────────────────────────────────────────
-
   const handleRotateCW = useCallback(() => setRotation((r) => (r + 90) % 360), []);
   const handleRotateCCW = useCallback(() => setRotation((r) => (r - 90 + 360) % 360), []);
-
-  // ── Reset ─────────────────────────────────────────────────────────────────
 
   const handleReset = useCallback(() => {
     setZoom(1);
     setRotation(0);
     setPan({ x: 0, y: 0 });
   }, []);
-
-  // ── Mouse-wheel zoom ─────────────────────────────────────────────────────
 
   useEffect(() => {
     const el = containerRef.current;
@@ -91,11 +80,9 @@ export function ImageViewer({
     return () => el.removeEventListener('wheel', onWheel);
   }, [clampZoom]);
 
-  // ── Pan via pointer events ────────────────────────────────────────────────
-
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (e.button !== 0) return; // left button only
+      if (e.button !== 0) return;
       setIsPanning(true);
       panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
@@ -114,8 +101,6 @@ export function ImageViewer({
   );
 
   const handlePointerUp = useCallback(() => setIsPanning(false), []);
-
-  // ── Keyboard shortcuts (when container focused) ───────────────────────────
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -162,8 +147,6 @@ export function ImageViewer({
     [handleZoomIn, handleZoomOut, handleRotateCW, handleRotateCCW, handleReset],
   );
 
-  // ── Zoom percentage for display ───────────────────────────────────────────
-
   const zoomPercent = Math.round(zoom * 100);
 
   return (
@@ -176,9 +159,7 @@ export function ImageViewer({
             onClick={handleZoomOut}
             disabled={zoom <= minZoom}
             title="Diminuir zoom (−)"
-            icon={
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16zM8 11h6" />
-            }
+            icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16zM8 11h6" />}
           />
 
           {/* Zoom label */}
@@ -191,29 +172,39 @@ export function ImageViewer({
             onClick={handleZoomIn}
             disabled={zoom >= maxZoom}
             title="Aumentar zoom (+)"
-            icon={
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16zM11 8v6M8 11h6" />
-            }
+            icon={<path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16zM11 8v6M8 11h6" />}
           />
 
           <div className="mx-1 h-4 w-px bg-border" />
 
-          {/* Rotate counter-clockwise */}
+          {/* Rotate CCW */}
           <ToolbarButton
             onClick={handleRotateCCW}
             title="Girar esquerda (Shift+R)"
-            icon={
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-            }
+            icon={<path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />}
           />
 
-          {/* Rotate clockwise */}
+          {/* Rotate CW */}
           <ToolbarButton
             onClick={handleRotateCW}
             title="Girar direita (R)"
-            icon={
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
-            }
+            icon={<path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />}
+          />
+
+          {/* Change Doc button */}
+          <ToolbarButton
+            onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              input.onchange = (e: any) => {
+                const file = e.target.files[0];
+                if (file) setCurrentSrc(URL.createObjectURL(file));
+              };
+              input.click();
+            }}
+            title="Change Doc"
+            icon={<path strokeLinecap="round" strokeLinejoin="round" d="M4 4h16v16H4V4zM4 4l16 16" />}
           />
         </div>
 
@@ -221,9 +212,7 @@ export function ImageViewer({
         <ToolbarButton
           onClick={handleReset}
           title="Resetar visualização (0)"
-          icon={
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-          }
+          icon={<path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />}
         />
       </div>
 
@@ -243,9 +232,8 @@ export function ImageViewer({
         )}
         style={{ touchAction: 'none' }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={src}
+          src={currentSrc}
           alt={alt}
           draggable={false}
           className="pointer-events-none select-none max-h-full max-w-full"
@@ -283,14 +271,7 @@ function ToolbarButton({
       title={title}
       className="h-7 w-7 text-muted-foreground hover:text-foreground"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.75}
-        stroke="currentColor"
-        className="h-4 w-4"
-      >
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor" className="h-4 w-4">
         {icon}
       </svg>
     </Button>
