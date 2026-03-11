@@ -45,6 +45,7 @@ The central collection. Each document represents one sales order. The document I
 | `documentsComplete` | boolean | All required documents received |
 | `tristarShipmentId` | string? | TriStar shipment reference |
 | `prescriptionDocId` | string? | Firebase Storage path to prescription image |
+| `prescriptionHash` | string? | SHA-256 hex hash of the prescription file (for duplicate detection). Queried to prevent the same prescription from being used across multiple active orders. Admins can override the check. |
 | `softDeleted` | boolean? | Soft-delete flag |
 | `createdById` | string | Auth UID of creator |
 | `updatedById` | string? | Auth UID of last updater |

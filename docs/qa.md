@@ -282,7 +282,7 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Step 0 — Rep dropdown**: Verify that users tagged as sales reps appear in the Representante dropdown. Verify "Venda Direta" option is available.
 - [ ] **Step 0 — Product dropdown width**: Open the Produto dropdown. Verify full product names are visible without truncation (dropdown expands beyond the trigger width up to 400px).
 - [ ] **Step 0 — Drag feedback (green zone)**: Drag a file from the desktop onto the page. Verify the Receita drop zone highlights green with pulsing border, shows a green upload icon, and displays "Solte a receita aqui!" text.
-- [ ] **Step 0 — Drag feedback (red zone)**: While dragging a file, verify the Produtos area shows a red overlay with a prohibition icon and "Não solte aqui" / "Arraste para a área de Receita acima" text. Verify the overlay disappears when the drag ends.
+- [ ] **Step 0 — Drag feedback (red zone)**: While dragging a file, verify the Produtos area shows a bold red overlay with 4 large "NÃO!" texts and an instruction "Arraste para a área de Receita acima". Verify the overlay disappears when the drag ends.
 - [ ] **Step 0 — Drag feedback (drop)**: Drop the file on the green Receita zone. Verify the file is accepted and the prescription preview appears. Verify both overlays disappear.
 - [ ] **Step 1 — Shipping**: Set frete value. Select shipping method. Enter shipping address. Verify data persists to Step 4 summary.
 - [ ] **Step 2 — Payment**: Generate GlobalPay payment link. Toggle payment methods. Verify link URL is generated with invoice in `ETGANS#####` format.
@@ -290,6 +290,10 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Step 4 — Send to Client**: Verify summary shows all created links. Click WhatsApp share button — verify message contains payment link + signing URL.
 - [ ] **Atomic creation**: After completing the wizard, verify the order appears in Pedidos with all subcollections populated (customer, doctor, representative, products, paymentLinks).
 - [ ] **Invoice format**: Verify the generated invoice number follows `ETGANS#####` format (e.g., `ETGAMB00042`) where N and S are the rep's initials.
+- [ ] **Duplicate Receita (block)**: Upload a prescription that is already linked to an active order. Verify the wizard shows an error with the conflicting order ID and a link to the existing order. Verify the "Próximo" button does not advance.
+- [ ] **Duplicate Receita (admin override)**: As an admin, trigger the duplicate Receita error. Verify an amber checkbox "Permitir receita duplicada" appears. Check the box and click "Próximo" — verify the wizard advances despite the duplicate.
+- [ ] **Duplicate Receita (non-admin)**: As a non-admin user, trigger the duplicate Receita error. Verify no override checkbox appears — the user must cancel the existing order first.
+- [ ] **Duplicate Receita (file swap)**: After triggering the duplicate error, upload a different prescription file. Verify the error clears automatically.
 
 ### 5.2 Pedidos (Order Tracker)
 
