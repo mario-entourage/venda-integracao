@@ -15,7 +15,13 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+const BRAZILIAN_STATES = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
+] as const;
 
 const optionalRg = z.string().refine(
   (val) => !val || /^[\d.\-/]+$/.test(val),
@@ -34,8 +40,10 @@ const profileSchema = z.object({
   requesterName: z.string().default(''),
   requesterEmail: z.string().email("Email invalido").or(z.literal('')).default(''),
   requesterRg: optionalRg.default(''),
+  requesterSexo: z.string().default(''),
   requesterAddress: z.string().default(''),
   requesterCep: optionalCep.default(''),
+  requesterEstado: z.string().default(''),
   requesterPhone: optionalPhone.default(''),
   requesterLandline: z.string().default(''),
 });
@@ -55,8 +63,10 @@ export default function AnvisaPerfilPage() {
       requesterName: '',
       requesterEmail: '',
       requesterRg: '',
+      requesterSexo: '',
       requesterAddress: '',
       requesterCep: '',
+      requesterEstado: '',
       requesterPhone: '',
       requesterLandline: '',
     },
@@ -76,8 +86,10 @@ export default function AnvisaPerfilPage() {
             requesterName: data.requesterName || '',
             requesterEmail: data.requesterEmail || '',
             requesterRg: data.requesterRg || '',
+            requesterSexo: data.requesterSexo || '',
             requesterAddress: data.requesterAddress || '',
             requesterCep: data.requesterCep || '',
+            requesterEstado: data.requesterEstado || '',
             requesterPhone: data.requesterPhone || '',
             requesterLandline: data.requesterLandline || '',
           });
@@ -97,8 +109,10 @@ export default function AnvisaPerfilPage() {
                     requesterName: pData.requesterName || '',
                     requesterEmail: pData.requesterEmail || '',
                     requesterRg: pData.requesterRg || '',
+                    requesterSexo: pData.requesterSexo || '',
                     requesterAddress: pData.requesterAddress || '',
                     requesterCep: pData.requesterCep || '',
+                    requesterEstado: pData.requesterEstado || '',
                     requesterPhone: pData.requesterPhone || '',
                     requesterLandline: pData.requesterLandline || '',
                   });
@@ -238,6 +252,28 @@ export default function AnvisaPerfilPage() {
 
               <FormField
                 control={form.control}
+                name="requesterSexo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sexo/Genero *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSaving}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Masculino">Masculino</SelectItem>
+                        <SelectItem value="Feminino">Feminino</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="requesterAddress"
                 render={({ field }) => (
                   <FormItem>
@@ -265,6 +301,30 @@ export default function AnvisaPerfilPage() {
                     <FormControl>
                       <Input placeholder="00000-000" {...field} disabled={isSaving} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="requesterEstado"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado (UF) *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSaving}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {BRAZILIAN_STATES.map((uf) => (
+                          <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Estado do solicitante (usado no formulario da ANVISA)</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
