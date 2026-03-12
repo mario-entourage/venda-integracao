@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/firebase/admin';
+import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
+
+function getDb() {
+  if (getApps().length === 0) {
+    initializeApp({
+      credential: applicationDefault(),
+      projectId: process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT ?? 'simple-login-fdcf7',
+    });
+  }
+  return getFirestore();
+}
 
 /**
  * POST /api/admin/backfill-anvisa-profiles
@@ -10,19 +21,11 @@ export const dynamic = 'force-dynamic';
  * to every user's anvisa_userProfiles document. Also sets the
  * anvisa_defaultProfile/current pointer to Caio so new users inherit his data.
  *
- * Steps:
- * 1. Find Caio by email (caio@entouragelab.com) in the users collection
- * 2. Read his anvisa_userProfiles doc
- * 3. List all users
- * 4. For each user, write Caio's profile data into their anvisa_userProfiles doc
- *    (merge: false — full overwrite to ensure clean state)
- * 5. Set anvisa_defaultProfile/current to point at Caio's userId
- *
  * Safe to run multiple times (idempotent).
  */
-export async function POST() {
+async function run() {
   try {
-    const db = adminDb;
+    const db = getDb();
 
     // 1. Find Caio's user doc by email
     const usersSnap = await db
@@ -61,14 +64,13 @@ export async function POST() {
     // 4. Batch-write Caio's profile to every user's anvisa_userProfiles doc
     let updated = 0;
     let skippedCaio = false;
-    const BATCH_LIMIT = 450; // Firestore batch limit is 500, leave margin
+    const BATCH_LIMIT = 450;
     let batch = db.batch();
     let batchCount = 0;
 
     for (const userDoc of allUsersSnap.docs) {
       const uid = userDoc.id;
 
-      // Skip Caio himself — his profile is the source
       if (uid === caioUid) {
         skippedCaio = true;
         continue;
@@ -107,15 +109,19 @@ export async function POST() {
       message: `${updated} user profiles updated with Caio's ANVISA data. Default profile set.`,
     });
   } catch (err) {
-    console.error('[backfill-anvisa-profiles] Error:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[backfill-anvisa-profiles] Error:', msg, err);
     return NextResponse.json(
-      { ok: false, error: 'Backfill failed', details: String(err) },
+      { ok: false, error: 'Backfill failed', details: msg },
       { status: 500 },
     );
   }
 }
 
-// GET alias so you can trigger from browser
 export async function GET() {
-  return POST();
+  return run();
+}
+
+export async function POST() {
+  return run();
 }
