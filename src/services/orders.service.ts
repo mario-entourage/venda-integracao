@@ -67,6 +67,8 @@ export interface CreateOrderData {
   prescriptionDocId?: string;
   /** SHA-256 hex hash of the prescription file (for duplicate detection) */
   prescriptionHash?: string;
+  /** Date printed on the prescription (YYYY-MM-DD). Expires 6 months after this date. */
+  prescriptionDate?: string;
   allowedPaymentMethods?: {
     creditCard: boolean;
     debitCard: boolean;
@@ -126,6 +128,7 @@ export async function createOrder(
     tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',
     prescriptionHash: orderData.prescriptionHash || '',
+    prescriptionDate: orderData.prescriptionDate || '',
     ...(orderData.allowedPaymentMethods && { allowedPaymentMethods: orderData.allowedPaymentMethods }),
     createdById,
     updatedById: createdById,

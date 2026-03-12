@@ -338,6 +338,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             anvisaOption: step1.anvisaOption as 'regular' | 'exceptional' | 'exempt',
             prescriptionDocId: prescriptionPath,
             prescriptionHash: step1.prescriptionHash,
+            prescriptionDate: step1.prescriptionDate,
             allowedPaymentMethods: step1.allowedPaymentMethods,
           },
           user.uid,

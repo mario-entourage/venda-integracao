@@ -366,6 +366,30 @@ export default function OrderDetailPage() {
               <dt className="text-muted-foreground">Data do Pedido</dt>
               <dd className="mt-0.5 font-medium">{fmtDate(order.createdAt)}</dd>
             </div>
+            <div>
+              <dt className="text-muted-foreground">Validade da Receita</dt>
+              <dd className="mt-0.5 font-medium">
+                {(() => {
+                  const rxDate = order.prescriptionDate;
+                  if (!rxDate) return '—';
+                  const d = new Date(rxDate + 'T12:00:00');
+                  if (isNaN(d.getTime())) return '—';
+                  const expiry = new Date(d);
+                  expiry.setMonth(expiry.getMonth() + 6);
+                  const now = new Date();
+                  const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  const isExpired = daysLeft <= 0;
+                  const isNearExpiry = daysLeft > 0 && daysLeft <= 30;
+                  return (
+                    <span className={cn(isExpired ? 'text-red-600 font-semibold' : isNearExpiry ? 'text-amber-600 font-semibold' : '')}>
+                      {expiry.toLocaleDateString('pt-BR')}
+                      {isExpired && ' (vencida)'}
+                      {isNearExpiry && ` (${daysLeft}d restantes)`}
+                    </span>
+                  );
+                })()}
+              </dd>
+            </div>
             <div className="col-span-2 sm:col-span-3">
               <dt className="text-muted-foreground mb-1">Representante</dt>
               <dd>
