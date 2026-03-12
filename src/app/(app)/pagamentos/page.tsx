@@ -102,7 +102,7 @@ export default function PagamentosPage() {
     try {
       const res = await fetch('/api/payments/sync', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
       setLastSync({ time, approved: data.approved, checked: data.checked });
       if (data.approved > 0) {

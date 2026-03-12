@@ -4,6 +4,7 @@ import {
   Firestore, Query,
 } from 'firebase/firestore';
 import type { User, UserProfile } from '@/types';
+import { ANVISA_COLLECTIONS } from '@/lib/anvisa-paths';
 
 // ---------------------------------------------------------------------------
 // Pre-registration collection (keyed by email)
@@ -145,6 +146,28 @@ export async function ensureUser(
   });
 
   await batch.commit();
+
+  // Auto-create ANVISA solicitante profile from the default (Caio's) profile.
+  // Done after the main batch so a read-then-write is safe.
+  try {
+    const defaultPointerRef = doc(db, ANVISA_COLLECTIONS.defaultProfile, 'current');
+    const defaultPointerSnap = await getDoc(defaultPointerRef);
+    if (defaultPointerSnap.exists()) {
+      const sourceUid = (defaultPointerSnap.data() as { userId?: string }).userId;
+      if (sourceUid) {
+        const sourceProfileRef = doc(db, ANVISA_COLLECTIONS.userProfiles, sourceUid);
+        const sourceSnap = await getDoc(sourceProfileRef);
+        if (sourceSnap.exists()) {
+          const anvisaProfileRef = doc(db, ANVISA_COLLECTIONS.userProfiles, uid);
+          await setDoc(anvisaProfileRef, sourceSnap.data()!);
+        }
+      }
+    }
+  } catch (err) {
+    // Non-fatal — the user can still fill it manually via /anvisa/perfil
+    console.warn('[ensureUser] Failed to auto-create ANVISA profile:', err);
+  }
+
   return true;
 }
 
