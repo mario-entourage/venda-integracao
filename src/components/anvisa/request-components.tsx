@@ -452,31 +452,31 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
 
     const defaultValues = useMemo(() => {
         const { fields: combinedData } = mergeDocPages(allDocs);
-        // Reused data from Sales Integration takes priority over OCR-extracted data
-        const reused = reusedData || {};
+        // OCR-extracted data takes priority; database (reusedData) fills gaps
+        const db = reusedData || {};
 
         return {
-            patientName: reused.patientName || combinedData.patientName || '',
-            patientRg: reused.patientRg || combinedData.patientRg || '',
-            patientCpf: reused.patientCpf || combinedData.patientCpf || '',
-            patientDob: reused.patientDob || combinedData.patientDob || '',
-            patientCep: reused.patientCep || combinedData.patientCep || '',
-            patientAddress: reused.patientAddress || combinedData.patientAddress || '',
-            patientCity: reused.patientCity || combinedData.patientCity || '',
-            patientState: reused.patientState || combinedData.patientState || stateFromCep(reused.patientCep || combinedData.patientCep) || '',
-            patientPhone: reused.patientPhone || combinedData.patientPhone || '',
-            patientEmail: reused.patientEmail || combinedData.patientEmail || '',
-            doctorName: reused.doctorName || combinedData.doctorName || '',
-            doctorCrm: reused.doctorCrm || combinedData.doctorCrm || '',
-            doctorSpecialty: reused.doctorSpecialty || combinedData.doctorSpecialty || '',
-            doctorUf: reused.doctorUf || combinedData.doctorUf || '',
-            doctorCity: reused.doctorCity || combinedData.doctorCity || '',
-            doctorPhone: reused.doctorPhone || combinedData.doctorPhone || '',
-            doctorMobile: reused.doctorMobile || combinedData.doctorMobile || '',
-            doctorEmail: reused.doctorEmail || combinedData.doctorEmail || '',
-            prescriptionDate: reused.prescriptionDate || combinedData.prescriptionDate || '',
-            prescriptionMedication: reused.prescriptionMedication || combinedData.prescriptionMedication || '',
-            prescriptionDosage: reused.prescriptionDosage || combinedData.prescriptionDosage || '',
+            patientName: combinedData.patientName || db.patientName || '',
+            patientRg: combinedData.patientRg || db.patientRg || '',
+            patientCpf: combinedData.patientCpf || db.patientCpf || '',
+            patientDob: combinedData.patientDob || db.patientDob || '',
+            patientCep: combinedData.patientCep || db.patientCep || '',
+            patientAddress: combinedData.patientAddress || db.patientAddress || '',
+            patientCity: combinedData.patientCity || db.patientCity || '',
+            patientState: combinedData.patientState || db.patientState || stateFromCep(combinedData.patientCep || db.patientCep) || '',
+            patientPhone: combinedData.patientPhone || db.patientPhone || '',
+            patientEmail: combinedData.patientEmail || db.patientEmail || '',
+            doctorName: combinedData.doctorName || db.doctorName || '',
+            doctorCrm: combinedData.doctorCrm || db.doctorCrm || '',
+            doctorSpecialty: combinedData.doctorSpecialty || db.doctorSpecialty || '',
+            doctorUf: combinedData.doctorUf || db.doctorUf || '',
+            doctorCity: combinedData.doctorCity || db.doctorCity || '',
+            doctorPhone: combinedData.doctorPhone || db.doctorPhone || '',
+            doctorMobile: combinedData.doctorMobile || db.doctorMobile || '',
+            doctorEmail: combinedData.doctorEmail || db.doctorEmail || '',
+            prescriptionDate: combinedData.prescriptionDate || db.prescriptionDate || '',
+            prescriptionMedication: combinedData.prescriptionMedication || db.prescriptionMedication || '',
+            prescriptionDosage: combinedData.prescriptionDosage || db.prescriptionDosage || '',
         };
     }, [allDocs, reusedData]);
 

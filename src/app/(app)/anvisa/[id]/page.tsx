@@ -214,6 +214,29 @@ export default function RequestDetailsPage({ params }: { params: Promise<{ id: s
     return steps[idx + 1] || 'none';
   }, [salesCheck, mergedOcr, skipPatientDialogs, skipDoctorDialogs]);
 
+  // Auto-populate reusedData from database matches as fallback for empty OCR fields.
+  // This runs once when the sales check completes — no dialog interaction needed.
+  useEffect(() => {
+    if (!salesCheck.hasChecked) return;
+    const data: Partial<OcrData> = {};
+
+    // Best client match → patient fields fallback
+    const client = salesCheck.clientMatches[0] || salesCheck.clientExactMatch;
+    if (client) {
+      Object.assign(data, clientToOcrData(client));
+    }
+
+    // Best doctor match → doctor fields fallback
+    const doctor = salesCheck.doctorMatches[0] || salesCheck.doctorExactMatch;
+    if (doctor) {
+      Object.assign(data, doctorToOcrData(doctor));
+    }
+
+    if (Object.keys(data).length > 0) {
+      setReusedData(prev => prev ? { ...data, ...prev } : data);
+    }
+  }, [salesCheck.hasChecked, salesCheck.clientMatches, salesCheck.clientExactMatch, salesCheck.doctorMatches, salesCheck.doctorExactMatch]);
+
   // Initialize the dialog sequence when the check completes
   useEffect(() => {
     if (!salesCheck.hasChecked || dialogInitRef.current) return;

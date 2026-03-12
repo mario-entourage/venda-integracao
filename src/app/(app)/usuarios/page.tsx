@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { query, orderBy } from 'firebase/firestore';
+import { query, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { getUsersRef, updateUser, getPreregistrationsRef } from '@/services/users.service';
@@ -108,6 +108,17 @@ export default function UsuariosPage() {
   const handleGroupChange = async (userId: string, newGroup: string) => {
     try {
       await updateUser(db, userId, { groupId: newGroup });
+
+      // Sync roles_admin collection: create doc for admin, delete for non-admin
+      const rolesRef = doc(db, 'roles_admin', userId);
+      if (newGroup === 'admin') {
+        await setDoc(rolesRef, { grantedAt: new Date().toISOString() });
+      } else {
+        await deleteDoc(rolesRef).catch(() => {
+          // Doc may not exist — that's fine
+        });
+      }
+
       toast({ title: 'Grupo atualizado com sucesso.' });
     } catch (err) {
       console.error(err);
