@@ -2,21 +2,26 @@
 
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Plus, Link2 } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
+import { generateStandalonePaymentLink, assignPaymentToOrder } from '@/server/actions/payment.actions';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import type { PaymentLink } from '@/types';
@@ -63,7 +68,7 @@ function fmtDate(ts: unknown): string {
 // ---------------------------------------------------------------------------
 
 export default function PagamentosPage() {
-  const { firestore } = useFirebase();
+  const { firestore, isAdmin } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -71,6 +76,24 @@ export default function PagamentosPage() {
   const [search, setSearch] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<{ time: string; approved: number; checked: number } | null>(null);
+
+  // Create standalone payment dialog
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createAmount, setCreateAmount] = useState('');
+  const [createCurrency, setCreateCurrency] = useState('BRL');
+  const [createCustomerName, setCreateCustomerName] = useState('');
+  const [createCustomerPhone, setCreateCustomerPhone] = useState('');
+  const [createCustomerEmail, setCreateCustomerEmail] = useState('');
+  const [createCustomerDoc, setCreateCustomerDoc] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createdUrl, setCreatedUrl] = useState('');
+  const [createdInvoice, setCreatedInvoice] = useState('');
+
+  // Assign to order dialog
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignPaymentId, setAssignPaymentId] = useState('');
+  const [assignOrderId, setAssignOrderId] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -96,6 +119,79 @@ export default function PagamentosPage() {
     }
   };
 
+  const handleCreateStandalone = async () => {
+    const amount = parseFloat(createAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: 'Informe um valor válido.', variant: 'destructive' });
+      return;
+    }
+    setCreating(true);
+    try {
+      const result = await generateStandalonePaymentLink(
+        amount,
+        createCurrency,
+        createCustomerName || undefined,
+        createCustomerPhone || undefined,
+        createCustomerEmail || undefined,
+        createCustomerDoc || undefined,
+      );
+      if (result.error) {
+        toast({ title: result.error, variant: 'destructive' });
+      } else {
+        setCreatedUrl(result.paymentUrl);
+        setCreatedInvoice(result.invoiceNumber);
+        toast({ title: `Link criado: ${result.invoiceNumber}` });
+      }
+    } catch (err) {
+      toast({
+        title: 'Erro ao criar pagamento avulso.',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!assignOrderId.trim()) {
+      toast({ title: 'Informe o ID do pedido.', variant: 'destructive' });
+      return;
+    }
+    setAssigning(true);
+    try {
+      const result = await assignPaymentToOrder(assignPaymentId, assignOrderId.trim());
+      if (result.ok) {
+        toast({ title: 'Pagamento vinculado ao pedido com sucesso.' });
+        setAssignOpen(false);
+        setAssignPaymentId('');
+        setAssignOrderId('');
+      } else {
+        toast({ title: result.error || 'Erro ao vincular.', variant: 'destructive' });
+      }
+    } catch (err) {
+      toast({
+        title: 'Erro ao vincular pagamento.',
+        description: err instanceof Error ? err.message : undefined,
+        variant: 'destructive',
+      });
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  const resetCreateDialog = () => {
+    setCreateOpen(false);
+    setCreateAmount('');
+    setCreateCurrency('BRL');
+    setCreateCustomerName('');
+    setCreateCustomerPhone('');
+    setCreateCustomerEmail('');
+    setCreateCustomerDoc('');
+    setCreatedUrl('');
+    setCreatedInvoice('');
+  };
+
   const paymentLinksQ = useMemoFirebase(
     () => (firestore ? getAllPaymentLinksQuery(firestore) : null),
     [firestore],
@@ -105,7 +201,9 @@ export default function PagamentosPage() {
   // Apply filters
   const filtered = useMemo(() => {
     let items = paymentLinks ?? [];
-    if (statusFilter !== 'all') {
+    if (statusFilter === 'unassigned') {
+      items = items.filter((pl) => !pl.orderId);
+    } else if (statusFilter !== 'all') {
       items = items.filter((pl) => pl.status === statusFilter);
     }
     if (search.trim()) {
@@ -115,7 +213,7 @@ export default function PagamentosPage() {
         (pl.repName ?? '').toLowerCase().includes(q) ||
         (pl.clientName ?? '').toLowerCase().includes(q) ||
         (pl.doctorName ?? '').toLowerCase().includes(q) ||
-        pl.orderId.toLowerCase().includes(q),
+        (pl.orderId || '').toLowerCase().includes(q),
       );
     }
     return items;
@@ -131,14 +229,22 @@ export default function PagamentosPage() {
       <div className="flex items-start justify-between gap-4">
         <PageHeader title="Pagamentos" description="Links de pagamento GlobalPay" />
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <Button
-            variant="outline"
-            onClick={handleSync}
-            disabled={syncing}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-            {syncing ? 'Sincronizando...' : 'Sincronizar GlobalPay'}
-          </Button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button variant="default" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Pagamento
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Sincronizando...' : 'Sincronizar GlobalPay'}
+            </Button>
+          </div>
           {lastSync && (
             <p className="text-xs text-muted-foreground">
               {lastSync.time} — {lastSync.checked} verificado(s), {lastSync.approved} aprovado(s)
@@ -188,6 +294,7 @@ export default function PagamentosPage() {
             <SelectItem value="expired">Expirado</SelectItem>
             <SelectItem value="cancelled">Cancelado</SelectItem>
             <SelectItem value="failed">Falhou</SelectItem>
+            {isAdmin && <SelectItem value="unassigned">Avulso</SelectItem>}
           </SelectContent>
         </Select>
       </div>
@@ -211,40 +318,209 @@ export default function PagamentosPage() {
                   <TableHead>Representante</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Status</TableHead>
+                  {isAdmin && <TableHead className="w-[100px]" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
                       Nenhum link de pagamento encontrado.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((pl) => (
-                    <TableRow
-                      key={pl.id}
-                      className="cursor-pointer hover:bg-muted/50"
-                      onClick={() => router.push(`/controle/${pl.orderId}`)}
-                    >
-                      <TableCell className="font-mono text-xs">
-                        {pl.invoice || pl.orderId.slice(0, 8).toUpperCase()}
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {fmtAmount(pl.amount, pl.currency)}
-                      </TableCell>
-                      <TableCell>{pl.clientName || '—'}</TableCell>
-                      <TableCell>{pl.repName || '—'}</TableCell>
-                      <TableCell className="text-sm">{fmtDate(pl.createdAt)}</TableCell>
-                      <TableCell><StatusBadge status={pl.status} /></TableCell>
-                    </TableRow>
-                  ))
+                  filtered.map((pl) => {
+                    const isUnassigned = !pl.orderId;
+                    return (
+                      <TableRow
+                        key={pl.id}
+                        className={`hover:bg-muted/50 ${isUnassigned ? '' : 'cursor-pointer'}`}
+                        onClick={() => {
+                          if (!isUnassigned) router.push(`/controle/${pl.orderId}`);
+                        }}
+                      >
+                        <TableCell className="font-mono text-xs">
+                          <span className="flex items-center gap-2">
+                            {pl.invoice || (pl.orderId ? pl.orderId.slice(0, 8).toUpperCase() : '—')}
+                            {isUnassigned && (
+                              <Badge variant="outline" className="border-orange-300 text-orange-600 bg-orange-50 text-[10px]">
+                                Avulso
+                              </Badge>
+                            )}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {fmtAmount(pl.amount, pl.currency)}
+                        </TableCell>
+                        <TableCell>{pl.clientName || '—'}</TableCell>
+                        <TableCell>{pl.repName || '—'}</TableCell>
+                        <TableCell className="text-sm">{fmtDate(pl.createdAt)}</TableCell>
+                        <TableCell><StatusBadge status={pl.status} /></TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            {isUnassigned && pl.status === 'created' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssignPaymentId(pl.id);
+                                  setAssignOpen(true);
+                                }}
+                              >
+                                <Link2 className="mr-1 h-3 w-3" />
+                                Vincular
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
           )}
         </CardContent>
       </Card>
+
+      {/* ── Create Standalone Payment Dialog ──────────────────────── */}
+      <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateDialog(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Pagamento Avulso</DialogTitle>
+            <DialogDescription>
+              Cria um link de pagamento GlobalPay sem vínculo com nenhum pedido. Invoice: ETGM#####
+            </DialogDescription>
+          </DialogHeader>
+
+          {createdUrl ? (
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-green-600">Link criado com sucesso!</p>
+              <div className="space-y-1">
+                <Label className="text-xs">Invoice</Label>
+                <p className="font-mono text-sm">{createdInvoice}</p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">URL do Pagamento</Label>
+                <div className="flex gap-2">
+                  <Input value={createdUrl} readOnly className="text-xs" />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(createdUrl);
+                      toast({ title: 'Link copiado!' });
+                    }}
+                  >
+                    Copiar
+                  </Button>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetCreateDialog}>Fechar</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Valor *</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    placeholder="0,00"
+                    value={createAmount}
+                    onChange={(e) => setCreateAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Moeda</Label>
+                  <Select value={createCurrency} onValueChange={setCreateCurrency}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BRL">BRL</SelectItem>
+                      <SelectItem value="USD">USD</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nome do Cliente</Label>
+                <Input
+                  placeholder="Opcional"
+                  value={createCustomerName}
+                  onChange={(e) => setCreateCustomerName(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Telefone</Label>
+                  <Input
+                    placeholder="Opcional"
+                    value={createCustomerPhone}
+                    onChange={(e) => setCreateCustomerPhone(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">E-mail</Label>
+                  <Input
+                    placeholder="Opcional"
+                    value={createCustomerEmail}
+                    onChange={(e) => setCreateCustomerEmail(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">CPF / Documento</Label>
+                <Input
+                  placeholder="Opcional"
+                  value={createCustomerDoc}
+                  onChange={(e) => setCreateCustomerDoc(e.target.value)}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={resetCreateDialog}>Cancelar</Button>
+                <Button onClick={handleCreateStandalone} disabled={creating}>
+                  {creating ? 'Criando...' : 'Criar Link'}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Assign to Order Dialog ────────────────────────────────── */}
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Vincular Pagamento a Pedido</DialogTitle>
+            <DialogDescription>
+              Informe o ID do pedido para vincular este pagamento avulso.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">ID do Pedido</Label>
+              <Input
+                placeholder="Cole o ID do pedido aqui"
+                value={assignOrderId}
+                onChange={(e) => setAssignOrderId(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancelar</Button>
+            <Button onClick={handleAssign} disabled={assigning}>
+              {assigning ? 'Vinculando...' : 'Vincular'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

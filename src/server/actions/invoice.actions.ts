@@ -36,3 +36,21 @@ export async function generateInvoiceNumber(
   const padded = String(result).padStart(5, '0');
   return `ETGA${firstInitial}${lastInitial}${padded}`;
 }
+
+/**
+ * Generate next manual invoice number in format "ETGM#####"
+ * Used for standalone payment links created outside of an order.
+ * Uses a separate counter from order-based invoices.
+ */
+export async function generateManualInvoiceNumber(): Promise<string> {
+  const counterRef = adminDb.collection('counters').doc('invoiceManual');
+  const result = await adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(counterRef);
+    const current = snap.exists ? (snap.data()?.nextValue || 1) : 1;
+    tx.set(counterRef, { nextValue: current + 1 }, { merge: true });
+    return current;
+  });
+
+  const padded = String(result).padStart(5, '0');
+  return `ETGM${padded}`;
+}

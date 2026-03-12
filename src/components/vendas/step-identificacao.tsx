@@ -18,7 +18,7 @@ import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
-import type { Client, Doctor, Product, Representante, User } from '@/types';
+import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 
@@ -133,6 +133,11 @@ interface StepIdentificacaoProps {
   /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
   frete: number;
   onFreteChange: (value: number) => void;
+  /** Admin-only: unassigned standalone payments available to link */
+  isAdmin: boolean;
+  unassignedPayments: PaymentLink[];
+  selectedUnassignedPaymentId: string;
+  onUnassignedPaymentSelect: (id: string, payment: PaymentLink | null) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -142,6 +147,7 @@ export function StepIdentificacao({
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
   frete, onFreteChange,
+  isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -876,6 +882,40 @@ export function StepIdentificacao({
           className="max-w-[200px]"
         />
       </div>
+
+      {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}
+      {isAdmin && unassignedPayments.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+          <Label className="text-sm font-semibold">Vincular Pagamento Avulso</Label>
+          <p className="text-xs text-muted-foreground">
+            Vincule um pagamento já criado a esta venda. O sistema não gerará um novo link GlobalPay.
+          </p>
+          <Select
+            value={selectedUnassignedPaymentId || '__none__'}
+            onValueChange={(v) => {
+              if (v === '__none__') {
+                onUnassignedPaymentSelect('', null);
+              } else {
+                const payment = unassignedPayments.find((p) => p.id === v) ?? null;
+                onUnassignedPaymentSelect(v, payment);
+              }
+            }}
+          >
+            <SelectTrigger className="max-w-[400px]">
+              <SelectValue placeholder="Nenhum" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {unassignedPayments.map((pl) => (
+                <SelectItem key={pl.id} value={pl.id}>
+                  {pl.invoice || pl.id.slice(0, 8)} — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: pl.currency || 'BRL' }).format(pl.amount)}
+                  {pl.clientName ? ` — ${pl.clientName}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       </div>
 

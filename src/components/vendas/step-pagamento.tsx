@@ -42,6 +42,10 @@ interface StepPagamentoProps {
   repUserId?: string;
   /** Rep email for email notifications */
   repEmail?: string;
+  /** Pre-assigned standalone payment invoice (from Step 0) */
+  preAssignedInvoice?: string;
+  /** Pre-assigned standalone payment amount */
+  preAssignedAmount?: number;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -63,6 +67,8 @@ export function StepPagamento({
   repDisplayName,
   repUserId,
   repEmail,
+  preAssignedInvoice,
+  preAssignedAmount,
 }: StepPagamentoProps) {
   const { firestore } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -70,6 +76,8 @@ export function StepPagamento({
   const [copied, setCopied] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
   const hasGenerated = useRef(false);
+
+  const isPreAssigned = !!(preAssignedInvoice && paymentUrl);
 
   const totalWithFrete = orderAmount + frete;
 
@@ -209,6 +217,32 @@ export function StepPagamento({
           </div>
         </CardContent>
       </Card>
+
+      {/* Pre-assigned standalone payment notice */}
+      {isPreAssigned && (
+        <Card className="border-amber-200 bg-amber-50/60">
+          <CardContent className="pt-5 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                Pagamento Avulso Vinculado
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Invoice</span>
+              <span className="font-mono font-medium">{preAssignedInvoice}</span>
+            </div>
+            {preAssignedAmount != null && preAssignedAmount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Valor do pagamento</span>
+                <span className="font-medium">{fmtAmount(preAssignedAmount)}</span>
+              </div>
+            )}
+            <p className="text-xs text-amber-600">
+              Este pedido foi vinculado a um pagamento avulso existente. Nenhum novo link será gerado.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payment link section */}
       <div className="space-y-3">
@@ -363,7 +397,7 @@ export function StepPagamento({
           </div>
         )}
 
-        {!isGenerating && !paymentUrl && !error && (
+        {!isPreAssigned && !isGenerating && !paymentUrl && !error && (
           <Button
             className="w-full gap-2"
             onClick={generateLink}
