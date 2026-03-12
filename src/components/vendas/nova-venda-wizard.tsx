@@ -11,6 +11,8 @@ import { getActiveDoctorsQuery } from '@/services/doctors.service';
 import { getActiveProductsQuery } from '@/services/products.service';
 import { getActiveRepresentantesQuery } from '@/services/representantes.service';
 import { getActiveRepUsersQuery } from '@/services/users.service';
+import { getUnassignedPaymentLinksQuery } from '@/services/payments.service';
+import { assignPaymentToOrder } from '@/server/actions/payment.actions';
 import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
@@ -24,7 +26,7 @@ import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
-import type { Client, Doctor, Product, User, Representante } from '@/types';
+import type { Client, Doctor, Product, User, Representante, PaymentLink } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -60,6 +62,11 @@ interface WizardState {
   // Comprovante de Vínculo — Signatário info
   cvSignatarioName: string;
   cvSignatarioCpf: string;
+  // Pre-assigned standalone payment (admin-only, selected in step 0)
+  assignedPaymentId: string;
+  assignedPaymentUrl: string;
+  assignedPaymentInvoice: string;
+  assignedPaymentAmount: number;
   // Frete (entered in step 0 — Identificação; included in GlobalPay link amount)
   frete: number;
   // PTAX exchange rate (fetched once on mount)
@@ -100,6 +107,10 @@ const INITIAL_STATE: WizardState = {
   needsComprovanteVinculo: false,
   cvSignatarioName: '',
   cvSignatarioCpf: '',
+  assignedPaymentId: '',
+  assignedPaymentUrl: '',
+  assignedPaymentInvoice: '',
+  assignedPaymentAmount: 0,
   frete: 0,
   exchangeRate: 0,
   exchangeRateDate: '',
@@ -143,10 +154,17 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     [firestore],
   );
 
+  // Unassigned standalone payments (admin only)
+  const unassignedQ = useMemoFirebase(
+    () => (firestore && isAdmin ? getUnassignedPaymentLinksQuery(firestore) : null),
+    [firestore, isAdmin],
+  );
+
   const { data: clients } = useCollection<Client>(clientsQ);
   const { data: doctors } = useCollection<Doctor>(doctorsQ);
   const { data: products } = useCollection<Product>(productsQ);
   const { data: repUsers } = useCollection<User>(repUsersQ);
+  const { data: unassignedPayments } = useCollection<PaymentLink>(unassignedQ);
 
   // ── wizard state ────────────────────────────────────────────────────────
   const [state, setState] = useState<WizardState>(INITIAL_STATE);
@@ -369,7 +387,30 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
           console.warn('Prescription record creation failed (continuing):', presErr);
         }
 
-        setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
+        // If admin pre-assigned an unassigned payment, move it to this order now
+        if (state.assignedPaymentId) {
+          try {
+            const assignResult = await assignPaymentToOrder(state.assignedPaymentId, orderId);
+            if (assignResult.ok) {
+              console.log('[wizard] Standalone payment assigned to order:', state.assignedPaymentInvoice);
+              setState((prev) => ({
+                ...prev,
+                orderId,
+                orderAmount: amount,
+                paymentUrl: prev.assignedPaymentUrl,
+                gpOrderId: prev.assignedPaymentId,
+              }));
+            } else {
+              console.warn('[wizard] Payment assignment failed:', assignResult.error);
+              setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
+            }
+          } catch (assignErr) {
+            console.warn('[wizard] Payment assignment error (continuing):', assignErr);
+            setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
+          }
+        } else {
+          setState((prev) => ({ ...prev, orderId, orderAmount: amount }));
+        }
         setCurrentStep(1);
       } catch (err) {
         console.error('Order creation error:', err);
@@ -513,6 +554,18 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             onRepresentanteChange={handleRepresentanteChange}
             frete={state.frete}
             onFreteChange={(v) => setState((prev) => ({ ...prev, frete: v }))}
+            isAdmin={isAdmin}
+            unassignedPayments={unassignedPayments ?? []}
+            selectedUnassignedPaymentId={state.assignedPaymentId}
+            onUnassignedPaymentSelect={(id, payment) => {
+              setState((prev) => ({
+                ...prev,
+                assignedPaymentId: id,
+                assignedPaymentUrl: payment?.paymentUrl ?? '',
+                assignedPaymentInvoice: payment?.invoice ?? '',
+                assignedPaymentAmount: payment?.amount ?? 0,
+              }));
+            }}
           />
         )}
 
@@ -536,6 +589,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
             repDisplayName={state.selectedRepresentanteName !== 'Venda Direta' ? state.selectedRepresentanteName : undefined}
             repUserId={state.selectedRepresentanteId || undefined}
             repEmail={(repUsers ?? []).find((r) => r.id === state.selectedRepresentanteId)?.email}
+            preAssignedInvoice={state.assignedPaymentInvoice}
+            preAssignedAmount={state.assignedPaymentAmount}
           />
         )}
 
