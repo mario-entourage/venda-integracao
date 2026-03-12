@@ -24,7 +24,24 @@ async function run() {
   try {
     const db = getDb();
 
+    // Diagnostic: list both collections
     const usersSnap = await db.collection('users').get();
+    const preregSnap = await db.collection('preregistrations').get();
+
+    const usersList = usersSnap.docs.map((d) => ({
+      id: d.id,
+      email: d.data().email,
+      active: d.data().active,
+      groupId: d.data().groupId,
+    }));
+
+    const preregList = preregSnap.docs.map((d) => ({
+      id: d.id,
+      email: d.data().email,
+      groupId: d.data().groupId,
+    }));
+
+    // Activate inactive users
     let activatedCount = 0;
     const BATCH_LIMIT = 450;
     let batch = db.batch();
@@ -49,14 +66,13 @@ async function run() {
       await batch.commit();
     }
 
-    console.log(
-      `[activate-all-users] Done: ${activatedCount} users activated out of ${usersSnap.size} total`,
-    );
-
     return NextResponse.json({
       ok: true,
       totalUsers: usersSnap.size,
       activated: activatedCount,
+      users: usersList,
+      totalPreregistrations: preregSnap.size,
+      preregistrations: preregList,
       message: `${activatedCount} users set to active.`,
     });
   } catch (err) {
