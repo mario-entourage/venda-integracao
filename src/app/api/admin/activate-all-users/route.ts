@@ -1,22 +1,29 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/firebase/admin';
+import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
 export const dynamic = 'force-dynamic';
+
+function getDb() {
+  if (getApps().length === 0) {
+    initializeApp({
+      credential: applicationDefault(),
+      projectId: process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT ?? 'simple-login-fdcf7',
+    });
+  }
+  return getFirestore();
+}
 
 /**
  * POST /api/admin/activate-all-users
  *
  * One-time migration: sets all users with active !== true to active: true.
- * Also converts pending pre-registrations into real user documents so they
- * show as "Ativo" immediately (they can still log in normally later).
- *
  * Safe to run multiple times (idempotent).
  */
-export async function POST() {
+async function run() {
   try {
-    const db = adminDb;
+    const db = getDb();
 
-    // 1. Activate all existing users whose active flag is not true
     const usersSnap = await db.collection('users').get();
     let activatedCount = 0;
     const BATCH_LIMIT = 450;
@@ -53,14 +60,19 @@ export async function POST() {
       message: `${activatedCount} users set to active.`,
     });
   } catch (err) {
-    console.error('[activate-all-users] Error:', err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[activate-all-users] Error:', msg, err);
     return NextResponse.json(
-      { ok: false, error: 'Activation failed', details: String(err) },
+      { ok: false, error: 'Activation failed', details: msg },
       { status: 500 },
     );
   }
 }
 
 export async function GET() {
-  return POST();
+  return run();
+}
+
+export async function POST() {
+  return run();
 }
