@@ -115,6 +115,7 @@ export async function generateStandalonePaymentLink(
   customerPhone?: string,
   customerEmail?: string,
   customerDocument?: string,
+  repName?: string,
 ): Promise<{
   paymentUrl: string;
   gpOrderId: string;
@@ -155,7 +156,7 @@ export async function generateStandalonePaymentLink(
       orderId: '',
       invoice: invoiceNumber,
       clientName: customerName || '',
-      repName: '',
+      repName: repName || '',
       doctorName: '',
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),

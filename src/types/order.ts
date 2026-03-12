@@ -39,6 +39,8 @@ export interface Order {
   prescriptionDocId?: string;
   /** SHA-256 hex hash of the prescription file (for duplicate detection) */
   prescriptionHash?: string;
+  /** Date printed on the prescription (YYYY-MM-DD). Expires 6 months after this date. */
+  prescriptionDate?: string;
   softDeleted?: boolean;
   createdById: string;
   createdAt: Timestamp;

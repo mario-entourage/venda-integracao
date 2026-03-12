@@ -6,6 +6,7 @@ import { RefreshCw, Plus, Link2 } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { generateStandalonePaymentLink, assignPaymentToOrder } from '@/server/actions/payment.actions';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -24,7 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import type { PaymentLink } from '@/types';
+import type { PaymentLink, User } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Status badge
@@ -85,6 +86,7 @@ export default function PagamentosPage() {
   const [createCustomerPhone, setCreateCustomerPhone] = useState('');
   const [createCustomerEmail, setCreateCustomerEmail] = useState('');
   const [createCustomerDoc, setCreateCustomerDoc] = useState('');
+  const [createRepId, setCreateRepId] = useState('');
   const [creating, setCreating] = useState(false);
   const [createdUrl, setCreatedUrl] = useState('');
   const [createdInvoice, setCreatedInvoice] = useState('');
@@ -127,6 +129,9 @@ export default function PagamentosPage() {
     }
     setCreating(true);
     try {
+      const selectedRepName = createRepId && createRepId !== '__none'
+        ? (repUsers ?? []).find((r) => r.id === createRepId)?.displayName || undefined
+        : undefined;
       const result = await generateStandalonePaymentLink(
         amount,
         createCurrency,
@@ -134,6 +139,7 @@ export default function PagamentosPage() {
         createCustomerPhone || undefined,
         createCustomerEmail || undefined,
         createCustomerDoc || undefined,
+        selectedRepName,
       );
       if (result.error) {
         toast({ title: result.error, variant: 'destructive' });
@@ -184,6 +190,7 @@ export default function PagamentosPage() {
     setCreateOpen(false);
     setCreateAmount('');
     setCreateCurrency('BRL');
+    setCreateRepId('');
     setCreateCustomerName('');
     setCreateCustomerPhone('');
     setCreateCustomerEmail('');
@@ -197,6 +204,12 @@ export default function PagamentosPage() {
     [firestore],
   );
   const { data: paymentLinks, isLoading } = useCollection<PaymentLink>(paymentLinksQ);
+
+  const repUsersQ = useMemoFirebase(
+    () => (firestore && isAdmin ? getActiveRepUsersQuery(firestore) : null),
+    [firestore, isAdmin],
+  );
+  const { data: repUsers } = useCollection<User>(repUsersQ);
 
   // Apply filters
   const filtered = useMemo(() => {
@@ -448,6 +461,22 @@ export default function PagamentosPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Representante</Label>
+                <Select value={createRepId} onValueChange={setCreateRepId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione (opcional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">Nenhum</SelectItem>
+                    {(repUsers ?? []).map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.displayName || rep.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nome do Cliente</Label>
