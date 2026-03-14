@@ -18,7 +18,7 @@ import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
-import type { Client, Doctor, Product, Representante, User } from '@/types';
+import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 
@@ -133,6 +133,11 @@ interface StepIdentificacaoProps {
   /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
   frete: number;
   onFreteChange: (value: number) => void;
+  /** Admin-only: unassigned standalone payments available to link */
+  isAdmin: boolean;
+  unassignedPayments: PaymentLink[];
+  selectedUnassignedPaymentId: string;
+  onUnassignedPaymentSelect: (id: string, payment: PaymentLink | null) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -142,6 +147,7 @@ export function StepIdentificacao({
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
   frete, onFreteChange,
+  isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -596,6 +602,52 @@ export function StepIdentificacao({
             {extractionMsg.includes('sucesso') ? '✓' : '⚠'} {extractionMsg}
           </p>
         )}
+
+        {/* Prescription expiration notice (6-month validity) */}
+        {state.prescriptionDate && (() => {
+          const rxDate = new Date(state.prescriptionDate + 'T12:00:00');
+          const expiry = new Date(rxDate);
+          expiry.setMonth(expiry.getMonth() + 6);
+          const now = new Date();
+          const msLeft = expiry.getTime() - now.getTime();
+          const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+          const isExpired = daysLeft <= 0;
+          const isNearExpiry = daysLeft > 0 && daysLeft <= 30;
+          const expiryStr = expiry.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const rxDateStr = rxDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+          if (isExpired) {
+            return (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Receita vencida!</p>
+                  <p className="text-xs">Data da receita: {rxDateStr} · Venceu em {expiryStr}</p>
+                </div>
+              </div>
+            );
+          }
+          if (isNearExpiry) {
+            return (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Receita próxima do vencimento!</p>
+                  <p className="text-xs">Data da receita: {rxDateStr} · Vence em {expiryStr} ({daysLeft} dia{daysLeft !== 1 ? 's' : ''})</p>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <p className="text-xs text-muted-foreground">
+              Receita de {rxDateStr} · Válida até {expiryStr}
+            </p>
+          );
+        })()}
       </div>
 
       {/* ── Products ──────────────────────────────────────────────── */}
@@ -751,10 +803,13 @@ export function StepIdentificacao({
                     });
                   }}
                   className="text-center px-1" />
-                {/* Discount % (read-only — derived from list price vs negotiated) */}
-                <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
-                  {line.listPrice > 0 ? `${line.discount.toFixed(1)}%` : '—'}
-                </div>
+                {/* Discount % — editable, back-calculates negotiated price */}
+                <Input type="number" min={0} max={100} step="0.1"
+                  value={line.listPrice > 0 ? parseFloat(line.discount.toFixed(1)) : ''}
+                  onChange={(e) => handleDiscountChange(line.id, parseFloat(e.target.value) || 0)}
+                  disabled={line.listPrice <= 0}
+                  className="text-center px-1"
+                  placeholder="—" />
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={() => removeLine(line.id)}>
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
@@ -876,6 +931,40 @@ export function StepIdentificacao({
           className="max-w-[200px]"
         />
       </div>
+
+      {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}
+      {isAdmin && unassignedPayments.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+          <Label className="text-sm font-semibold">Vincular Pagamento Avulso</Label>
+          <p className="text-xs text-muted-foreground">
+            Vincule um pagamento já criado a esta venda. O sistema não gerará um novo link GlobalPay.
+          </p>
+          <Select
+            value={selectedUnassignedPaymentId || '__none__'}
+            onValueChange={(v) => {
+              if (v === '__none__') {
+                onUnassignedPaymentSelect('', null);
+              } else {
+                const payment = unassignedPayments.find((p) => p.id === v) ?? null;
+                onUnassignedPaymentSelect(v, payment);
+              }
+            }}
+          >
+            <SelectTrigger className="max-w-[400px]">
+              <SelectValue placeholder="Nenhum" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {unassignedPayments.map((pl) => (
+                <SelectItem key={pl.id} value={pl.id}>
+                  {pl.invoice || pl.id.slice(0, 8)} — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: pl.currency || 'BRL' }).format(pl.amount)}
+                  {pl.clientName ? ` — ${pl.clientName}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       </div>
 

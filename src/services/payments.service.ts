@@ -197,3 +197,16 @@ export function getAllPaymentLinksQuery(db: Firestore): Query {
     orderBy('createdAt', 'desc'),
   );
 }
+
+/**
+ * Query unassigned (standalone) payment links from the top-level collection.
+ * Only returns active links (status = 'created') sorted newest first.
+ */
+export function getUnassignedPaymentLinksQuery(db: Firestore): Query {
+  return query(
+    collection(db, 'paymentLinks'),
+    where('orderId', '==', ''),
+    where('status', '==', 'created'),
+    orderBy('createdAt', 'desc'),
+  );
+}

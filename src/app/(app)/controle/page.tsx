@@ -23,6 +23,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -295,8 +305,13 @@ export default function ControlePage() {
   const [enriching, setEnriching] = useState(false);
 
   // Pagination
-  const PAGE_SIZE = 25;
+  const PAGE_SIZE_OPTIONS = [30, 50, 100, 'all'] as const;
+  type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
+  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(30);
   const [currentPage, setCurrentPage] = useState(0);
+  const [showAllWarning, setShowAllWarning] = useState(false);
+
+  const PAGE_SIZE = pageSizeOption === 'all' ? Infinity : pageSizeOption;
 
   // Load subcollections for each order
   useEffect(() => {
@@ -736,13 +751,39 @@ export default function ControlePage() {
           )}
 
           {/* ── Pagination ─────────────────────────────────────────── */}
-          {rows.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between border-t px-4 py-3">
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <div className="flex items-center gap-3">
               <p className="text-xs text-muted-foreground">
-                Mostrando {currentPage * PAGE_SIZE + 1} a{' '}
-                {Math.min((currentPage + 1) * PAGE_SIZE, rows.length)} de{' '}
-                {rows.length} pedidos
+                {pageSizeOption === 'all'
+                  ? `Mostrando todos os ${rows.length} pedidos`
+                  : `Mostrando ${currentPage * PAGE_SIZE + 1} a ${Math.min((currentPage + 1) * PAGE_SIZE, rows.length)} de ${rows.length} pedidos`}
               </p>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground">Exibir:</Label>
+                <Select
+                  value={String(pageSizeOption)}
+                  onValueChange={(v) => {
+                    if (v === 'all') {
+                      setShowAllWarning(true);
+                    } else {
+                      setPageSizeOption(Number(v) as 30 | 50 | 100);
+                      setCurrentPage(0);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[80px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {pageSizeOption !== 'all' && rows.length > PAGE_SIZE && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -766,8 +807,32 @@ export default function ControlePage() {
                   Próximo
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* ── "View all" warning dialog ──────────────────────────── */}
+          <AlertDialog open={showAllWarning} onOpenChange={setShowAllWarning}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Exibir todos os pedidos?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Isso pode demorar para carregar se houver muitos pedidos ({rows.length} encontrados).
+                  Tem certeza que deseja exibir todos de uma vez?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setPageSizeOption('all');
+                    setCurrentPage(0);
+                  }}
+                >
+                  Sim, exibir todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardContent>
       </Card>
     </div>

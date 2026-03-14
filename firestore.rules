@@ -13,7 +13,9 @@ service cloud.firestore {
 
     function isSuperAdmin() {
       return request.auth.token.email == 'caio@entouragelab.com'
-          || request.auth.token.email == 'mario@entouragelab.com';
+          || request.auth.token.email == 'mario@entouragelab.com'
+          || request.auth.token.email == 'marcos.freitas@entouragelab.com'
+          || request.auth.token.email == 'tiago.fonseca@entouragelab.com';
     }
 
     function isEntourageDomain() {
