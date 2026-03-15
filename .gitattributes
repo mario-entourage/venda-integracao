@@ -1,0 +1,9 @@
+# Enforce consistent line endings across platforms (prevents CRLF/LF churn on Windows).
+* text=auto
+
+# Keep this file LF too.
+.gitattributes text eol=lf
+
+# Source code should use LF.
+*.ts text eol=lf
+*.tsx text eol=lf
