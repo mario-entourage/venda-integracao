@@ -99,9 +99,9 @@ export default function PagamentoDetailPage() {
     const successStatuses = ['paid', 'approved', 'completed', 'success'];
 
     if (successStatuses.includes(link.status)) {
-      router.replace('/checkout/success');
+      router.replace(`/checkout/${orderId}/confirm`);
     }
-  }, [link, router]);
+  }, [link, router, orderId]);
 
   if (loading) {
     return <div className="p-6">Carregando pagamento...</div>;
