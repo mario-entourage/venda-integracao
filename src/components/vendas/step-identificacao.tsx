@@ -18,6 +18,7 @@ import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
+import { useToast } from '@/hooks/use-toast';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -149,10 +150,32 @@ export function StepIdentificacao({
   frete, onFreteChange,
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
+  const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
+
+  // Prescription age warning toast — fires once when prescriptionDate is set and age >= 5 months
+  const lastRxToastDate = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!state.prescriptionDate || state.prescriptionDate === lastRxToastDate.current) return;
+    const rxDate = new Date(state.prescriptionDate + 'T12:00:00');
+    if (isNaN(rxDate.getTime())) return;
+    const now = new Date();
+    const ageMonths = (now.getFullYear() - rxDate.getFullYear()) * 12 + (now.getMonth() - rxDate.getMonth());
+    if (ageMonths < 5) return;
+    lastRxToastDate.current = state.prescriptionDate;
+    const expiry = new Date(rxDate);
+    expiry.setMonth(expiry.getMonth() + 6);
+    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const expiryStr = expiry.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (daysLeft <= 0) {
+      toast({ variant: 'destructive', title: 'Receita vencida!', description: `Receita com ${ageMonths} meses. Venceu em ${expiryStr}.` });
+    } else {
+      toast({ variant: 'destructive', title: 'Receita proxima do vencimento!', description: `Receita com ${ageMonths} meses. Vence em ${expiryStr} (${daysLeft} dia${daysLeft !== 1 ? 's' : ''}).` });
+    }
+  }, [state.prescriptionDate, toast]);
 
   // Track when an external file is being dragged over the window
   const [isDraggingOnPage, setIsDraggingOnPage] = useState(false);
@@ -730,9 +753,10 @@ export function StepIdentificacao({
         ) : (
           <div className="space-y-2">
             {/* Header */}
-            <div className="hidden grid-cols-[1fr_60px_90px_90px_90px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
+            <div className="hidden grid-cols-[1fr_60px_60px_90px_90px_90px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
               <span>Produto</span>
               <span className="text-center">Qtd</span>
+              <span className="text-center">Qtd Rx</span>
               <span className="text-center">Preço Lista</span>
               <span className="text-center">P. Unit.</span>
               <span className="text-center">P. Total</span>
@@ -744,7 +768,7 @@ export function StepIdentificacao({
               <div
                 key={line.id}
                 className={cn(
-                  'grid grid-cols-[1fr_60px_90px_90px_90px_70px_36px] items-center gap-2 rounded-lg border p-2',
+                  'grid grid-cols-[1fr_60px_60px_90px_90px_90px_70px_36px] items-center gap-2 rounded-lg border p-2',
                   line.aiHintName && !line.productId ? 'border-amber-300 bg-amber-50' : 'border-border bg-card',
                 )}
               >
@@ -763,6 +787,16 @@ export function StepIdentificacao({
                 {/* Qty */}
                 <Input type="number" min={1} value={line.quantity}
                   onChange={(e) => updateLine(line.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                  onBlur={() => {
+                    if (line.prescribedQty && line.quantity > line.prescribedQty) {
+                      toast({ variant: 'destructive', title: 'Quantidade excede a receita', description: `Produto "${line.productName || 'selecionado'}": quantidade ${line.quantity} excede a prescrita (${line.prescribedQty}).` });
+                    }
+                  }}
+                  className={cn('text-center px-1', line.prescribedQty && line.quantity > line.prescribedQty && 'border-amber-400 ring-1 ring-amber-400')} />
+                {/* Prescribed Qty */}
+                <Input type="number" min={0} value={line.prescribedQty ?? ''}
+                  onChange={(e) => updateLine(line.id, { prescribedQty: e.target.value ? Math.max(0, parseInt(e.target.value) || 0) : undefined })}
+                  placeholder="—"
                   className="text-center px-1" />
                 {/* List price in BRL (read-only — converted from USD catalog price) */}
                 <div className="flex flex-col items-center justify-center rounded-md border bg-muted/40 px-1 py-1 text-center text-muted-foreground h-9" title={line.listPrice > 0 ? `${fmtUSD(line.listPrice)}` : undefined}>

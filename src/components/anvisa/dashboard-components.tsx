@@ -3,11 +3,12 @@
 import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, File, ListFilter, Plus, Trash2, Loader2 } from "lucide-react";
+import { MoreHorizontal, File, ListFilter, Plus, Trash2, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -67,6 +68,12 @@ export function RequestTable() {
   }, [user, firestore, isAdmin]);
 
   const { data: requests, isLoading } = useCollection<PatientRequest>(requestsQuery);
+
+  // Search filter
+  const [search, setSearch] = useState('');
+  const filteredRequests = (requests ?? []).filter(
+    (r) => !search.trim() || r.patientDisplayName?.toLowerCase().includes(search.toLowerCase()),
+  );
 
   const handleSoftDelete = useCallback(async (request: PatientRequest) => {
     if (!firestore) return;
@@ -205,13 +212,26 @@ export function RequestTable() {
       <TabsContent value="all">
         <Card>
           <CardHeader>
-            <CardTitle>{isAdmin ? 'Todas as Solicitacoes' : 'Minhas Solicitacoes'}</CardTitle>
-            <CardDescription>
-              {isAdmin
-                ? 'Gerencie todas as solicitacoes de pacientes de todos os operadores.'
-                : 'Gerencie e acompanhe todas as suas solicitacoes de pacientes.'
-              }
-            </CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>{isAdmin ? 'Todas as Solicitacoes' : 'Minhas Solicitacoes'}</CardTitle>
+                <CardDescription>
+                  {isAdmin
+                    ? 'Gerencie todas as solicitacoes de pacientes de todos os operadores.'
+                    : 'Gerencie e acompanhe todas as suas solicitacoes de pacientes.'
+                  }
+                </CardDescription>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar paciente..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
@@ -243,7 +263,7 @@ export function RequestTable() {
                     <TableCell colSpan={isAdmin ? 8 : 6} className="text-center">Carregando...</TableCell>
                   </TableRow>
                 )}
-                {!isLoading && requests?.map((request) => (
+                {!isLoading && filteredRequests.map((request) => (
                   <TableRow key={request.id} className={selectedIds.has(request.id) ? 'bg-muted/50' : undefined}>
                     {isAdmin && (
                       <TableCell>
@@ -298,7 +318,7 @@ export function RequestTable() {
                     </TableCell>
                   </TableRow>
                 ))}
-                 {!isLoading && requests?.length === 0 && (
+                 {!isLoading && filteredRequests.length === 0 && (
                    <TableRow>
                      <TableCell colSpan={isAdmin ? 8 : 6} className="text-center">Nenhuma solicitacao encontrada.</TableCell>
                    </TableRow>
@@ -308,7 +328,7 @@ export function RequestTable() {
           </CardContent>
           <CardFooter>
             <div className="text-xs text-muted-foreground">
-              Mostrando <strong>{requests?.length || 0}</strong> de <strong>{requests?.length || 0}</strong> solicitacoes
+              Mostrando <strong>{filteredRequests.length}</strong> de <strong>{requests?.length || 0}</strong> solicitacoes
             </div>
           </CardFooter>
         </Card>
