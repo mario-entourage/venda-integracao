@@ -21,11 +21,14 @@ import {
   SidebarFooter,
 } from '@/components/ui/sidebar';
 
-const orderNavItems = [
-  { href: '/dashboard', icon: Home, label: 'Dashboard' },
+const vendasNavItems = [
+  { href: '/dashboard', icon: Home, label: 'Home' },
   { href: '/remessas', icon: Send, label: 'Nova Venda' },
   { href: '/pedidos', icon: Truck, label: 'Pedidos' },
   { href: '/controle', icon: ClipboardList, label: 'Controle' },
+];
+
+const cadastrosNavItems = [
   { href: '/clientes', icon: Users, label: 'Clientes' },
   { href: '/representantes', icon: UserCheck, label: 'Representantes' },
   { href: '/medicos', icon: Stethoscope, label: 'Medicos' },
@@ -63,10 +66,10 @@ const userNavItems = [
   { href: '/perfil', icon: User, label: 'Perfil' },
 ];
 
-function NavGroup({ label, items, pathname }: { label: string; items: typeof orderNavItems; pathname: string }) {
+function NavGroup({ label, items, pathname, labelClassName }: { label: string; items: typeof vendasNavItems; pathname: string; labelClassName?: string }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel className={labelClassName}>{label}</SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
@@ -97,7 +100,29 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <NavGroup label="Pedidos" items={orderNavItems} pathname={pathname} />
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            <span style={{ fontFamily: 'Meddon, cursive' }} className="text-sm">
+              Vendas
+            </span>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {vendasNavItems.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                  <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
+                    <Link href={item.href}>
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <NavGroup label="Cadastros" items={cadastrosNavItems} pathname={pathname} />
         <NavGroup label="Produtos & Estoque" items={productNavItems} pathname={pathname} />
         <NavGroup label="Documentos" items={documentNavItems} pathname={pathname} />
         <NavGroup label="Financeiro" items={paymentNavItems} pathname={pathname} />

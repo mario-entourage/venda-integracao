@@ -1,6 +1,6 @@
 # **Entourage Lab — Sales Integration Platform**
 
-Comprehensive requirements document for developer handoff. Last updated: 2026-03-06
+Comprehensive requirements document for developer handoff. Last updated: 2026-03-13
 
 ---
 
@@ -57,6 +57,34 @@ This platform consolidates all of those workflows into one system.
 | Atomic writes for consistency | The entire order (root document \+ 8 subcollections) is created in a single Firestore batch write. It either all succeeds or all fails. |
 | Portuguese-first UI | All labels, messages, and user-facing text are in Brazilian Portuguese. The codebase (variable names, comments) is in English. |
 | Domain-locked access | Only @entouragelab.com Google accounts can access the platform. This is enforced at both the Firebase Auth level and in Firestore security rules. |
+
+### **User experience philosophy**
+
+The operators who use this platform spend hours each day moving sales through a multi-step regulatory pipeline. Every interaction should respect their time and reduce cognitive load.
+
+| Principle | How it manifests |
+| :---- | :---- |
+| Reduce clicks, not choices | Wizards auto-fill from prior data (OCR, database matches, default profiles) but every field remains editable. The system does the work; the operator keeps control. |
+| Progressive disclosure | Only show what matters for the current step. Details live in expandable sections or linked detail pages — never in a wall of fields. The sidebar groups links by workflow stage (*Vendas* → *Cadastros* → *Documentos* → etc.) so the operator's eye follows the natural order of a sale. |
+| Warnings, not blocks | Prescription age, quantity mismatches, and duplicate prescriptions surface as prominent toasts and amber highlights — not modal blockers. Operators can acknowledge and override because real-world edge cases are common. Admins get an explicit override checkbox when needed. |
+| Immediate feedback | Upload progress shows per-file with the filename. AI classification results appear inline the moment they finish. Payment sync results appear in-place. No full-page reloads, no "please wait" screens that hide what happened. |
+| Forgiving navigation | The wizard supports back-navigation without data loss. "Continue Sale" resumes exactly where the operator left off. Accidentally closing a tab doesn't lose the order — it lives in Firestore and can be resumed from the Controle detail page. |
+| Mobile-conscious, desktop-first | The primary users work at desks with wide screens. Layouts optimize for 1200px+ viewports but remain usable on tablets. Grid columns collapse gracefully; the sidebar collapses to icons. |
+| Respect the user's intelligence | Operators are professionals who understand their domain. The UI should inform, not lecture. Avoid redundant confirmation dialogs for routine actions, don't over-explain obvious buttons with tooltips, and never patronize with "Are you sure?" on non-destructive actions. Trust that the operator knows what they're doing — surface the information they need and get out of the way. |
+
+### **Aesthetic philosophy**
+
+The platform's visual identity should feel professional, trustworthy, and calm. Operators interact with it all day — it should be pleasant to look at, never fatiguing.
+
+| Principle | Guideline |
+| :---- | :---- |
+| Brand presence without noise | The Entourage logo and teal brand color anchor the sidebar header and login screen. The word *Vendas* in the Meddon cursive font adds warmth and distinguishes this module from future Entourage tools. Beyond these anchor points, the brand recedes — the content is the focus. |
+| Neutral canvas, purposeful color | The base palette is white, slate, and muted gray (shadcn/ui defaults). Color is reserved for meaning: teal for primary actions and brand, amber for warnings, red for destructive actions and errors, green for success confirmations. Status badges use soft-tinted borders (blue, purple, orange, etc.) to be scannable without being loud. |
+| Typographic hierarchy | Montserrat (font-headline) for page titles and branding text. Inter (font-body) for everything else — tables, forms, labels, prose. Meddon (cursive) is used only for the *Vendas* wordmark on the login screen and sidebar heading — always title-case "Vendas", never "VENDAS" or "vendas". No more than three font families anywhere. |
+| Whitespace is a feature | Cards have generous padding. Table rows breathe. Form sections are spaced with `space-y-6`. Crowding signals a design problem, not a content problem. |
+| Consistent component vocabulary | Buttons, badges, selects, inputs, dialogs, and toasts all come from shadcn/ui with minimal customization. If a pattern exists in the component library, use it — don't invent a new one. This keeps the interface predictable. |
+| Subtle motion | Loading skeletons pulse gently. Toasts slide in. Hover states transition colors. Nothing bounces, flashes, or demands attention. Animation serves confirmation ("something happened") not decoration. |
+| Don't be trashy | No gratuitous gradients, drop shadows stacked on drop shadows, or decorative elements that serve no purpose. No emoji in professional UI (unless the user explicitly asks). No "fun" copy in error messages — be clear and direct. The platform handles pharmaceutical imports and regulatory compliance; it should look like it. Cheap visual tricks erode trust. When in doubt, leave it out. |
 
 ### **Architecture overview**
 
@@ -161,7 +189,17 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-01.5 | Step 2 — Documents: The user indicates whether a Comprovante de Vinculo or Procuracao is needed. If yes, the user enters Signatario details (name \+ CPF) and the system creates ZapSign document(s). |
 | FR-01.6 | Step 3 — Send to Client: Displays a summary of everything created (payment link, ZapSign links if any). Provides copy/share buttons (including WhatsApp deep link) to send all links to the client. |
 | FR-01.7 | The order, all subcollections, and the prescription record are created atomically in a single Firestore batch write. Because an order can only be created with a prescription, the order and prescription share the same document ID (Receita ID). |
-| FR-01.8 | Resume mode: An incomplete order can be resumed via ?resume={orderId} URL parameter. This renders a simplified wizard that picks up where the operator left off. |
+| FR-01.8 | Resume mode: An incomplete order can be resumed via ?resume={orderId} URL parameter. This renders the full wizard pre-populated with existing order data (customer, doctor, products, payment links), starting at the appropriate step based on order state. |
+| FR-01.9 | Prescription age warning: When the operator enters or changes the prescription date, if the prescription is 5 or more months old, a toast warning is shown with the prescription age and expiry date (6-month validity). |
+| FR-01.10 | Prescribed quantity tracking: Each product line has an optional "Qtd Prescrita" (prescribed quantity) field. If the order quantity exceeds the prescribed quantity, the system shows a warning toast and highlights the quantity input with an amber border. |
+| | **Design decision — Data source for prescribed quantity:** |
+| | **Option A (chosen): Operator manually enters the prescribed quantity per product line.** The operator reads the prescription and types the quantity into a "Qtd Prescrita" input next to each product row. On blur of the order quantity field, the system compares and warns if order qty > prescribed qty. |
+| | **Option B (not chosen): AI extracts prescribed quantity from the prescription image.** The classify-document AI flow would also extract per-product quantities from the uploaded prescription via Gemini vision, auto-populating the prescribed qty fields. **Why it might be right:** eliminates manual data entry, reduces operator error, and is faster for high-volume workflows. **Why it was not chosen:** prescription formats vary widely (handwritten, typed, different layouts), making reliable extraction difficult; the operator already reviews the prescription anyway; and a wrong AI extraction that goes unnoticed is worse than no extraction at all. This option can be revisited once AI accuracy is validated on a representative sample of real prescriptions. |
+| FR-01.11 | Post-finalization shipping choice: After the wizard is finalized, a dialog presents two shipping options — "TriStar Express" (opens TriStar shipment dialog pre-populated with order data) or "Enviar do Brasil" (sends an email notification to the fulfillment team with the order summary). The "Enviar do Brasil" option sends the notification email to adm@entouragelab.com. |
+| | **Design decision — Email recipient for "Enviar do Brasil":** |
+| | **Option A (chosen): Hardcoded to adm@entouragelab.com.** The notification email is always sent to the admin shared mailbox. Simple, predictable, and avoids single-point-of-failure by going to a shared address rather than an individual. |
+| | **Option B (not chosen): Configurable recipient stored in Firestore settings.** An admin screen would allow changing the notification recipient without a code deploy. **Why it might be right:** if Caio's role changes, or if different products/regions need different fulfillment contacts, a hardcoded email becomes a bottleneck requiring developer intervention. Also more robust for team scaling — new fulfillment staff could be added without code changes. |
+| | **Option C (not chosen): Email a distribution list or multiple recipients.** Send to a shared inbox (e.g., fulfillment@entouragelab.com) or multiple addresses. **Why it might be right:** avoids single-point-of-failure if Caio is unavailable; ensures backup coverage; standard practice for operational workflows. **Why it was not chosen:** the team is small, Caio is the sole fulfillment coordinator today, and adding a distribution list adds setup overhead with no current benefit. Can be changed later by updating the hardcoded address or upgrading to Option B. |
 
 #### **FR-02 Pedidos (Consolidated Order Tracker)**
 
@@ -188,10 +226,10 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | :---- | :---- |
 | FR-03.0 | Display a list of all orders with robust filters. Filter options: Start Date, End Date, Order Status. The date options should default to the last 30 days. The list should be paginated when it reaches a certain length. A dropdown should let the user determine how many entries to show at once, with a default value of 30 items per page. The other options for entries per page must be 30, 50, 100, and all. If the user selects to view all, a warning should pop up saying that this might be a lot and asks if they’re sure |
 | FR-03.1 | Order detail page displays the full order checklist with real-time status for each item. |
-| FR-03.2 |  |
-| FR-03.3 |  |
-| FR-03.4 |  |
-| FR-03.5 |  |
+| FR-03.2 | Multi-file drag-and-drop upload: The document upload area accepts multiple files at once. Files are uploaded sequentially with per-file progress indicators, and each completed file is listed by name. |
+| FR-03.3 | AI document classification: After each file is uploaded, the system automatically classifies it using Gemini vision AI into one of: prescription, identity, proof_of_address, medical_report, invoice, anvisa_authorization, or general. No manual type dropdown is shown. A "Classificando..." spinner is displayed during classification. The detected type is shown inline with an optional override select. |
+| FR-03.4 | Frete display in sales summary: When an order has a shipping cost (frete > 0), the products table footer shows Subtotal (products only), Frete, and Grand Total as separate rows. |
+| FR-03.5 | Continue Sale: A "Continuar Venda" action on an order opens the full Nova Venda wizard pre-populated with the order's existing data, resuming from the appropriate step. |
 | FR-03.6 |  |
 | FR-03.7 | CSV bulk import (admin-only): column mapping, validation, duplicate detection via batchImportId, batch creation in chunks of 80 rows (within Firestore's 500-operation batch limit). |
 | FR-03.8 | Date-range filtering for order lists. |
@@ -212,6 +250,8 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-04.7 | Modelo Solicitante: user profile for ANVISA requester details (name, email, RG, gender, date of birth, address, CEP, state (UF), municipality, phone, landline). State and municipality are sent to the extension separately from patient data to fill the DADOS DO SOLICITANTE section. Autofills the solicitation form. |
 | FR-04.8 | Chrome extension (v1.3.5) receives OCR data via window.postMessage and auto-fills the ANVISA gov.br portal form. Handles text fields, native selects, DS Gov selects (br-select), react-select dropdowns, cascading state/city dropdowns, and file uploads. |
 | FR-04.9 | Validation warns when Modelo Solicitante is not configured. |
+| FR-04.10 | Search/filter by patient name: The Solicitações dashboard includes a search input that filters requests by patient display name in real time. |
+| FR-04.11 | Auto-fill from database: When the system recognizes a client during the ANVISA wizard (via sales integration check), the verification form fields are auto-filled from the client's database profile. OCR-extracted data takes priority; database values are used as fallback for empty fields. |
 
 #### **FR-05 Clients / Doctors / Representatives**
 
@@ -257,7 +297,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | :---- | :---- |
 | FR-08.1 | Google OAuth authentication restricted to @entouragelab.com domain. Account picker always shown; domain enforced both client-side (sign out non-matching) and in Firestore rules. |
 | FR-08.2 | Three roles: admin (full access), user (standard operations), view\_only (read-only). |
-| FR-08.3 | Super-admins: caio@entouragelab.com and mario@entouragelab.com (hardcoded). Dynamic admins via roles\_admin collection. |
+| FR-08.3 | Super-admins: caio@entouragelab.com, mario@entouragelab.com, marcos.freitas@entouragelab.com, and tiago.fonseca@entouragelab.com (hardcoded in provider and Firestore rules). Dynamic admins via roles\_admin collection. When an admin changes a user's group to/from admin, the roles\_admin collection is synced automatically. |
 | FR-08.4 | Pre-registration: admins assign roles before a user's first login via preregistrations collection. |
 | FR-08.5 | User management UI for admins to create, edit, and deactivate accounts. |
 
@@ -294,6 +334,8 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 |  | The user should be able to filter based on date range and document type |
 |  | For users other than admin, this page should show the metadata for documents that the specific user has uploaded. This includes type of document, order number, sales rep, date uploaded |
 |  | For admin users, this should show metadata for all documents |
+|  | Each document row must display the patient name (from holder field or metadata.fullName). |
+|  | Each document row must have a download button that opens the document file URL in a new tab. |
 
 ### **Nonfunctional Requirements**
 

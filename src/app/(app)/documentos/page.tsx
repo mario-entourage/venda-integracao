@@ -3,12 +3,14 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { query, where } from 'firebase/firestore';
+import { Download } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getDocumentsRef } from '@/services/documents.service';
 import { getActiveUsersQuery } from '@/services/users.service';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -213,9 +215,11 @@ export default function DocumentosPage() {
                 <thead>
                   <tr className="border-b">
                     <th className="pb-2 pl-6 text-left font-medium text-muted-foreground">Tipo</th>
+                    <th className="pb-2 text-left font-medium text-muted-foreground">Paciente</th>
                     <th className="pb-2 text-left font-medium text-muted-foreground">Pedido</th>
                     <th className="pb-2 text-left font-medium text-muted-foreground hidden md:table-cell">Médico</th>
                     <th className="pb-2 text-left font-medium text-muted-foreground hidden lg:table-cell">Enviado por</th>
+                    <th className="pb-2 text-center font-medium text-muted-foreground w-10"></th>
                     <th className="pb-2 pr-6 text-right font-medium text-muted-foreground">Data</th>
                   </tr>
                 </thead>
@@ -234,6 +238,9 @@ export default function DocumentosPage() {
                           <Badge variant="outline" className={cfg.className}>
                             {cfg.label}
                           </Badge>
+                        </td>
+                        <td className="py-3">
+                          {doc.holder || (doc.metadata?.fullName as string) || <span className="text-muted-foreground">—</span>}
                         </td>
                         <td className="py-3">
                           {doc.orderId ? (
@@ -255,6 +262,21 @@ export default function DocumentosPage() {
                         </td>
                         <td className="py-3 hidden lg:table-cell text-muted-foreground">
                           {uploaderName}
+                        </td>
+                        <td className="py-3 text-center">
+                          {doc.metadata?.url ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              asChild
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <a href={doc.metadata.url as string} target="_blank" rel="noopener noreferrer" download>
+                                <Download className="h-4 w-4" />
+                              </a>
+                            </Button>
+                          ) : null}
                         </td>
                         <td className="py-3 pr-6 text-right text-muted-foreground">
                           {fmtDate(doc.createdAt)}

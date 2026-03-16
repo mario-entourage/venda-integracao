@@ -5,7 +5,6 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { NovaVendaWizard } from '@/components/vendas/nova-venda-wizard';
-import { ResumeVendaWizard } from '@/components/vendas/resume-venda-wizard';
 
 // ─── Inner component (needs access to useSearchParams) ────────────────────────
 
@@ -18,19 +17,19 @@ function VendasPageContent() {
 
   const resumeOrderId = searchParams.get('resume');
 
-  const handleVendaComplete = () => {
+  const handleVendaComplete = (_orderId: string) => {
     // After completing a sale, navigate to Pedidos
     setWizardKey((k) => k + 1);
     router.push('/pedidos');
   };
 
-  const handleResumeComplete = () => {
+  const handleResumeComplete = (_orderId: string) => {
     // Clear the resume param and go to pedidos
     router.replace('/pedidos');
   };
 
   // ── Resume mode ─────────────────────────────────────────────────────────────
-  // When ?resume=<orderId> is present, show the resume wizard.
+  // When ?resume=<orderId> is present, show the full wizard pre-populated.
   if (resumeOrderId) {
     return (
       <div className="space-y-6">
@@ -48,8 +47,8 @@ function VendasPageContent() {
 
         <Card>
           <CardContent className="pt-6 pb-8">
-            <ResumeVendaWizard
-              orderId={resumeOrderId}
+            <NovaVendaWizard
+              resumeOrderId={resumeOrderId}
               onComplete={handleResumeComplete}
             />
           </CardContent>

@@ -25,7 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
-import { createDocumentRecord } from '@/services/documents.service';
+import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
 import { OrderStatus } from '@/types';
 import type { Order, OrderCustomer, OrderDoctor, OrderRepresentative } from '@/types';
 import type { User } from '@/types';
@@ -59,6 +59,16 @@ const ANVISA_LABELS: Record<string, string> = {
   regular:     'Regular',
   exceptional: 'Especial',
   exempt:      'Isento',
+};
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  prescription: 'Prescrição',
+  identity: 'Identidade',
+  proof_of_address: 'Comprov. Endereço',
+  medical_report: 'Laudo Médico',
+  invoice: 'Nota Fiscal',
+  anvisa_authorization: 'Autorização ANVISA',
+  general: 'Geral',
 };
 
 const fmtBRL = (v: number) =>
@@ -138,25 +148,56 @@ export default function OrderDetailPage() {
   }, [firestore, orderId]);
 
   // ── document uploads ─────────────────────────────────────────────────────────
-  const DOC_TYPE_OPTIONS = [
-    { value: 'prescription',         label: 'Receita / Prescrição' },
-    { value: 'identity',             label: 'Identidade (RG / CNH)' },
-    { value: 'medical_report',       label: 'Laudo Médico' },
-    { value: 'proof_of_address',     label: 'Comprovante de Endereço' },
-    { value: 'invoice',              label: 'Nota Fiscal' },
-    { value: 'anvisa_authorization', label: 'Autorização ANVISA' },
-    { value: 'general',              label: 'Outro / Geral' },
-  ] as const;
-
-  const [selectedDocType, setSelectedDocType] = useState<string>('prescription');
-  const [uploadedDocs, setUploadedDocs] = useState<{ name: string; url: string }[]>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<{ name: string; url: string; type: string; docRecordId: string }[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [classifyingFiles, setClassifyingFiles] = useState<Set<string>>(new Set());
 
-  const handleDocumentUploaded = async (result: { path: string; url: string; name: string }) => {
+  /** Convert a File to base64 for AI classification. */
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        resolve(dataUrl.split(',')[1]); // strip "data:...;base64," prefix
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  /** Called when a file finishes uploading. Classifies via AI, then creates document record. */
+  const handleFileReady = async (file: File, result: { path: string; url: string; name: string }) => {
     if (!firestore) return;
+
+    let docType = 'general';
+    setClassifyingFiles((prev) => new Set(prev).add(file.name));
+
     try {
-      await createDocumentRecord(firestore, {
-        type: selectedDocType,
+      // AI classification
+      const base64 = await fileToBase64(file);
+      const res = await fetch('/api/ai/classify-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.documentType && data.documentType !== 'unknown') {
+          docType = data.documentType;
+        }
+      }
+    } catch {
+      // Classification failed — default to 'general'
+    } finally {
+      setClassifyingFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(file.name);
+        return next;
+      });
+    }
+
+    try {
+      const docRecordId = await createDocumentRecord(firestore, {
+        type: docType,
         holder: customer?.name ?? '',
         key: result.path,
         number: '',
@@ -164,11 +205,23 @@ export default function OrderDetailPage() {
         userId: user?.uid ?? '',
         orderId,
       });
-      setUploadedDocs((prev) => [...prev, { name: result.name, url: result.url }]);
+      setUploadedDocs((prev) => [...prev, { name: result.name, url: result.url, type: docType, docRecordId }]);
       setUploadError(null);
     } catch (err) {
       console.error('[OrderDetailPage] doc record error:', err);
       setUploadError('Arquivo enviado mas erro ao salvar registro.');
+    }
+  };
+
+  /** Override the AI-detected document type for an already-uploaded doc. */
+  const handleTypeOverride = async (idx: number, newType: string) => {
+    const doc = uploadedDocs[idx];
+    if (!firestore || !doc) return;
+    setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: newType } : d)));
+    try {
+      await updateDocumentRecord(firestore, doc.docRecordId, { type: newType });
+    } catch (err) {
+      console.error('[OrderDetailPage] type override error:', err);
     }
   };
 
@@ -430,42 +483,44 @@ export default function OrderDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Selecione o tipo e envie documentos para este pedido.
+              Envie documentos — o tipo será detectado automaticamente.
             </p>
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-muted-foreground whitespace-nowrap">
-                Tipo:
-              </label>
-              <Select value={selectedDocType} onValueChange={setSelectedDocType}>
-                <SelectTrigger className="w-[240px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {DOC_TYPE_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <FileUpload
               storagePath={`documents/${orderId}`}
-              onUploadComplete={handleDocumentUploaded}
+              onUploadComplete={() => {}}
+              onFileReady={handleFileReady}
               onError={(err) => setUploadError(err.message)}
+              multiple
+              label="Clique ou arraste arquivos aqui"
+              sublabel="Aceita múltiplos arquivos · PDF, JPG, PNG (max 5MB cada)"
             />
+            {classifyingFiles.size > 0 && (
+              <p className="text-xs text-muted-foreground animate-pulse">
+                Classificando {classifyingFiles.size} documento{classifyingFiles.size > 1 ? 's' : ''}...
+              </p>
+            )}
             {uploadError && (
               <p className="text-sm text-destructive">{uploadError}</p>
             )}
             {uploadedDocs.length > 0 && (
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Enviados nesta sessão:</p>
-                {uploadedDocs.map((doc, i) => (
-                  <div key={i} className="flex items-center gap-2 text-xs text-green-700">
-                    <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                {uploadedDocs.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <svg className="h-3.5 w-3.5 flex-shrink-0 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
-                    {doc.name}
+                    <span className="truncate text-green-700">{d.name}</span>
+                    <Select value={d.type} onValueChange={(v) => handleTypeOverride(i, v)}>
+                      <SelectTrigger className="h-6 w-auto min-w-[120px] text-xs px-2 py-0 gap-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(DOC_TYPE_LABELS).map(([key, label]) => (
+                          <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 ))}
               </div>
@@ -521,15 +576,35 @@ export default function OrderDetailPage() {
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t">
+                  {order.frete && order.frete > 0 && (
+                    <>
+                      <tr className="border-t">
+                        <td colSpan={3} className="pt-3 pl-6 pb-0.5 text-right text-sm text-muted-foreground">
+                          Subtotal
+                        </td>
+                        <td className="pt-3 pr-6 pb-0.5 text-right text-sm">
+                          {fmtBRL(order.amount)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={3} className="pl-6 pb-0.5 text-right text-sm text-muted-foreground">
+                          Frete
+                        </td>
+                        <td className="pr-6 pb-0.5 text-right text-sm">
+                          {fmtBRL(order.frete)}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                  <tr className={!order.frete ? 'border-t' : ''}>
                     <td
                       colSpan={3}
-                      className="pt-3 pl-6 pb-1 text-right font-semibold text-muted-foreground"
+                      className="pt-1 pl-6 pb-1 text-right font-semibold text-muted-foreground"
                     >
                       Total
                     </td>
-                    <td className="pt-3 pr-6 pb-1 text-right text-lg font-bold">
-                      {fmtBRL(order.amount)}
+                    <td className="pt-1 pr-6 pb-1 text-right text-lg font-bold">
+                      {fmtBRL(order.amount + (order.frete || 0))}
                     </td>
                   </tr>
                 </tfoot>

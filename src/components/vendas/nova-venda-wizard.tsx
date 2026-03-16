@@ -13,9 +13,10 @@ import { getActiveRepresentantesQuery } from '@/services/representantes.service'
 import { getActiveRepUsersQuery } from '@/services/users.service';
 import { getUnassignedPaymentLinksQuery } from '@/services/payments.service';
 import { assignPaymentToOrder } from '@/server/actions/payment.actions';
-import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash } from '@/services/orders.service';
+import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash, getOrderRef, getOrderSubcollectionRef } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
 import { updateOrderStatus } from '@/services/orders.service';
+import { getDoc, getDocs } from 'firebase/firestore';
 import { BASE_LABELS } from '@/lib/order-status-helpers';
 import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
@@ -25,8 +26,9 @@ import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
 import { PostWizardDialog } from './post-wizard-dialog';
+import { ShippingChoiceDialog } from './shipping-choice-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
-import type { Client, Doctor, Product, User, Representante, PaymentLink } from '@/types';
+import type { Client, Doctor, Product, User, Representante, PaymentLink, Order, OrderCustomer, OrderDoctor, OrderRepresentative, OrderProduct } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,8 @@ export interface ProductLine {
   productId: string;
   productName: string;
   quantity: number;
+  /** Quantity prescribed on the prescription (optional, user-entered) */
+  prescribedQty?: number;
   /** Original list price from the product catalogue */
   listPrice: number;
   /** Price the sales rep negotiated — drives the discount */
@@ -130,9 +134,11 @@ const STEPS = [
 
 interface NovaVendaWizardProps {
   onComplete: (orderId: string) => void;
+  /** When set, the wizard resumes an existing order instead of creating a new one. */
+  resumeOrderId?: string;
 }
 
-export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
+export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardProps) {
   const router = useRouter();
   const { firestore, storage, user, isAdmin } = useFirebase();
 
@@ -178,6 +184,8 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   // Post-completion dialog: shown when one or both entities were quick-added
   const [showPostDialog, setShowPostDialog] = useState(false);
   const [completedOrderId, setCompletedOrderId] = useState('');
+  // Shipping choice dialog: shown after post-wizard dialog (or directly after finalization)
+  const [showShippingChoice, setShowShippingChoice] = useState(false);
 
   // ── fetch PTAX exchange rate on mount ────────────────────────────────
   useEffect(() => {
@@ -202,6 +210,81 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     });
     return () => { cancelled = true; };
   }, []);
+
+  // ── resume mode: load existing order data ──────────────────────────────
+  const [resumeLoading, setResumeLoading] = useState(!!resumeOrderId);
+  useEffect(() => {
+    if (!resumeOrderId || !firestore) return;
+    let cancelled = false;
+    setResumeLoading(true);
+
+    Promise.all([
+      getDoc(getOrderRef(firestore, resumeOrderId)),
+      getDocs(getOrderSubcollectionRef(firestore, resumeOrderId, 'customer')),
+      getDocs(getOrderSubcollectionRef(firestore, resumeOrderId, 'doctor')),
+      getDocs(getOrderSubcollectionRef(firestore, resumeOrderId, 'representative')),
+      getDocs(getOrderSubcollectionRef(firestore, resumeOrderId, 'products')),
+    ]).then(([orderSnap, customerSnap, doctorSnap, repSnap, productsSnap]) => {
+      if (cancelled) return;
+      if (!orderSnap.exists()) {
+        setSubmitError('Pedido não encontrado.');
+        setResumeLoading(false);
+        return;
+      }
+      const order = { id: orderSnap.id, ...orderSnap.data() } as Order;
+      const cust = customerSnap.docs[0]?.data() as OrderCustomer | undefined;
+      const doc = doctorSnap.docs[0]?.data() as OrderDoctor | undefined;
+      const rep = repSnap.docs[0]?.data() as OrderRepresentative | undefined;
+      const prods = productsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as OrderProduct));
+
+      // Hydrate WizardState from loaded order
+      const productLines: ProductLine[] = prods.map((p) => ({
+        id: p.id,
+        productId: p.stockProductId,
+        productName: p.productName || '',
+        quantity: p.quantity,
+        listPrice: p.price,
+        negotiatedPrice: p.discount > 0 ? p.price * (1 - p.discount / 100) : p.price,
+        discount: p.discount,
+      }));
+
+      setState((prev) => ({
+        ...prev,
+        orderId: resumeOrderId,
+        orderAmount: order.amount,
+        frete: order.frete ?? 0,
+        exchangeRate: order.exchangeRate ?? prev.exchangeRate,
+        exchangeRateDate: order.exchangeRateDate ?? prev.exchangeRateDate,
+        selectedRepresentanteName: rep?.name ?? 'Venda Direta',
+        selectedRepresentanteId: rep?.userId ?? '',
+        step1: {
+          ...prev.step1,
+          clientId: cust?.userId ?? '',
+          clientName: cust?.name ?? '',
+          clientDocument: cust?.document ?? '',
+          doctorId: doc?.userId ?? '',
+          doctorName: doc?.name ?? '',
+          doctorCrm: doc?.crm ?? '',
+          prescriptionDate: order.prescriptionDate ?? '',
+          prescriptionHash: order.prescriptionHash ?? '',
+          products: productLines,
+          anvisaOption: (order.anvisaOption as string) ?? 'regular',
+          allowedPaymentMethods: order.allowedPaymentMethods ?? { creditCard: true, debitCard: true, boleto: true, pix: true },
+        },
+      }));
+
+      // Determine starting step: if order already has data, start at step 1 (payment)
+      setCurrentStep(1);
+      setResumeLoading(false);
+    }).catch((err) => {
+      if (cancelled) return;
+      console.error('[NovaVendaWizard] resume load error:', err);
+      setSubmitError('Erro ao carregar pedido para retomada.');
+      setResumeLoading(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [resumeOrderId, firestore]);
 
   const updateStep1 = useCallback((changes: Partial<Step1State>) => {
     setState((prev) => ({ ...prev, step1: { ...prev.step1, ...changes } }));
@@ -255,8 +338,13 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
       return;
     }
 
-    // Advancing from step 0 → 1: create order
+    // Advancing from step 0 → 1: create order (skip if resuming — order exists)
     if (currentStep === 0 && newStep === 1) {
+      if (resumeOrderId && state.orderId) {
+        // Order already loaded from resume — just advance
+        setCurrentStep(1);
+        return;
+      }
       if (!step1Valid || !firestore || !user) return;
       setIsSubmitting(true);
       setSubmitError(null);
@@ -456,14 +544,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
     try {
       await updateOrderStatus(firestore, state.orderId, 'processing', user.uid);
       onComplete(state.orderId);
+      setCompletedOrderId(state.orderId);
 
       // If any entity was quick-added, pause navigation and show the
-      // supplementary-info dialog before proceeding to the order page.
+      // supplementary-info dialog before proceeding to shipping choice.
       if (state.step1.clientIsNew || state.step1.doctorIsNew) {
-        setCompletedOrderId(state.orderId);
         setShowPostDialog(true);
       } else {
-        router.push(`/controle/${state.orderId}`);
+        // Go straight to shipping choice
+        setShowShippingChoice(true);
       }
     } catch (err) {
       console.error('Order finalization error:', err);
@@ -475,6 +564,13 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   // Called when PostWizardDialog is dismissed (save or skip)
   const handlePostDialogDone = () => {
     setShowPostDialog(false);
+    // Show shipping choice after post-wizard dialog
+    setShowShippingChoice(true);
+  };
+
+  // Called when ShippingChoiceDialog is dismissed
+  const handleShippingChoiceDone = () => {
+    setShowShippingChoice(false);
     router.push(`/controle/${completedOrderId}`);
   };
 
@@ -488,8 +584,31 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
   })();
 
   // ── render ──────────────────────────────────────────────────────────────
+  if (resumeLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-10 w-64 rounded-lg bg-muted animate-pulse" />
+        <div className="h-40 rounded-lg bg-muted animate-pulse" />
+        <div className="h-10 w-full rounded bg-muted animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {/* Resume banner */}
+      {resumeOrderId && (
+        <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">Retomando pedido </span>
+          <span className="font-mono font-medium">#{resumeOrderId.slice(0, 8).toUpperCase()}</span>
+          {state.step1.clientName && (
+            <>
+              <span className="text-muted-foreground"> · </span>
+              <span className="font-medium">{state.step1.clientName}</span>
+            </>
+          )}
+        </div>
+      )}
       {/* Post-completion supplementary info dialog */}
       <PostWizardDialog
         open={showPostDialog}
@@ -500,6 +619,15 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
         doctorId={state.step1.doctorId}
         doctorName={state.step1.doctorName}
         doctorIsNew={state.step1.doctorIsNew}
+      />
+      {/* Post-finalization shipping choice */}
+      <ShippingChoiceDialog
+        open={showShippingChoice}
+        orderId={completedOrderId}
+        clientName={state.step1.clientName}
+        orderAmount={state.orderAmount}
+        productSummary={state.step1.products.map((p) => `${p.productName} x${p.quantity}`).join(', ')}
+        onDone={handleShippingChoiceDone}
       />
       {submitError && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -536,7 +664,7 @@ export function NovaVendaWizard({ onComplete }: NovaVendaWizardProps) {
         onStepChange={handleStepChange}
         onComplete={handleComplete}
         canAdvance={canAdvance}
-        canGoBack={!isSubmitting && currentStep > 0 && state.orderId === ''}
+        canGoBack={!isSubmitting && currentStep > 0 && (state.orderId === '' || !!resumeOrderId)}
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
       >
         {currentStep === 0 && (
