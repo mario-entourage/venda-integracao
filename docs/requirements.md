@@ -1,6 +1,6 @@
 # **Entourage Lab — Sales Integration Platform**
 
-Comprehensive requirements document for developer handoff. Last updated: 2026-03-13
+Comprehensive requirements document for developer handoff. Last updated: 2026-03-17
 
 ---
 
@@ -500,6 +500,17 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Source | https://github.com/mario-entourage/Anvisa\_app/tree/main/extension |
 | Limitation | Cannot handle CAPTCHA or bot detection on gov.br. The extension currently covers approximately 75% of form fields. Dropdown and file upload support was added in v1.3.5 but may need ongoing maintenance as the gov.br portal changes its DOM structure. |
 
+#### **INT-08 Resend — Email Notifications**
+
+| Attribute | Value |
+| :---- | :---- |
+| Purpose | Send operational email notifications for shipping events and rep alerts. |
+| SDK | resend (npm package, v6.9.x) |
+| Endpoint | POST /api/notifications/send-email — internal API route that creates emails via Resend API. |
+| Use cases | (1) "Enviar do Brasil" notification to adm@entouragelab.com with order summary when Brazil-origin shipping is selected. (2) TriStar shipment rep notifications — when a rep-assigned order ships via TriStar, the rep receives an email with tracking code and order details. |
+| Graceful degradation | If RESEND\_API\_KEY is not configured, the endpoint logs a warning and returns `{ sent: false, reason: 'no_api_key' }`. No error is thrown. |
+| Env vars | RESEND\_API\_KEY (secret) |
+
 ---
 
 ## **5\. Database**
@@ -629,6 +640,7 @@ Index: (active ASC, fullName ASC)
 | mainSpecialty | string? | Specialty |
 | state, city | string? | Registration location |
 | email, phone, mobilePhone | string? | Contact |
+| repUserId | string? | Optional FK to representantes — the sales rep assigned to this doctor for commission credit |
 | active | boolean | Soft-delete flag |
 | createdAt, updatedAt | Timestamp | Bookkeeping |
 
@@ -845,8 +857,8 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | Staging environment | Medium | Create a separate Firebase project for development/staging with isolated Firestore, Auth, and Storage. Currently all development tests against production. |
 | LGPD compliance | Medium | Implement explicit consent workflow for patient data, data retention policies, right-to-deletion support, and breach notification procedures. |
 | Chrome Web Store publication | Medium | Publish the ANVISA extension to the Chrome Web Store for automatic updates instead of manual .zip distribution. |
-| Automated testing | Medium | The project currently has minimal test coverage. Add unit tests for business logic (order status helpers, exchange rate calculations) and integration tests for API routes (webhooks, payment flows). |
-| Notification system | Low | Push notifications or email alerts when orders change status (payment received, document signed, ANVISA approved). Currently operators must check the Pedidos page manually. |
+| Automated testing | Medium | The project has 113 unit tests covering order status logic, BCB PTAX, GlobalPay, ZapSign, and webhook handlers (~300ms total runtime). Remaining gaps: Firestore integration tests (Firebase Emulator), E2E smoke tests (Playwright), Chrome extension regression tests, AI/OCR accuracy tests. |
+| Notification system | Low | Partially implemented: email notifications via Resend for "Enviar do Brasil" (admin alert) and TriStar shipment rep notifications. Remaining: push notifications or email alerts for payment received, document signed, ANVISA approved. |
 | Reporting & analytics | Low | Dashboard with sales metrics, conversion rates, average processing time, revenue by representative. Currently the Dashboard page is minimal. |
 | Multi-language support | Low | English UI option for Miami-based operators. Currently hardcoded Portuguese only. |
 
@@ -911,6 +923,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | ZAPSIGN\_API\_KEY | Secret | ZapSign API key |
 | TRISTAR\_API\_URL | Plain | https://sandbox.tristarexpress.com/v1/ |
 | TRISTAR\_API\_KEY | Secret | TriStar Express API key |
+| RESEND\_API\_KEY | Secret | Resend email API key (for shipping notifications) |
 
 ## **Appendix: Tech Stack**
 

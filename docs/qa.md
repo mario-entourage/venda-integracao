@@ -1,7 +1,7 @@
 # QA Document
 
 > Entourage Lab — Sales Integration Platform
-> Last updated: 2026-03-11
+> Last updated: 2026-03-17
 
 ---
 
@@ -296,6 +296,29 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Duplicate Receita (admin override)**: As an admin, trigger the duplicate Receita error. Verify an amber checkbox "Permitir receita duplicada" appears. Check the box and click "Próximo" — verify the wizard advances despite the duplicate.
 - [ ] **Duplicate Receita (non-admin)**: As a non-admin user, trigger the duplicate Receita error. Verify no override checkbox appears — the user must cancel the existing order first.
 - [ ] **Duplicate Receita (file swap)**: After triggering the duplicate error, upload a different prescription file. Verify the error clears automatically.
+
+### 5.1a Multi-File Upload & AI Classification (Controle Detail)
+
+- [ ] **Multi-file drop**: Drag 3+ files onto the upload area on an order detail page. Verify all files upload sequentially with per-file progress indicators.
+- [ ] **AI classification**: After upload, verify each file shows a "Classificando..." spinner followed by the detected document type (e.g., "Identidade", "Comprovante de Endereço", "Receita"). Verify incorrect classifications can be overridden via the type dropdown.
+- [ ] **Field extraction**: Upload a patient ID image. Verify AI extracts structured fields (fullName, CPF, RG, birthDate, address). Verify extracted data appears inline.
+- [ ] **Cross-document merge**: Upload multiple documents (e.g., ID + proof of address). Verify the system merges extracted data intelligently — address from proof of address, identity from ID.
+- [ ] **Profile update suggestion**: After extraction, verify the system offers to update client/doctor records with extracted data. Verify a visual diff shows current vs. extracted values.
+
+### 5.1b Doctor-Rep Association
+
+- [ ] **Doctor form**: Navigate to /medicos/novo or /medicos/[id]. Verify a "Representante" dropdown appears. Select a rep and save. Verify it persists on reload.
+- [ ] **Doctor list**: Navigate to /medicos. Verify the "Representante" column shows the resolved rep name (not raw UID). Doctors without a rep show a blank or dash.
+- [ ] **Wizard auto-fill**: In Nova Venda, select a doctor that has an assigned rep. Verify the Representante field auto-fills with that rep. Verify the operator can still change it manually.
+- [ ] **AI auto-fill**: Upload a prescription. If the AI matches a doctor with an assigned rep, verify the rep auto-fills.
+
+### 5.1c Shipping Choice & Email Notifications
+
+- [ ] **Post-finalization dialog**: Complete the Nova Venda wizard. Verify a shipping choice dialog appears with two options: "TriStar Express" and "Enviar do Brasil".
+- [ ] **TriStar option**: Click "TriStar Express". Verify it opens the TriStar shipment dialog pre-populated with order data.
+- [ ] **Brazil option**: Click "Enviar do Brasil". Verify an email notification is sent to adm@entouragelab.com with the order summary (order ID, client name, amount, products).
+- [ ] **Rep notification (TriStar)**: Ship a rep-assigned order via TriStar. Verify the assigned rep receives an email notification with the tracking code and order details.
+- [ ] **No API key graceful**: If RESEND_API_KEY is not configured, verify the system logs a warning but does not throw an error. The order flow should complete normally.
 
 ### 5.2 Pedidos (Order Tracker)
 
