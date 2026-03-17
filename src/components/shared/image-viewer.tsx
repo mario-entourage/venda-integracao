@@ -199,7 +199,12 @@ export function ImageViewer({
               input.accept = 'image/*';
               input.onchange = (e: any) => {
                 const file = e.target.files[0];
-                if (file) setCurrentSrc(URL.createObjectURL(file));
+                if (file) {
+                  setCurrentSrc((prev) => {
+                    if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+                    return URL.createObjectURL(file);
+                  });
+                }
               };
               input.click();
             }}
