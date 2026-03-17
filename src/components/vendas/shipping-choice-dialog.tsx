@@ -45,7 +45,7 @@ export function ShippingChoiceDialog({
         <p>Por favor, providencie o envio a partir do estoque Brasil.</p>
       `;
 
-      await fetch('/api/notifications/send-email', {
+      const res = await fetch('/api/notifications/send-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -54,6 +54,11 @@ export function ShippingChoiceDialog({
           html,
         }),
       });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
 
       toast({ title: 'E-mail enviado', description: 'Notificação de envio Brasil enviada para adm@entouragelab.com.' });
       onDone();
