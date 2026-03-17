@@ -262,7 +262,9 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-05.3 | Representatives can optionally be linked to a system user account. |
 | FR-05.4 | Client address stored for document generation (Comprovante de Vinculo). |
 | FR-05.5 | Client records include: CPF, RG, name, email, phone, birth date, full address. |
-| FR-05.6 | Doctor records include: CRM number, specialty, state, city, contact info. |
+| FR-05.6 | Doctor records include: CRM number, specialty, state, city, contact info, and an optional assigned sales representative (`repUserId`). The assigned rep is the person who gets commission credit when that doctor prescribes. |
+| FR-05.7 | Doctor–rep association in the wizard: When an operator selects a doctor in the Nova Venda wizard, if the doctor has an assigned rep and no rep is currently selected, the rep is auto-filled. The operator can still change the rep manually. This also applies when a doctor is matched via AI prescription extraction. |
+| FR-05.8 | The doctors list page shows a "Representante" column resolved to the rep's display name (not raw UID). The doctor detail page also shows the resolved rep name. |
 |  | There should be an option for admins to upload CSVs with data for several clients, doctors, or sales representatives, to add new entries in bulk |
 |  | Admins should have access to sample documents to show the format for bulk upload |
 
