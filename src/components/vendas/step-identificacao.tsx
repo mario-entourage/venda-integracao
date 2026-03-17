@@ -394,6 +394,11 @@ export function StepIdentificacao({
         if (matched) {
           updates.doctorId = matched.id; updates.doctorName = matched.fullName;
           updates.doctorCrm = matched.crm; updates.doctorIsNew = false;
+          // Auto-select the doctor's assigned rep
+          if (matched.repUserId && !selectedRepresentanteId) {
+            const rep = repUsers.find((r) => r.id === matched.repUserId);
+            if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+          }
         } else {
           updates.doctorId = ''; updates.doctorName = data.doctorName ?? '';
           updates.doctorCrm = data.doctorCrm ?? ''; updates.doctorIsNew = true;
@@ -548,7 +553,14 @@ export function StepIdentificacao({
             value={state.doctorId}
             onChange={(id) => {
               const doctor = doctors.find((d) => d.id === id);
-              if (doctor) onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+              if (doctor) {
+                onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+                // Auto-select the doctor's assigned rep (if any and no rep currently selected)
+                if (doctor.repUserId && !selectedRepresentanteId) {
+                  const rep = repUsers.find((r) => r.id === doctor.repUserId);
+                  if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+                }
+              }
             }}
             placeholder="Buscar médico…"
             searchPlaceholder="Nome ou CRM…"
