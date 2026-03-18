@@ -322,7 +322,7 @@ export default function OrderDetailPage() {
     setIsCancelling(true);
     try {
       await updateOrderStatus(firestore, orderId, 'cancelled', user.uid);
-      router.push('/remessas');
+      router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
       setIsCancelling(false);
@@ -343,7 +343,7 @@ export default function OrderDetailPage() {
   if (!order) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/remessas')}>
+        <Button variant="ghost" size="sm" onClick={() => router.push('/controle')}>
           ← Voltar
         </Button>
         <p className="text-muted-foreground">Pedido não encontrado.</p>
@@ -373,7 +373,7 @@ export default function OrderDetailPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => router.push('/remessas')}
+          onClick={() => router.push('/controle')}
           className="-ml-2"
         >
           ← Voltar
