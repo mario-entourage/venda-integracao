@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { TablePagination } from '@/components/shared/table-pagination';
 import { exportToCsv } from '@/lib/export-csv';
 import type { PaymentLink, User } from '@/types';
@@ -105,7 +106,7 @@ export default function PagamentosPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/payments/sync', { method: 'POST' });
+      const res = await fetchWithTimeout('/api/payments/sync', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
