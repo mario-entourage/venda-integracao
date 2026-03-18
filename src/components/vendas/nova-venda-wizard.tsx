@@ -174,9 +174,31 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const { data: repUsers } = useCollection<User>(repUsersQ);
   const { data: unassignedPayments } = useCollection<PaymentLink>(unassignedQ);
 
-  // ── wizard state ────────────────────────────────────────────────────────
-  const [state, setState] = useState<WizardState>(INITIAL_STATE);
-  const [currentStep, setCurrentStep] = useState(0);
+  // ── wizard state (restored from sessionStorage if available) ────────────
+  const STORAGE_KEY = 'nova-venda-wizard';
+  const [state, setState] = useState<WizardState>(() => {
+    if (resumeOrderId) return INITIAL_STATE; // resume from Firestore, not session
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only restore if it has an orderId (i.e., the order was created in Firestore)
+        if (parsed.state?.orderId) return parsed.state;
+      }
+    } catch { /* ignore corrupt data */ }
+    return INITIAL_STATE;
+  });
+  const [currentStep, setCurrentStep] = useState(() => {
+    if (resumeOrderId) return 0;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.state?.orderId && typeof parsed.step === 'number') return parsed.step;
+      }
+    } catch { /* ignore */ }
+    return 0;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   /** When a duplicate prescription is detected, store the existing order ID for linking. */
@@ -188,6 +210,20 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const [completedOrderId, setCompletedOrderId] = useState('');
   // Shipping choice dialog: shown after post-wizard dialog (or directly after finalization)
   const [showShippingChoice, setShowShippingChoice] = useState(false);
+
+  // ── persist wizard state to sessionStorage ──────────────────────────
+  useEffect(() => {
+    // Only persist once the order has been created (has an orderId)
+    if (!state.orderId) return;
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ state, step: currentStep }));
+    } catch { /* quota exceeded — ignore */ }
+  }, [state, currentStep]);
+
+  // Clear session storage on completion
+  const clearWizardSession = useCallback(() => {
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  }, []);
 
   // ── fetch PTAX exchange rate on mount ────────────────────────────────
   useEffect(() => {
@@ -546,6 +582,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
     setIsSubmitting(true);
     try {
       await updateOrderStatus(firestore, state.orderId, 'processing', user.uid);
+      clearWizardSession();
       onComplete(state.orderId);
       setCompletedOrderId(state.orderId);
 
