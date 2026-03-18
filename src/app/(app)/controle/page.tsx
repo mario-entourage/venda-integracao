@@ -334,28 +334,49 @@ export default function ControlePage() {
     setEnrichError(null);
 
     async function loadDetails() {
-      const details = await Promise.all(
-        orders!.map(async (order) => {
-          const [customers, reps, doctors, products, paymentLinks, shippings] =
-            await Promise.all([
-              getOrderSubcollectionDocs<OrderCustomer>(firestore!, order.id, 'customer'),
-              getOrderSubcollectionDocs<OrderRepresentative>(firestore!, order.id, 'representative'),
-              getOrderSubcollectionDocs<OrderDoctor>(firestore!, order.id, 'doctor'),
-              getOrderSubcollectionDocs<OrderProduct>(firestore!, order.id, 'products'),
-              getOrderSubcollectionDocs<PaymentLink>(firestore!, order.id, 'paymentLinks'),
-              getOrderSubcollectionDocs<OrderShipping>(firestore!, order.id, 'shipping'),
-            ]);
-          return {
-            order,
-            customer: customers[0] ?? null,
-            rep: reps[0] ?? null,
-            doctor: doctors[0] ?? null,
-            products,
-            paymentLink: paymentLinks[0] ?? null,
-            shipping: shippings[0] ?? null,
-          };
-        }),
-      );
+      // Process orders in batches of 10 to avoid overwhelming Firestore
+      const BATCH_SIZE = 10;
+      const allDetails: {
+        order: Order;
+        customer: OrderCustomer | null;
+        rep: OrderRepresentative | null;
+        doctor: OrderDoctor | null;
+        products: OrderProduct[];
+        paymentLink: PaymentLink | null;
+        shipping: OrderShipping | null;
+      }[] = [];
+
+      for (let i = 0; i < orders!.length; i += BATCH_SIZE) {
+        if (cancelled) return;
+        const batch = orders!.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (order) => {
+            const [customers, reps, doctors, products, paymentLinks, shippings] =
+              await Promise.all([
+                getOrderSubcollectionDocs<OrderCustomer>(firestore!, order.id, 'customer'),
+                getOrderSubcollectionDocs<OrderRepresentative>(firestore!, order.id, 'representative'),
+                getOrderSubcollectionDocs<OrderDoctor>(firestore!, order.id, 'doctor'),
+                getOrderSubcollectionDocs<OrderProduct>(firestore!, order.id, 'products'),
+                getOrderSubcollectionDocs<PaymentLink>(firestore!, order.id, 'paymentLinks'),
+                getOrderSubcollectionDocs<OrderShipping>(firestore!, order.id, 'shipping'),
+              ]);
+            return {
+              order,
+              customer: customers[0] ?? null,
+              rep: reps[0] ?? null,
+              doctor: doctors[0] ?? null,
+              products,
+              paymentLink: paymentLinks[0] ?? null,
+              shipping: shippings[0] ?? null,
+            };
+          }),
+        );
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled') allDetails.push(r.value);
+        }
+      }
+
+      const details = allDetails;
 
       if (cancelled) return;
 
