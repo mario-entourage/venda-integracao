@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { friendlyError } from '@/lib/friendly-error';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
@@ -504,8 +505,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
       } catch (err) {
         console.error('Order creation error:', err);
         const msg =
-          err instanceof Error ? err.message : 'Erro desconhecido';
-        setSubmitError(`Erro ao criar pedido: ${msg}`);
+          friendlyError(err, 'Erro ao criar pedido.');
+        setSubmitError(msg);
       } finally {
         setIsSubmitting(false);
       }

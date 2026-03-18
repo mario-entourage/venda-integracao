@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { friendlyError } from '@/lib/friendly-error';
 import {
   Loader2,
   MoreHorizontal,
@@ -274,8 +275,7 @@ export function PedidoRow({
         toast({ title: 'Link regenerado com sucesso.' });
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao regenerar link.';
-      toast({ variant: 'destructive', title: 'Erro', description: msg });
+      toast({ variant: 'destructive', title: 'Erro', description: friendlyError(err, 'Erro ao regenerar link.') });
     } finally {
       setIsRegeneratingLink(false);
     }

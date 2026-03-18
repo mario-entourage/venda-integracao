@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Plus, Link2 } from 'lucide-react';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
@@ -113,7 +114,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao sincronizar pagamentos.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -151,7 +152,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao criar pagamento avulso.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -178,7 +179,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao vincular pagamento.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {

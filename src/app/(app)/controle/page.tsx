@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
@@ -483,7 +484,7 @@ export default function ControlePage() {
         console.error('[Controle] Update failed:', err);
         toast({
           title: 'Erro ao atualizar campo',
-          description: err instanceof Error ? err.message : 'Erro desconhecido',
+          description: friendlyError(err),
           variant: 'destructive',
         });
       }
