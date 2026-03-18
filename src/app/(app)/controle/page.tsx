@@ -304,6 +304,7 @@ export default function ControlePage() {
   // Enriched rows
   const [rows, setRows] = useState<ControleRow[]>([]);
   const [enriching, setEnriching] = useState(false);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
 
   // Pagination
   const PAGE_SIZE_OPTIONS = [30, 50, 100, 'all'] as const;
@@ -328,6 +329,7 @@ export default function ControlePage() {
 
     let cancelled = false;
     setEnriching(true);
+    setEnrichError(null);
 
     async function loadDetails() {
       const details = await Promise.all(
@@ -452,7 +454,10 @@ export default function ControlePage() {
 
     loadDetails().catch((err) => {
       console.error('[Controle] Failed to load order details:', err);
-      if (!cancelled) setEnriching(false);
+      if (!cancelled) {
+        setEnriching(false);
+        setEnrichError('Falha ao carregar detalhes dos pedidos. Recarregue a página para tentar novamente.');
+      }
     });
 
     return () => {
@@ -547,6 +552,13 @@ export default function ControlePage() {
               {Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
+            </div>
+          ) : enrichError ? (
+            <div className="p-6 text-center space-y-2">
+              <p className="text-sm text-destructive font-medium">{enrichError}</p>
+              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                Recarregar
+              </Button>
             </div>
           ) : rows.length === 0 ? (
             <p className="p-6 text-center text-muted-foreground">
