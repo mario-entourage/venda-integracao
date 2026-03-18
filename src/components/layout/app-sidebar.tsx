@@ -91,7 +91,7 @@ function NavGroup({ label, items, pathname, labelClassName }: { label: string; i
 }
 
 /** Routes hidden from the sidebar in audit mode (creation/mutation pages) */
-const AUDIT_HIDDEN_ROUTES = new Set(['/remessas', '/anvisa/nova', '/importar', '/auditoria', '/controle/importar']);
+const AUDIT_HIDDEN_ROUTES = new Set(['/remessas', '/anvisa/nova', '/importar', '/auditoria']);
 
 export function AppSidebar() {
   const pathname = usePathname();
