@@ -12,6 +12,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Download } from 'lucide-react';
+import { exportToCsv } from '@/lib/export-csv';
 import { cn } from '@/lib/utils';
 
 export interface ColumnDef<T> {
@@ -22,6 +32,8 @@ export interface ColumnDef<T> {
   className?: string;
 }
 
+const PAGE_SIZE_OPTIONS = [30, 50, 100] as const;
+
 interface DataTableProps<T extends { id: string }> {
   columns: ColumnDef<T>[];
   data: T[];
@@ -30,6 +42,8 @@ interface DataTableProps<T extends { id: string }> {
   loading?: boolean;
   emptyMessage?: string;
   onRowClick?: (item: T) => void;
+  /** CSV export filename (without extension). When set, shows export button. */
+  exportFilename?: string;
 }
 
 type SortDirection = 'asc' | 'desc';
@@ -43,14 +57,16 @@ export function DataTable<T extends { id: string }>({
   columns,
   data,
   searchPlaceholder = 'Buscar...',
-  pageSize = 10,
+  pageSize: initialPageSize = 30,
   loading = false,
   emptyMessage = 'Nenhum registro encontrado.',
   onRowClick,
+  exportFilename,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [sort, setSort] = useState<SortState | null>(null);
+  const [pageSize, setPageSize] = useState(initialPageSize);
 
   // Filter data based on search across all string fields
   const filteredData = useMemo(() => {
@@ -166,15 +182,50 @@ export function DataTable<T extends { id: string }>({
     );
   }
 
+  const handleExport = useCallback(
+    (allData: boolean) => {
+      if (!exportFilename) return;
+      const dataToExport = allData ? sortedData : paginatedData;
+      const csvColumns = columns.map((col) => ({
+        key: col.key,
+        header: col.header,
+        render: col.render
+          ? (item: T) => {
+              const node = col.render!(item);
+              // Best-effort: extract text from ReactNode
+              if (typeof node === 'string' || typeof node === 'number') return String(node);
+              const val = (item as Record<string, unknown>)[col.key];
+              return val != null ? String(val) : '';
+            }
+          : undefined,
+      }));
+      exportToCsv(dataToExport, csvColumns, exportFilename);
+    },
+    [exportFilename, sortedData, paginatedData, columns],
+  );
+
   return (
     <div className="space-y-4">
-      {/* Search */}
-      <Input
-        placeholder={searchPlaceholder}
-        value={search}
-        onChange={handleSearchChange}
-        className="max-w-sm"
-      />
+      {/* Search + Export */}
+      <div className="flex items-center justify-between gap-4">
+        <Input
+          placeholder={searchPlaceholder}
+          value={search}
+          onChange={handleSearchChange}
+          className="max-w-sm"
+        />
+        {exportFilename && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleExport(sortedData.length === paginatedData.length)}
+            className="gap-1.5 shrink-0"
+          >
+            <Download className="h-4 w-4" />
+            Exportar CSV
+          </Button>
+        )}
+      </div>
 
       {/* Table */}
       <div className="rounded-md border">
@@ -234,13 +285,34 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {/* Pagination */}
-      {sortedData.length > pageSize && (
-        <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            Mostrando {currentPage * pageSize + 1} a{' '}
+            Mostrando {Math.min(currentPage * pageSize + 1, sortedData.length)} a{' '}
             {Math.min((currentPage + 1) * pageSize, sortedData.length)} de{' '}
             {sortedData.length} registros
           </p>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs text-muted-foreground">Exibir:</Label>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(v) => {
+                setPageSize(Number(v));
+                setCurrentPage(0);
+              }}
+            >
+              <SelectTrigger className="h-7 w-[80px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {sortedData.length > pageSize && (
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
@@ -251,7 +323,7 @@ export function DataTable<T extends { id: string }>({
               Anterior
             </Button>
             <span className="text-sm text-muted-foreground">
-              Pagina {currentPage + 1} de {totalPages}
+              Página {currentPage + 1} de {totalPages}
             </span>
             <Button
               variant="outline"
@@ -261,11 +333,11 @@ export function DataTable<T extends { id: string }>({
               }
               disabled={currentPage >= totalPages - 1}
             >
-              Proximo
+              Próximo
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

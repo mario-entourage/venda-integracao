@@ -76,6 +76,7 @@ export default function MedicosPage() {
             loading={isLoading}
             searchPlaceholder="Buscar por nome, CRM, especialidade..."
             emptyMessage="Nenhum medico cadastrado ainda."
+            exportFilename="medicos"
             onRowClick={(d) => router.push(`/medicos/${d.id}`)}
           />
         </CardContent>

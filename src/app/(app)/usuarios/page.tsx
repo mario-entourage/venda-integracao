@@ -282,6 +282,7 @@ export default function UsuariosPage() {
             loading={isLoading}
             searchPlaceholder="Buscar usuario..."
             emptyMessage="Nenhum usuario encontrado."
+            exportFilename="usuarios"
             {...(isAdmin ? {
               onRowClick: (u: UserRow) => {
                 if (!u.pending) router.push(`/usuarios/${u.id}`);

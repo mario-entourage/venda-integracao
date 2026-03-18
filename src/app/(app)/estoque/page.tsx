@@ -450,6 +450,7 @@ export default function EstoquePage() {
             loading={productsLoading}
             searchPlaceholder="Buscar produto por nome ou SKU..."
             emptyMessage="Nenhum produto ativo cadastrado."
+            exportFilename="produtos"
           />
         </TabsContent>
 
@@ -467,6 +468,7 @@ export default function EstoquePage() {
             loading={stocksLoading}
             searchPlaceholder="Buscar local de estoque..."
             emptyMessage="Nenhum local de estoque cadastrado."
+            exportFilename="locais-estoque"
           />
         </TabsContent>
       </Tabs>

@@ -58,6 +58,7 @@ export default function ClientesPage() {
             loading={isLoading}
             searchPlaceholder="Buscar por nome, CPF, email..."
             emptyMessage="Nenhum cliente cadastrado ainda."
+            exportFilename="clientes"
             onRowClick={(c) => router.push(`/clientes/${c.id}`)}
           />
         </CardContent>
