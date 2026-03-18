@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { collection, collectionGroup, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, orderBy, limit } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getOrdersQuery, getOrdersByCreatorQuery } from '@/services/orders.service';
@@ -231,25 +231,25 @@ function AdminDashboard() {
 
   // ── Auxiliary queries for current-month filtering ──────────────────────────
 
-  // Prescriptions (top-level collection, linked to orders via orderId)
+  // Prescriptions (top-level collection — limit to most recent 500)
   const prescriptionsQ = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'prescriptions')) : null),
+    () => (firestore ? query(collection(firestore, 'prescriptions'), orderBy('createdAt', 'desc'), limit(500)) : null),
     [firestore],
   );
   const { data: allPrescriptions, isLoading: prescriptionsLoading } =
     useCollection<Prescription>(prescriptionsQ);
 
-  // Payments (subcollection group across all orders)
+  // Payments (subcollection group — limit to most recent 500)
   const paymentsGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'payments') : null),
+    () => (firestore ? query(collectionGroup(firestore, 'payments'), orderBy('createdAt', 'desc'), limit(500)) : null),
     [firestore],
   );
   const { data: allPayments, isLoading: paymentsLoading } =
     useCollection<Payment>(paymentsGroupQ);
 
-  // Shipping records (subcollection group across all orders)
+  // Shipping records (subcollection group — limit to most recent 500)
   const shippingGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'shipping') : null),
+    () => (firestore ? query(collectionGroup(firestore, 'shipping'), orderBy('createdAt', 'desc'), limit(500)) : null),
     [firestore],
   );
   const { data: allShipping, isLoading: shippingLoading } =

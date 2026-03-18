@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { query, where } from 'firebase/firestore';
+import { query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { Download } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
@@ -73,14 +73,22 @@ export default function DocumentosPage() {
   const [dateTo, setDateTo] = useState(defaultTo);
   const [typeFilter, setTypeFilter] = useState<string>('all');
 
-  // Admin → all documents; User → only their own
+  // Admin → documents within date range; User → only their own (with date range)
   const docsQ = useMemoFirebase(
     () => {
       if (!firestore || !user) return null;
-      if (isAdmin) return getDocumentsRef(firestore);
-      return query(getDocumentsRef(firestore), where('userId', '==', user.uid));
+      const fromTs = Timestamp.fromDate(new Date(dateFrom + 'T00:00:00'));
+      const toTs = Timestamp.fromDate(new Date(dateTo + 'T23:59:59.999'));
+      const constraints = [
+        where('createdAt', '>=', fromTs),
+        where('createdAt', '<=', toTs),
+        orderBy('createdAt', 'desc'),
+        limit(500),
+      ];
+      if (isAdmin) return query(getDocumentsRef(firestore), ...constraints);
+      return query(getDocumentsRef(firestore), where('userId', '==', user.uid), ...constraints);
     },
-    [firestore, user, isAdmin],
+    [firestore, user, isAdmin, dateFrom, dateTo],
   );
 
   const { data: rawDocs, isLoading } = useCollection<DocumentRecord>(docsQ);
@@ -101,21 +109,12 @@ export default function DocumentosPage() {
     return m;
   }, [allUsers]);
 
-  // Apply date range + type filters client-side
+  // Apply type filter client-side (date range is now server-side)
   const docs = useMemo(() => {
     const sorted = sortByCreatedAtDesc(rawDocs ?? []);
-    const fromTs = new Date(dateFrom + 'T00:00:00').getTime() / 1000;
-    const toTs = new Date(dateTo + 'T23:59:59.999').getTime() / 1000;
-
-    return sorted.filter((d) => {
-      // Date filter
-      const docTs = (d.createdAt as unknown as { seconds: number })?.seconds ?? 0;
-      if (docTs < fromTs || docTs > toTs) return false;
-      // Type filter
-      if (typeFilter !== 'all' && d.type !== typeFilter) return false;
-      return true;
-    });
-  }, [rawDocs, dateFrom, dateTo, typeFilter]);
+    if (typeFilter === 'all') return sorted;
+    return sorted.filter((d) => d.type === typeFilter);
+  }, [rawDocs, typeFilter]);
 
   return (
     <div className="space-y-6">

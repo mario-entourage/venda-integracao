@@ -1,6 +1,6 @@
 import {
   collection, collectionGroup, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, Firestore, Timestamp, Query,
+  query, where, orderBy, limit, serverTimestamp, Firestore, Timestamp, Query,
 } from 'firebase/firestore';
 import type { Payment, PaymentLink } from '@/types';
 
@@ -191,10 +191,11 @@ export async function getPaymentById(
 /**
  * Query all payment links across all orders, ordered by creation date (newest first).
  */
-export function getAllPaymentLinksQuery(db: Firestore): Query {
+export function getAllPaymentLinksQuery(db: Firestore, maxResults = 200): Query {
   return query(
     collectionGroup(db, 'paymentLinks'),
     orderBy('createdAt', 'desc'),
+    limit(maxResults),
   );
 }
 
