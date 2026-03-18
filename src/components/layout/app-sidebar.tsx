@@ -102,7 +102,7 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="h-10">
-            <span style={{ fontFamily: 'Meddon, cursive', textTransform: 'none', marginLeft: '0.15em' }} className="text-lg leading-none">
+            <span style={{ fontFamily: 'Meddon, cursive', textTransform: 'none', marginLeft: '0.35em' }} className="text-lg leading-none">
               Vendas
             </span>
           </SidebarGroupLabel>
