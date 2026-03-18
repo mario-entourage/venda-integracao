@@ -123,6 +123,6 @@ Regras:
       confidence: 0,
       extractedData: EMPTY_DATA,
       _error: 'Falha ao classificar documento. Tente novamente.',
-    } satisfies ClassifyAndExtractResponse, { status: 200 });
+    } satisfies ClassifyAndExtractResponse, { status: 500 });
   }
 }

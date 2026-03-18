@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
@@ -174,10 +175,11 @@ export default function OrderDetailPage() {
     try {
       // AI classification
       const base64 = await fileToBase64(file);
-      const res = await fetch('/api/ai/classify-document', {
+      const res = await fetchWithTimeout('/api/ai/classify-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000, // AI classification can be slow
       });
       if (res.ok) {
         const data = await res.json();
@@ -233,11 +235,12 @@ export default function OrderDetailPage() {
     setIsSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetch('/api/payments/sync', {
+      const res = await fetchWithTimeout('/api/payments/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
+      if (!res.ok) throw new Error(`Sync failed: HTTP ${res.status}`);
       const data = await res.json() as { checked?: number; approved?: number; errors?: number };
       setSyncMsg(
         data.approved

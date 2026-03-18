@@ -19,6 +19,7 @@ import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import { useToast } from '@/hooks/use-toast';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -358,10 +359,11 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await fetch('/api/ai/extract-prescription', {
+      const res = await fetchWithTimeout('/api/ai/extract-prescription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000,
       });
       const data: PrescriptionExtraction = await res.json();
       if (data._error) { setExtractionMsg(data._error); return; }
