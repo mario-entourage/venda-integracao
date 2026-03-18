@@ -549,7 +549,6 @@ export default function ControlePage() {
       <PageHeader
         title="Controle de Pedidos"
         description="Visão geral com edição inline de todos os pedidos"
-        action={isAdmin ? { label: 'Importar CSV', href: '/controle/importar' } : undefined}
       />
 
       {/* ── Date filter ──────────────────────────────────────────────── */}
