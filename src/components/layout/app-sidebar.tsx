@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck, HelpCircle, Chrome,
+  Shield, Upload, Truck, HelpCircle, Chrome, Eye,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/shared/brand-logo';
 import {
@@ -55,6 +55,7 @@ const anvisaNavItems = [
 
 const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
+  { href: '/auditoria', icon: Eye, label: 'Auditoria' },
   { href: '/importar', icon: Upload, label: 'Importar CSV' },
 ];
 
