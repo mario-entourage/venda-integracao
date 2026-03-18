@@ -186,5 +186,13 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
       allow update: if false;
     }
+
+    // ── Audit sessions ────────────────────────────────────────────────────
+    match /audit_sessions/{sessionId} {
+      allow read: if isSignedIn() && isEntourageDomain();
+      allow create: if isAdmin();
+      allow update: if isSignedIn() && isEntourageDomain();
+      allow delete: if false;
+    }
   }
 }
