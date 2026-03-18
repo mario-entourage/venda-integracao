@@ -42,6 +42,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { exportToCsv } from '@/lib/export-csv';
+import { Download } from 'lucide-react';
 import type {
   Order,
   OrderCustomer,
@@ -506,6 +508,42 @@ export default function ControlePage() {
 
   const isLoading = ordersLoading || enriching;
 
+  const handleExportCsv = () => {
+    const csvCols = [
+      { key: 'representante', header: 'Representante' },
+      { key: 'dataOrcamento', header: 'Data Orçamento' },
+      { key: 'dataVenda', header: 'Data Venda' },
+      { key: 'invoiceGlobalPays', header: 'Nº Invoice (Global Pays)' },
+      { key: 'invoiceCorrecao', header: 'Nº Invoice (Correção)' },
+      ...PRODUCT_COLUMNS.map((c) => ({
+        key: c.key,
+        header: c.label,
+        render: (r: ControleRow) => String(r.productQtys[c.key] || 0),
+      })),
+      { key: 'meioPagamento', header: 'Meio de Pagamento' },
+      { key: 'priceListUSD', header: 'Price List (USD)', render: (r: ControleRow) => String(r.priceListUSD) },
+      { key: 'valorLiquido', header: 'Valor Líquido R$', render: (r: ControleRow) => String(r.valorLiquido) },
+      { key: 'valorLiquidoMenosFrete', header: 'Valor Líquido (-Frete) R$', render: (r: ControleRow) => String(r.valorLiquidoMenosFrete) },
+      { key: 'usdbrl', header: 'USDBRL', render: (r: ControleRow) => r.usdbrl ? r.usdbrl.toFixed(4) : '' },
+      { key: 'statusOrcamento', header: 'Status do Orçamento' },
+      { key: 'lead', header: 'Lead' },
+      { key: 'cliente', header: 'Cliente' },
+      { key: 'telefone', header: 'Telefone' },
+      { key: 'email', header: 'E-mail' },
+      { key: 'medico', header: 'Médico' },
+      { key: 'crmCroRqe', header: 'CRM/CRO/RQE' },
+      { key: 'formaEnvio', header: 'Forma de Envio' },
+      { key: 'endereco', header: 'Endereço' },
+      { key: 'cep', header: 'CEP' },
+      { key: 'lote', header: 'Lote' },
+      { key: 'dataEnvio', header: 'Data do Envio' },
+      { key: 'previsaoEntrega', header: 'Previsão de Entrega' },
+      { key: 'codigoRastreio', header: 'Código de Rastreio' },
+      { key: 'statusEnvio', header: 'Status do Envio' },
+    ];
+    exportToCsv(rows, csvCols, 'controle-pedidos');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -771,6 +809,10 @@ export default function ControlePage() {
                   ? `Mostrando todos os ${rows.length} pedidos`
                   : `Mostrando ${currentPage * PAGE_SIZE + 1} a ${Math.min((currentPage + 1) * PAGE_SIZE, rows.length)} de ${rows.length} pedidos`}
               </p>
+              <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1.5" disabled={rows.length === 0}>
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </Button>
               <div className="flex items-center gap-1.5">
                 <Label className="text-xs text-muted-foreground">Exibir:</Label>
                 <Select

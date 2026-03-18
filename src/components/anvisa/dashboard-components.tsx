@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, File, ListFilter, Plus, Trash2, Loader2, Search } from "lucide-react";
@@ -28,6 +28,8 @@ import { collection, query, where, doc, updateDoc, writeBatch } from "firebase/f
 import { useToast } from "@/hooks/use-toast";
 import { ANVISA_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
+import { TablePagination } from "@/components/shared/table-pagination";
+import { exportToCsv } from "@/lib/export-csv";
 
 
 const statusMap: Record<AnvisaRequestStatus, { label: string; className: string }> = {
@@ -69,11 +71,34 @@ export function RequestTable() {
 
   const { data: requests, isLoading } = useCollection<PatientRequest>(requestsQuery);
 
-  // Search filter
+  // Search filter + pagination
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(30);
+
   const filteredRequests = (requests ?? []).filter(
     (r) => !search.trim() || r.patientDisplayName?.toLowerCase().includes(search.toLowerCase()),
   );
+
+  const paginatedRequests = useMemo(() => {
+    const start = currentPage * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
+
+  // Reset page when search changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => setCurrentPage(0), [search]);
+
+  const handleExportCsv = useCallback(() => {
+    exportToCsv(filteredRequests, [
+      { key: 'id', header: 'ID' },
+      { key: 'patientDisplayName', header: 'Paciente' },
+      { key: 'ownerEmail', header: 'Operador' },
+      { key: 'status', header: 'Status', render: (r) => statusMap[r.status]?.label ?? r.status },
+      { key: 'createdAt', header: 'Criado em', render: (r) => new Date(r.createdAt).toLocaleDateString('pt-BR') },
+      { key: 'updatedAt', header: 'Atualizado em', render: (r) => new Date(r.updatedAt).toLocaleDateString('pt-BR') },
+    ], 'solicitacoes-anvisa');
+  }, [filteredRequests]);
 
   const handleSoftDelete = useCallback(async (request: PatientRequest) => {
     if (!firestore) return;
@@ -203,7 +228,7 @@ export function RequestTable() {
               <DropdownMenuItem>Operador</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button size="sm" variant="outline" className="h-8 gap-1">
+          <Button size="sm" variant="outline" className="h-8 gap-1" onClick={handleExportCsv}>
             <File className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Exportar CSV</span>
           </Button>
@@ -263,7 +288,7 @@ export function RequestTable() {
                     <TableCell colSpan={isAdmin ? 8 : 6} className="text-center">Carregando...</TableCell>
                   </TableRow>
                 )}
-                {!isLoading && filteredRequests.map((request) => (
+                {!isLoading && paginatedRequests.map((request) => (
                   <TableRow key={request.id} className={selectedIds.has(request.id) ? 'bg-muted/50' : undefined}>
                     {isAdmin && (
                       <TableCell>
@@ -326,10 +351,18 @@ export function RequestTable() {
               </TableBody>
             </Table>
           </CardContent>
-          <CardFooter>
-            <div className="text-xs text-muted-foreground">
-              Mostrando <strong>{filteredRequests.length}</strong> de <strong>{requests?.length || 0}</strong> solicitacoes
-            </div>
+          <CardFooter className="p-0">
+            {!isLoading && filteredRequests.length > 0 && (
+              <TablePagination
+                totalItems={filteredRequests.length}
+                currentPage={currentPage}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                itemLabel="solicitações"
+                onExport={handleExportCsv}
+              />
+            )}
           </CardFooter>
         </Card>
       </TabsContent>

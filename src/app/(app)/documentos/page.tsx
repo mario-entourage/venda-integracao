@@ -20,6 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { TablePagination } from '@/components/shared/table-pagination';
+import { exportToCsv } from '@/lib/export-csv';
 import type { DocumentRecord } from '@/types';
 import type { User } from '@/types';
 
@@ -72,6 +74,8 @@ export default function DocumentosPage() {
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(30);
 
   // Admin → documents within date range; User → only their own (with date range)
   const docsQ = useMemoFirebase(
@@ -115,6 +119,26 @@ export default function DocumentosPage() {
     if (typeFilter === 'all') return sorted;
     return sorted.filter((d) => d.type === typeFilter);
   }, [rawDocs, typeFilter]);
+
+  const paginatedDocs = useMemo(() => {
+    const start = currentPage * pageSize;
+    return docs.slice(start, start + pageSize);
+  }, [docs, currentPage, pageSize]);
+
+  // Reset page when filters change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => setCurrentPage(0), [typeFilter, dateFrom, dateTo]);
+
+  const handleExportCsv = () => {
+    exportToCsv(docs, [
+      { key: 'type', header: 'Tipo', render: (d) => docTypeConfig(d.type).label },
+      { key: 'holder', header: 'Paciente', render: (d) => d.holder || (d.metadata?.fullName as string) || '' },
+      { key: 'orderId', header: 'Pedido', render: (d) => d.orderId ? String(d.orderId).slice(0, 8).toUpperCase() : '' },
+      { key: 'doctorName', header: 'Médico', render: (d) => (d.metadata?.doctorName as string) || '' },
+      { key: 'userId', header: 'Enviado por', render: (d) => d.userId ? (userMap.get(d.userId) ?? d.userId.slice(0, 8)) : '' },
+      { key: 'createdAt', header: 'Data', render: (d) => fmtDate(d.createdAt) },
+    ], 'documentos');
+  };
 
   return (
     <div className="space-y-6">
@@ -223,7 +247,7 @@ export default function DocumentosPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {docs.map((doc) => {
+                  {paginatedDocs.map((doc) => {
                     const cfg = docTypeConfig(doc.type);
                     const doctorName = (doc.metadata?.doctorName as string) || '';
                     const uploaderName = doc.userId ? (userMap.get(doc.userId) ?? doc.userId.slice(0, 8)) : '—';
@@ -286,6 +310,17 @@ export default function DocumentosPage() {
                 </tbody>
               </table>
             </div>
+          )}
+          {!isLoading && docs.length > 0 && (
+            <TablePagination
+              totalItems={docs.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="documentos"
+              onExport={handleExportCsv}
+            />
           )}
         </CardContent>
       </Card>
