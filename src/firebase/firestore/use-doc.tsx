@@ -72,17 +72,23 @@ export function useDoc<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        const contextualError = new FirestorePermissionError({
-          operation: 'get',
-          path: memoizedDocRef.path,
-        })
-
-        setError(contextualError)
         setData(null)
         setIsLoading(false)
 
-        // trigger global error propagation
-        errorEmitter.emit('permission-error', contextualError);
+        // Only surface as a permission error when Firestore explicitly denied access.
+        // Other error codes (e.g. failed-precondition = missing index, unavailable = offline)
+        // should not trigger the "Acesso negado" toast.
+        if (error.code === 'permission-denied') {
+          const contextualError = new FirestorePermissionError({
+            operation: 'get',
+            path: memoizedDocRef.path,
+          })
+          setError(contextualError)
+          errorEmitter.emit('permission-error', contextualError);
+        } else {
+          console.error(`[useDoc] Firestore error on ${memoizedDocRef.path}:`, error.code, error.message);
+          setError(error)
+        }
       }
     );
 
