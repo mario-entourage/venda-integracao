@@ -4,6 +4,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { friendlyError } from '@/lib/friendly-error';
+import { compressImage } from '@/lib/compress-image';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
@@ -311,7 +312,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
     state.step1.products.every((p) => p.productId !== '' && p.quantity > 0);
 
   // ── upload prescription helper ──────────────────────────────────────────
-  async function uploadPrescription(file: File): Promise<string> {
+  async function uploadPrescription(rawFile: File): Promise<string> {
+    const file = await compressImage(rawFile);
     const path = `documents/prescriptions/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const storageRef = ref(storage, path);
     const task = uploadBytesResumable(storageRef, file);

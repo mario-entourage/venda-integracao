@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { compressImage } from '@/lib/compress-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -342,14 +343,16 @@ export function StepDocumentacao({
       return;
     }
     setIsProcessing(true);
-    setProcessingMsg(`Enviando "${file.name}"…`);
+    setProcessingMsg(`Comprimindo "${file.name}"…`);
+    const compressed = await compressImage(file);
+    setProcessingMsg(`Enviando "${compressed.name}"…`);
 
     try {
       // 1. Upload to Storage — non-fatal
       try {
-        const path = `documents/${orderId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const path = `documents/${orderId}/${Date.now()}_${compressed.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const storageRef = ref(storage, path);
-        const task = uploadBytesResumable(storageRef, file);
+        const task = uploadBytesResumable(storageRef, compressed);
         const uploadPromise = new Promise<void>((resolve, reject) => {
           task.on('state_changed', null, reject, resolve);
         });
