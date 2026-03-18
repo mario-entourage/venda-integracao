@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc,
-  query, where, orderBy, serverTimestamp,
+  query, where, orderBy, limit, serverTimestamp,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { Doctor } from '@/types/doctor';
@@ -80,11 +80,12 @@ export async function softDeleteDoctor(
 /**
  * Query for all active doctors ordered by full name ascending.
  */
-export function getActiveDoctorsQuery(db: Firestore): Query {
+export function getActiveDoctorsQuery(db: Firestore, maxResults = 500): Query {
   return query(
     getDoctorsRef(db),
     where('active', '==', true),
     orderBy('fullName', 'asc'),
+    limit(maxResults),
   );
 }
 
