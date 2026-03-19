@@ -385,6 +385,10 @@ export function StepDocumentacao({
         timeout: 60_000,
       });
       const classification: ClassifyAndExtractResponse = await res.json();
+      if (classification._error) {
+        setProcessingMsg(`Erro ao classificar "${file.name}": ${classification._error}`);
+        return;
+      }
 
       // 3. Mark matching document request as received (only if still pending)
       const matchingRequest = requests.find(
