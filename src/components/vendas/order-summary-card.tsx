@@ -75,11 +75,9 @@ export function OrderSummaryCard({
           <Badge variant="secondary" className="font-mono">
             {formatOrderShortId(orderId)}
           </Badge>
-          {invoiceNumber && (
-            <Badge variant="outline" className="font-mono">
-              {invoiceNumber}
-            </Badge>
-          )}
+          <Badge variant="outline" className="font-mono">
+            {invoiceNumber || '—'}
+          </Badge>
           {repName && (
             <Badge variant="outline">
               {repName}
@@ -158,4 +156,3 @@ export function OrderSummaryCard({
     </Card>
   );
 }
-

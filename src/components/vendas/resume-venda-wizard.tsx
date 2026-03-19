@@ -81,6 +81,7 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
   const [currentStep, setCurrentStep] = useState(0);
   const [paymentUrl, setPaymentUrl] = useState('');
   const [gpOrderId, setGpOrderId] = useState('');
+  const [_invoiceNumber, setInvoiceNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -171,9 +172,10 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             clientEmail=""
             paymentUrl={paymentUrl}
             gpOrderId={gpOrderId}
-            onPaymentGenerated={(url, gpId) => {
+            onPaymentGenerated={(url, gpId, invoice) => {
               setPaymentUrl(url);
               setGpOrderId(gpId);
+              setInvoiceNumber(invoice);
             }}
             allowedPaymentMethods={{ creditCard: true, debitCard: true, boleto: true, pix: true }}
             frete={0}
