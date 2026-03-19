@@ -6,6 +6,7 @@
  */
 
 import { ai } from '@/ai/genkit';
+import type { Part } from 'genkit';
 import { z } from 'zod';
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ CLASSIFICATION RULES:
 // ─── Main function ──────────────────────────────────────────────────────────
 
 export async function classifyDocument(input: ClassifyDocumentInput): Promise<ClassifyDocumentOutput> {
-  const promptParts = [
+  const promptParts: Part[] = [
     { media: { url: input.fileDataUrl, contentType: input.contentType } },
     {
       text: `Classify this document. The file name is: "${input.fileName}". Determine whether it is a patient identity document (DOCUMENTO_PACIENTE), proof of residency (COMPROVANTE_RESIDENCIA), medical prescription (RECEITA_MEDICA), or none of these (OUTRO).`,
@@ -83,7 +84,6 @@ export async function classifyDocument(input: ClassifyDocumentInput): Promise<Cl
   const { output } = await ai.generate({
     model: 'googleai/gemini-2.5-flash',
     system: systemPrompt,
-    // @ts-expect-error - Genkit ContentPart type incompatibility
     prompt: promptParts,
     output: { schema: ClassifyDocumentOutputSchema },
   });

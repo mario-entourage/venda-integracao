@@ -19,13 +19,14 @@ import {
 } from '@/components/ui/select';
 import { BRAZILIAN_STATES } from '@/lib/constants';
 
-interface AddressFormProps<T extends Record<string, unknown> = Record<string, unknown>> {
-  control: Control<T>;
+interface AddressFormProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  control: Control<any>;
   namePrefix?: string;
 }
 
-export function AddressForm<T extends Record<string, unknown> = Record<string, unknown>>({ control, namePrefix = 'address' }: AddressFormProps<T>) {
-  const fieldName = (name: string) => `${namePrefix}.${name}` as const;
+export function AddressForm({ control, namePrefix = 'address' }: AddressFormProps) {
+  const fieldName = (name: string) => `${namePrefix}.${name}`;
 
   return (
     <div className="space-y-4">

@@ -140,7 +140,8 @@ async function checkPrescriptionDuplicates(
 
         if (order.createdAt) {
           try {
-            const d = order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+            const ts = order.createdAt as { toDate?: () => Date };
+            const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(order.createdAt as unknown as string);
             createdAt = d.toISOString();
           } catch {
             /* skip */
@@ -156,7 +157,8 @@ async function checkPrescriptionDuplicates(
 
     if (!createdAt && presc.createdAt) {
       try {
-        const d = presc.createdAt.toDate ? presc.createdAt.toDate() : new Date(presc.createdAt);
+        const ts2 = presc.createdAt as { toDate?: () => Date };
+        const d = typeof ts2.toDate === 'function' ? ts2.toDate() : new Date(presc.createdAt as unknown as string);
         createdAt = d.toISOString();
       } catch {
         /* skip */
