@@ -21,7 +21,9 @@ import { BASE_LABELS } from '@/lib/order-status-helpers';
 import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
+import { StepConfirmacaoPedido } from './step-confirmacao-pedido';
 import { StepPagamento } from './step-pagamento';
+import { StepConfirmacaoPagamento } from './step-confirmacao-pagamento';
 import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
@@ -57,6 +59,7 @@ interface WizardState {
   // Step 2
   paymentUrl: string;
   gpOrderId: string;
+  invoiceNumber: string;
   // Representative (selected in step 1 — Identificação)
   selectedRepresentanteId: string;
   selectedRepresentanteName: string;
