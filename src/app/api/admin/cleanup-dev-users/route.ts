@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
 
@@ -13,28 +14,46 @@ const DEV_EMAILS = ['dev-admin@entouragelab.com'];
 export async function POST() {
   try {
     const db = getFirestore();
-    const results: { email: string; action: string }[] = [];
+    const auth = getAuth();
+    const results: { email: string; collection: string; action: string }[] = [];
 
     for (const email of DEV_EMAILS) {
-      const snap = await db
-        .collection('users')
+      // 1. Hard-delete from `preregistrations`
+      const preregSnap = await db
+        .collection('preregistrations')
         .where('email', '==', email)
-        .limit(1)
         .get();
 
-      if (snap.empty) {
-        results.push({ email, action: 'not_found' });
-        continue;
+      for (const docRef of preregSnap.docs) {
+        await docRef.ref.delete();
+        results.push({ email, collection: 'preregistrations', action: 'deleted' });
+      }
+      if (preregSnap.empty) {
+        results.push({ email, collection: 'preregistrations', action: 'not_found' });
       }
 
-      const userDoc = snap.docs[0];
-      await userDoc.ref.update({
-        active: false,
-        removedAt: new Date(),
-        updatedAt: new Date(),
-      });
+      // 2. Hard-delete from `users`
+      const userSnap = await db
+        .collection('users')
+        .where('email', '==', email)
+        .get();
 
-      results.push({ email, action: 'soft_deleted' });
+      for (const docRef of userSnap.docs) {
+        await docRef.ref.delete();
+        results.push({ email, collection: 'users', action: 'deleted' });
+      }
+      if (userSnap.empty) {
+        results.push({ email, collection: 'users', action: 'not_found' });
+      }
+
+      // 3. Delete from Firebase Auth (best-effort)
+      try {
+        const authUser = await auth.getUserByEmail(email);
+        await auth.deleteUser(authUser.uid);
+        results.push({ email, collection: 'auth', action: 'deleted' });
+      } catch {
+        results.push({ email, collection: 'auth', action: 'not_found' });
+      }
     }
 
     return NextResponse.json({ ok: true, results });
