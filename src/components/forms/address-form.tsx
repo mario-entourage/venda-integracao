@@ -1,6 +1,6 @@
 'use client';
 
-import { type Control, type FieldValues } from 'react-hook-form';
+import { type Control } from 'react-hook-form';
 import ReactInputMask from 'react-input-mask';
 import {
   FormField,
@@ -19,12 +19,12 @@ import {
 } from '@/components/ui/select';
 import { BRAZILIAN_STATES } from '@/lib/constants';
 
-interface AddressFormProps {
-  control: Control<any>;
+interface AddressFormProps<T extends Record<string, unknown> = Record<string, unknown>> {
+  control: Control<T>;
   namePrefix?: string;
 }
 
-export function AddressForm({ control, namePrefix = 'address' }: AddressFormProps) {
+export function AddressForm<T extends Record<string, unknown> = Record<string, unknown>>({ control, namePrefix = 'address' }: AddressFormProps<T>) {
   const fieldName = (name: string) => `${namePrefix}.${name}` as const;
 
   return (

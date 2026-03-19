@@ -336,7 +336,7 @@ export async function extractOcrFields(input: ExtractOcrFieldsInput): Promise<Ex
       ? 'googleai/gemini-2.5-pro'
       : 'googleai/gemini-2.5-flash';
 
-  const promptParts: any[] = [
+  const promptParts: Array<{ media?: { url: string; contentType: string } } | { text?: string }> = [
     { media: { url: input.fileUrl, contentType: input.contentType } },
   ];
 

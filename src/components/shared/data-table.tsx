@@ -149,6 +149,28 @@ export function DataTable<T extends { id: string }>({
     return sort.direction === 'asc' ? ' \u2191' : ' \u2193';
   };
 
+  const handleExport = useCallback(
+    (allData: boolean) => {
+      if (!exportFilename) return;
+      const dataToExport = allData ? sortedData : paginatedData;
+      const csvColumns = columns.map((col) => ({
+        key: col.key,
+        header: col.header,
+        render: col.render
+          ? (item: T) => {
+              const node = col.render!(item);
+              // Best-effort: extract text from ReactNode
+              if (typeof node === 'string' || typeof node === 'number') return String(node);
+              const val = (item as Record<string, unknown>)[col.key];
+              return val != null ? String(val) : '';
+            }
+          : undefined,
+      }));
+      exportToCsv(dataToExport, csvColumns, exportFilename);
+    },
+    [exportFilename, sortedData, paginatedData, columns],
+  );
+
   // Loading state
   if (loading) {
     return (
@@ -181,28 +203,6 @@ export function DataTable<T extends { id: string }>({
       </div>
     );
   }
-
-  const handleExport = useCallback(
-    (allData: boolean) => {
-      if (!exportFilename) return;
-      const dataToExport = allData ? sortedData : paginatedData;
-      const csvColumns = columns.map((col) => ({
-        key: col.key,
-        header: col.header,
-        render: col.render
-          ? (item: T) => {
-              const node = col.render!(item);
-              // Best-effort: extract text from ReactNode
-              if (typeof node === 'string' || typeof node === 'number') return String(node);
-              const val = (item as Record<string, unknown>)[col.key];
-              return val != null ? String(val) : '';
-            }
-          : undefined,
-      }));
-      exportToCsv(dataToExport, csvColumns, exportFilename);
-    },
-    [exportFilename, sortedData, paginatedData, columns],
-  );
 
   return (
     <div className="space-y-4">

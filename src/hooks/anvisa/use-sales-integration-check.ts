@@ -14,6 +14,7 @@ import type { OcrData } from '@/types/anvisa';
 import type { Client } from '@/types/client';
 import type { Doctor } from '@/types/doctor';
 import { nameMatches, crmMatches, anvisaDateToSalesDate } from '@/lib/anvisa-matching-utils';
+import type { Timestamp } from 'firebase/firestore';
 
 // ─── Types matching VENDA's data model for prescription lookups ─────────────
 
@@ -24,14 +25,14 @@ type SalesPrescription = {
   doctorId: string;
   orderId: string;
   products: Array<{ productName: string }>;
-  createdAt: any;
+  createdAt: Timestamp | Date | { seconds: number; nanoseconds: number };
 };
 
 type SalesOrder = {
   id: string;
   anvisaStatus: string;
   createdById: string;
-  createdAt: any;
+  createdAt: Timestamp | Date | { seconds: number; nanoseconds: number };
 };
 
 type SalesUser = {

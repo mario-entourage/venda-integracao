@@ -1,11 +1,10 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
+  collection, doc, updateDoc, getDoc, getDocs,
   query, where, orderBy, limit, serverTimestamp, writeBatch,
   Firestore, Query, Timestamp,
 } from 'firebase/firestore';
 import type {
-  Order, OrderCustomer, OrderRepresentative, OrderDoctor,
-  OrderProduct, OrderShipping, ShippingAddress,
+  Order, ShippingAddress,
 } from '@/types';
 
 // ---------------------------------------------------------------------------

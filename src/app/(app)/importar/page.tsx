@@ -59,19 +59,6 @@ export default function ImportarPage() {
 
   const config = ENTITY_CONFIG[entityType];
 
-  // Admin gate
-  if (isAdminLoading) {
-    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
-  }
-  if (!isAdmin) {
-    return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold mb-2">Acesso restrito</h1>
-        <p className="text-muted-foreground">Apenas administradores podem importar dados via CSV.</p>
-      </div>
-    );
-  }
-
   // ── File handling ─────────────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
     setFileName(file.name);
@@ -100,6 +87,19 @@ export default function ImportarPage() {
     if (file && (file.name.endsWith('.csv') || file.name.endsWith('.tsv'))) handleFileSelect(file);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType]);
+
+  // Admin gate
+  if (isAdminLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+  }
+  if (!isAdmin) {
+    return (
+      <div className="p-8 text-center">
+        <h1 className="text-2xl font-bold mb-2">Acesso restrito</h1>
+        <p className="text-muted-foreground">Apenas administradores podem importar dados via CSV.</p>
+      </div>
+    );
+  }
 
   const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); setIsDragActive(true); };
   const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragActive(false); };

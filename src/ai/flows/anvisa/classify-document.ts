@@ -83,7 +83,8 @@ export async function classifyDocument(input: ClassifyDocumentInput): Promise<Cl
   const { output } = await ai.generate({
     model: 'googleai/gemini-2.5-flash',
     system: systemPrompt,
-    prompt: promptParts as any,
+    // @ts-expect-error - Genkit ContentPart type incompatibility
+    prompt: promptParts,
     output: { schema: ClassifyDocumentOutputSchema },
   });
 

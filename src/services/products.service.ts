@@ -2,7 +2,7 @@ import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs,
   query, where, orderBy, limit, serverTimestamp, Firestore, Query,
 } from 'firebase/firestore';
-import type { Product, Stock, StockProduct, ProductFormValues } from '@/types';
+import type { Product, StockProduct, ProductFormValues } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
