@@ -104,9 +104,9 @@ export function clientToOcrData(client: Client): Partial<OcrData> {
   // Birth date: Firestore Timestamp → DD/MM/YYYY
   if (client.birthDate) {
     try {
-      const d = (client.birthDate as any).toDate
-        ? (client.birthDate as any).toDate()
-        : new Date(client.birthDate as any);
+      const d = (client.birthDate as Record<string, unknown>).toDate && typeof (client.birthDate as Record<string, unknown>).toDate === 'function'
+        ? ((client.birthDate as Record<string, unknown>).toDate as () => Date)()
+        : new Date(client.birthDate as string | number | Date);
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yyyy = d.getFullYear();
@@ -156,7 +156,7 @@ export function ocrDataToNewClient(
   const { firstName, lastName } = splitFullName(ocr.patientName || '');
   const addr = parseAddress(ocr.patientAddress || '');
 
-  let birthDate: any = undefined;
+  let birthDate: Date | undefined = undefined;
   if (ocr.patientDob) {
     const salesDate = anvisaDateToSalesDate(ocr.patientDob);
     if (salesDate) {

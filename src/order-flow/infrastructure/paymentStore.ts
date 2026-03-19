@@ -13,7 +13,7 @@
 import type { Payment } from "../domain/payment";
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __orderFlowPaymentStore: Map<string, Payment> | undefined;
 }
 

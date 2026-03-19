@@ -19,6 +19,7 @@ import { ref, uploadBytesResumable } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { cn } from '@/lib/utils';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { Client, Doctor, Order } from '@/types';
 import type { ClassifyAndExtractResponse } from '@/app/api/ai/classify-and-extract-document/route';
 
@@ -377,12 +378,17 @@ export function StepDocumentacao({
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch('/api/ai/classify-and-extract-document', {
+      const res = await fetchWithTimeout('/api/ai/classify-and-extract-document', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000,
       });
       const classification: ClassifyAndExtractResponse = await res.json();
+      if (classification._error) {
+        setProcessingMsg(`Erro ao classificar "${file.name}": ${classification._error}`);
+        return;
+      }
 
       // 3. Mark matching document request as received (only if still pending)
       const matchingRequest = requests.find(

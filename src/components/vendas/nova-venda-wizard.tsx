@@ -27,6 +27,8 @@ import { StepPagamento } from './step-pagamento';
 import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
+import { StepOrderConfirmation } from './step-order-confirmation';
+import { StepPaymentConfirmation } from './step-payment-confirmation';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { ShippingChoiceDialog } from './shipping-choice-dialog';
 import { getPtaxRate } from '@/server/actions/ptax.actions';
@@ -59,6 +61,7 @@ interface WizardState {
   // Step 2
   paymentUrl: string;
   gpOrderId: string;
+  invoiceNumber: string;
   // Representative (selected in step 1 — Identificação)
   selectedRepresentanteId: string;
   selectedRepresentanteName: string;
@@ -107,6 +110,7 @@ const INITIAL_STATE: WizardState = {
   orderAmount: 0,
   paymentUrl: '',
   gpOrderId: '',
+  invoiceNumber: '',
   selectedRepresentanteId: '',
   selectedRepresentanteName: 'Venda Direta',
   needsProcuracao: false,
@@ -126,7 +130,9 @@ const INITIAL_STATE: WizardState = {
 
 const STEPS = [
   { label: 'Identificação', description: 'Paciente, médico e produtos' },
+  { label: 'Confirmação', description: 'Resumo do pedido' },
   { label: 'Pagamento', description: 'Gerar link GlobalPay' },
+  { label: 'Confirmação', description: 'Resumo do pagamento' },
   { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
   { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
   { label: 'Envio', description: 'Método de entrega' },
@@ -311,8 +317,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         },
       }));
 
-      // Determine starting step: if order already has data, start at step 1 (payment)
-      setCurrentStep(1);
+      // Determine starting step: if order already has data, start at step 2 (payment)
+      setCurrentStep(2);
       setResumeLoading(false);
     }).catch((err) => {
       if (cancelled) return;
@@ -618,9 +624,10 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const canAdvance = (() => {
     if (isSubmitting) return false;
     if (currentStep === 0) return step1Valid && state.exchangeRate > 0;
-    if (currentStep === 1) return state.paymentUrl !== '';
-    if (currentStep === 2) return true; // ZapSign — always allow advance (optional)
-    return true; // steps 3 and 4 — always allow (skippable)
+    if (currentStep === 1) return true;  // Order confirmation — always OK
+    if (currentStep === 2) return state.paymentUrl !== '';  // Payment generation
+    if (currentStep === 3) return true;  // Payment confirmation — always OK
+    return true; // steps 4-6 — always allow (optional/skippable)
   })();
 
   // ── render ──────────────────────────────────────────────────────────────
@@ -739,6 +746,18 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         )}
 
         {currentStep === 1 && (
+          <StepOrderConfirmation
+            orderId={state.orderId}
+            clientName={state.step1.clientName}
+            doctorName={state.step1.doctorName}
+            doctorCrm={state.step1.doctorCrm}
+            products={state.step1.products}
+            orderAmount={state.orderAmount}
+            representanteName={state.selectedRepresentanteName}
+          />
+        )}
+
+        {currentStep === 2 && (
           <StepPagamento
             orderId={state.orderId}
             orderAmount={state.orderAmount}
@@ -750,8 +769,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             clientEmail=""
             paymentUrl={state.paymentUrl}
             gpOrderId={state.gpOrderId}
-            onPaymentGenerated={(paymentUrl, gpOrderId) =>
-              setState((prev) => ({ ...prev, paymentUrl, gpOrderId }))
+            onPaymentGenerated={(paymentUrl, gpOrderId, invoiceNumber) =>
+              setState((prev) => ({ ...prev, paymentUrl, gpOrderId, invoiceNumber }))
             }
             frete={state.frete}
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
@@ -763,7 +782,19 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
           />
         )}
 
-        {currentStep === 2 && (
+        {currentStep === 3 && (
+          <StepPaymentConfirmation
+            orderId={state.orderId}
+            clientName={state.step1.clientName}
+            orderAmount={state.orderAmount}
+            frete={state.frete}
+            representanteName={state.selectedRepresentanteName}
+            invoiceNumber={state.invoiceNumber || state.assignedPaymentInvoice}
+            paymentUrl={state.paymentUrl}
+          />
+        )}
+
+        {currentStep === 4 && (
           <StepDocumentosZapSign
             orderId={state.orderId}
             clientId={state.step1.clientId}
@@ -780,7 +811,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
           />
         )}
 
-        {currentStep === 3 && (
+        {currentStep === 5 && (
           <StepEnviarCliente
             orderId={state.orderId}
             clientName={state.step1.clientName}
@@ -789,7 +820,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
           />
         )}
 
-        {currentStep === 4 && (
+        {currentStep === 6 && (
           <StepEnvio
             orderId={state.orderId}
             orderAmount={state.orderAmount}
