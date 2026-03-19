@@ -159,12 +159,13 @@ export default function AnvisaPerfilPage() {
         title: 'Perfil salvo',
         description: 'Seus dados de solicitante foram atualizados com sucesso.',
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving profile:', error);
+      const message = error instanceof Error ? error.message : 'Nao foi possivel salvar seus dados de perfil.';
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar perfil',
-        description: error.message || 'Nao foi possivel salvar seus dados de perfil.',
+        description: message,
       });
     } finally {
       setIsSaving(false);

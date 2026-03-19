@@ -1,6 +1,6 @@
 'use client';
 
-import { type Control, type FieldValues } from 'react-hook-form';
+import { type Control } from 'react-hook-form';
 import ReactInputMask from 'react-input-mask';
 import {
   FormField,
@@ -20,12 +20,13 @@ import {
 import { BRAZILIAN_STATES } from '@/lib/constants';
 
 interface AddressFormProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   control: Control<any>;
   namePrefix?: string;
 }
 
 export function AddressForm({ control, namePrefix = 'address' }: AddressFormProps) {
-  const fieldName = (name: string) => `${namePrefix}.${name}` as const;
+  const fieldName = (name: string) => `${namePrefix}.${name}`;
 
   return (
     <div className="space-y-4">

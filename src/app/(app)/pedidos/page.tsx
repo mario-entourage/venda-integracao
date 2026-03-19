@@ -35,6 +35,8 @@ import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import { TablePagination } from '@/components/shared/table-pagination';
+import { exportToCsv } from '@/lib/export-csv';
 import { IN_PROGRESS_STATUSES, isReadyToShip } from '@/lib/order-status-helpers';
 import { ORDER_STATUS_LABELS } from '@/lib/constants';
 import { OrderStatus } from '@/types/enums';
@@ -66,6 +68,8 @@ export default function PedidosPage() {
   // ── filter & local hide state ──────────────────────────────────────────
   const [statusFilter, setStatusFilter] = useState('all');
   const [shippedIds, setShippedIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(30);
 
   // ── selection state (admin batch ops) ──────────────────────────────────
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -97,6 +101,28 @@ export default function PedidosPage() {
     }
     return result;
   }, [orders, statusFilter, shippedIds]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = currentPage * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
+
+  // Reset page when filter changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => setCurrentPage(0), [statusFilter]);
+
+  const handleExportCsv = () => {
+    exportToCsv(filteredOrders, [
+      { key: 'id', header: 'ID', render: (o) => o.id.slice(0, 8).toUpperCase() },
+      { key: 'status', header: 'Status', render: (o) => ORDER_STATUS_LABELS[o.status as OrderStatus] ?? o.status },
+      { key: 'amount', header: 'Valor', render: (o) => String(o.amount ?? 0) },
+      { key: 'currency', header: 'Moeda' },
+      { key: 'createdAt', header: 'Data', render: (o) => {
+        const ts = o.createdAt as unknown as { seconds: number } | null;
+        return ts ? new Date(ts.seconds * 1000).toLocaleDateString('pt-BR') : '';
+      } },
+    ], 'pedidos');
+  };
 
   // ── callbacks ──────────────────────────────────────────────────────────
   const handleShipped = (orderId: string) => {
@@ -322,20 +348,31 @@ export default function PedidosPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {filteredOrders.map((order) => (
-              <PedidoRow
-                key={order.id}
-                order={order}
-                isAdmin={isAdmin}
-                isSelected={selectedIds.has(order.id)}
-                onToggleSelect={() => toggleSelect(order.id)}
-                onDeleteRequest={() => setDeleteTarget(order)}
-                onCancelRequest={() => setCancelTarget(order)}
-                onShipped={handleShipped}
-              />
-            ))}
-          </div>
+          <>
+            <div className="space-y-2">
+              {paginatedOrders.map((order) => (
+                <PedidoRow
+                  key={order.id}
+                  order={order}
+                  isAdmin={isAdmin}
+                  isSelected={selectedIds.has(order.id)}
+                  onToggleSelect={() => toggleSelect(order.id)}
+                  onDeleteRequest={() => setDeleteTarget(order)}
+                  onCancelRequest={() => setCancelTarget(order)}
+                  onShipped={handleShipped}
+                />
+              ))}
+            </div>
+            <TablePagination
+              totalItems={filteredOrders.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="pedidos"
+              onExport={handleExportCsv}
+            />
+          </>
         )}
       </div>
 

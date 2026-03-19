@@ -131,7 +131,7 @@ export function StepPagamento({
         }
       }
 
-      onPaymentGenerated(result.paymentUrl, result.gpOrderId, result.invoiceNumber || '');
+      onPaymentGenerated(result.paymentUrl, result.gpOrderId, result.invoiceNumber ?? '');
 
       // Notify rep (fire-and-forget)
       if (firestore && repUserId && repEmail) {

@@ -12,7 +12,7 @@
 import type { Order } from "../domain/order";
 
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __orderFlowOrderStore: Map<string, Order> | undefined;
 }
 

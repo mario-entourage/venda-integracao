@@ -1,4 +1,4 @@
 ﻿clientDocument,clientName,currency,amount,discount,type,status,legalGuardian,doctorCrm,repEmail,meioPagamento,lead,formaEnvio,lote,codigoRastreio,dataEnvio,invoice
-123.456.789-00,Carlos Oliveira,BRL,1500.00,0,sale,paid,não,123456,rep@entouragelab.com,GlobalPay,1ª compra,TriStar,LOT-001,BR123456789,2026-01-15,ETGA NS 00001
-987.654.321-00,Ana Costa,USD,800.00,50,sale,shipped,não,654321,rep@entouragelab.com,PIX,Recompra,SEDEX,LOT-002,BR987654321,2026-01-20,ETGA NS 00002
-111.222.333-00,Pedro Lima,BRL,2200.00,200,sale,pending,sim,111222,,GlobalPay,1ª compra,,,,,
+123.456.789-00,Carlos Oliveira,BRL,1500,0,sale,paid,não,123456,rep@entouragelab.com,GlobalPay,1ª compra,TriStar,LOT-001,BR123456789,1/15/26,ETGA NS 00001
+987.654.321-00,Ana Costa,USD,800,50,sale,shipped,não,654321,rep@entouragelab.com,PIX,Recompra,SEDEX,LOT-002,BR987654321,1/20/26,ETGA NS 00002
+111.222.333-00,Pedro Lima,BRL,2200,200,sale,pending,sim,111222,,GlobalPay,1ª compra,,,,,

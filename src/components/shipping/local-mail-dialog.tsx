@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase } from '@/firebase/provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -103,7 +104,7 @@ export function LocalMailDialog({
       onSuccess();
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao registrar envio');
+      setError(friendlyError(err, 'Erro ao registrar envio.'));
     } finally {
       setIsSubmitting(false);
     }

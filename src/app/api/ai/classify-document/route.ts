@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       { documentType: 'general', confidence: 0, _error: 'Classificacao falhou.' } satisfies DocumentClassification,
-      { status: 200 },
+      { status: 500 },
     );
   }
 }

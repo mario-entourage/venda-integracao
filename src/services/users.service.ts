@@ -1,6 +1,6 @@
 import {
-  collection, doc, updateDoc, getDoc, getDocs, setDoc, deleteDoc,
-  query, where, orderBy, serverTimestamp, writeBatch,
+  collection, doc, updateDoc, getDoc, getDocs, setDoc,
+  query, where, orderBy, limit, serverTimestamp, writeBatch,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { User, UserProfile } from '@/types';
@@ -259,12 +259,13 @@ export async function getUserProfiles(
 /**
  * Return a Firestore query for all active users who are sales reps.
  */
-export function getActiveRepUsersQuery(db: Firestore): Query {
+export function getActiveRepUsersQuery(db: Firestore, maxResults = 200): Query {
   return query(
     getUsersRef(db),
     where('isRepresentante', '==', true),
     where('active', '==', true),
     orderBy('displayName', 'asc'),
+    limit(maxResults),
   );
 }
 

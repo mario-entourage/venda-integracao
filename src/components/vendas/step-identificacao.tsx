@@ -19,6 +19,7 @@ import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import { useToast } from '@/hooks/use-toast';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -358,10 +359,11 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await fetch('/api/ai/extract-prescription', {
+      const res = await fetchWithTimeout('/api/ai/extract-prescription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000,
       });
       const data: PrescriptionExtraction = await res.json();
       if (data._error) { setExtractionMsg(data._error); return; }
@@ -394,6 +396,11 @@ export function StepIdentificacao({
         if (matched) {
           updates.doctorId = matched.id; updates.doctorName = matched.fullName;
           updates.doctorCrm = matched.crm; updates.doctorIsNew = false;
+          // Auto-select the doctor's assigned rep
+          if (matched.repUserId && !selectedRepresentanteId) {
+            const rep = repUsers.find((r) => r.id === matched.repUserId);
+            if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+          }
         } else {
           updates.doctorId = ''; updates.doctorName = data.doctorName ?? '';
           updates.doctorCrm = data.doctorCrm ?? ''; updates.doctorIsNew = true;
@@ -548,7 +555,14 @@ export function StepIdentificacao({
             value={state.doctorId}
             onChange={(id) => {
               const doctor = doctors.find((d) => d.id === id);
-              if (doctor) onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+              if (doctor) {
+                onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+                // Auto-select the doctor's assigned rep (if any and no rep currently selected)
+                if (doctor.repUserId && !selectedRepresentanteId) {
+                  const rep = repUsers.find((r) => r.id === doctor.repUserId);
+                  if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+                }
+              }
             }}
             placeholder="Buscar médico…"
             searchPlaceholder="Nome ou CRM…"

@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { compressImage } from '@/lib/compress-image';
+import { friendlyError } from '@/lib/friendly-error';
 import { FileUp, Loader2, Upload, Zap, X, Check, XCircle } from 'lucide-react';
 import { OrderPicker } from '@/components/anvisa/order-picker';
 import { Button } from '@/components/ui/button';
@@ -828,8 +830,9 @@ export default function NewRequestPage() {
 
       await Promise.all(
         subdocEntries.map(async (entry) => {
+          const compressed = await compressImage(entry.file);
           const storageRef = ref(storage, entry.storagePath);
-          await uploadBytes(storageRef, entry.file);
+          await uploadBytes(storageRef, compressed);
         })
       );
 
@@ -843,11 +846,10 @@ export default function NewRequestPage() {
       router.push(ANVISA_ROUTES.requestDetail(newRequestId));
     } catch (error: unknown) {
       console.error('Error creating request: ', error);
-      const message = error instanceof Error ? error.message : String(error);
       toast({
         variant: 'destructive',
-        title: 'Erro ao criar solicitacao',
-        description: message || 'Ocorreu um problema ao processar sua solicitacao. Tente novamente.',
+        title: 'Erro ao criar solicitação',
+        description: friendlyError(error, 'Ocorreu um problema ao processar sua solicitação. Tente novamente.'),
       });
     } finally {
       setIsLoading(false);

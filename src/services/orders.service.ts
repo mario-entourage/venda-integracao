@@ -1,11 +1,10 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, writeBatch,
+  collection, doc, updateDoc, getDoc, getDocs,
+  query, where, orderBy, limit, serverTimestamp, writeBatch,
   Firestore, Query, Timestamp,
 } from 'firebase/firestore';
 import type {
-  Order, OrderCustomer, OrderRepresentative, OrderDoctor,
-  OrderProduct, OrderShipping, ShippingAddress,
+  Order, ShippingAddress,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -242,8 +241,8 @@ export async function updateOrder(
  * Build a Firestore query for orders.
  * Optionally filter by status; always ordered by creation date descending.
  */
-export function getOrdersQuery(db: Firestore, status?: string): Query {
-  const constraints = [orderBy('createdAt', 'desc')];
+export function getOrdersQuery(db: Firestore, status?: string, maxResults = 500): Query {
+  const constraints = [orderBy('createdAt', 'desc'), limit(maxResults)];
 
   if (status) {
     return query(
@@ -264,23 +263,26 @@ export function getOrdersByDateRangeQuery(
   db: Firestore,
   from: Date,
   to: Date,
+  maxResults = 500,
 ): Query {
   return query(
     getOrdersRef(db),
     where('createdAt', '>=', Timestamp.fromDate(from)),
     where('createdAt', '<=', Timestamp.fromDate(to)),
     orderBy('createdAt', 'desc'),
+    limit(maxResults),
   );
 }
 
 /**
  * Return orders created by a specific user, ordered by creation date desc.
  */
-export function getOrdersByCreatorQuery(db: Firestore, createdById: string): Query {
+export function getOrdersByCreatorQuery(db: Firestore, createdById: string, maxResults = 500): Query {
   return query(
     getOrdersRef(db),
     where('createdById', '==', createdById),
     orderBy('createdAt', 'desc'),
+    limit(maxResults),
   );
 }
 

@@ -3,6 +3,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { friendlyError } from '@/lib/friendly-error';
+import { compressImage } from '@/lib/compress-image';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
@@ -131,8 +133,8 @@ const STEPS = [
   { label: 'Confirmação do Pedido', description: 'Resumo do pedido' },
   { label: 'Pagamento', description: 'Gerar link GlobalPay' },
   { label: 'Confirmação do Pagamento', description: 'Resumo do pagamento' },
-  { label: 'ZapSign', description: 'Procuração e Comprovante' },
-  { label: 'Enviar', description: 'Enviar links ao cliente' },
+  { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
+  { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
   { label: 'Envio', description: 'Método de entrega' },
 ];
 
@@ -178,9 +180,31 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const { data: repUsers } = useCollection<User>(repUsersQ);
   const { data: unassignedPayments } = useCollection<PaymentLink>(unassignedQ);
 
-  // ── wizard state ────────────────────────────────────────────────────────
-  const [state, setState] = useState<WizardState>(INITIAL_STATE);
-  const [currentStep, setCurrentStep] = useState(0);
+  // ── wizard state (restored from sessionStorage if available) ────────────
+  const STORAGE_KEY = 'nova-venda-wizard';
+  const [state, setState] = useState<WizardState>(() => {
+    if (resumeOrderId) return INITIAL_STATE; // resume from Firestore, not session
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Only restore if it has an orderId (i.e., the order was created in Firestore)
+        if (parsed.state?.orderId) return parsed.state;
+      }
+    } catch { /* ignore corrupt data */ }
+    return INITIAL_STATE;
+  });
+  const [currentStep, setCurrentStep] = useState(() => {
+    if (resumeOrderId) return 0;
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.state?.orderId && typeof parsed.step === 'number') return parsed.step;
+      }
+    } catch { /* ignore */ }
+    return 0;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   /** When a duplicate prescription is detected, store the existing order ID for linking. */
@@ -192,6 +216,20 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const [completedOrderId, setCompletedOrderId] = useState('');
   // Shipping choice dialog: shown after post-wizard dialog (or directly after finalization)
   const [showShippingChoice, setShowShippingChoice] = useState(false);
+
+  // ── persist wizard state to sessionStorage ──────────────────────────
+  useEffect(() => {
+    // Only persist once the order has been created (has an orderId)
+    if (!state.orderId) return;
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ state, step: currentStep }));
+    } catch { /* quota exceeded — ignore */ }
+  }, [state, currentStep]);
+
+  // Clear session storage on completion
+  const clearWizardSession = useCallback(() => {
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  }, []);
 
   // ── fetch PTAX exchange rate on mount ────────────────────────────────
   useEffect(() => {
@@ -279,8 +317,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         },
       }));
 
-      // Determine starting step: if order already has data, start at step 1 (payment)
-      setCurrentStep(1);
+      // Determine starting step: if order already has data, start at step 2 (payment)
+      setCurrentStep(2);
       setResumeLoading(false);
     }).catch((err) => {
       if (cancelled) return;
@@ -316,7 +354,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
     state.step1.products.every((p) => p.productId !== '' && p.quantity > 0);
 
   // ── upload prescription helper ──────────────────────────────────────────
-  async function uploadPrescription(file: File): Promise<string> {
+  async function uploadPrescription(rawFile: File): Promise<string> {
+    const file = await compressImage(rawFile);
     const path = `documents/prescriptions/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     const storageRef = ref(storage, path);
     const task = uploadBytesResumable(storageRef, file);
@@ -511,8 +550,8 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
       } catch (err) {
         console.error('Order creation error:', err);
         const msg =
-          err instanceof Error ? err.message : 'Erro desconhecido';
-        setSubmitError(`Erro ao criar pedido: ${msg}`);
+          friendlyError(err, 'Erro ao criar pedido.');
+        setSubmitError(msg);
       } finally {
         setIsSubmitting(false);
       }
@@ -550,6 +589,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
     setIsSubmitting(true);
     try {
       await updateOrderStatus(firestore, state.orderId, 'processing', user.uid);
+      clearWizardSession();
       onComplete(state.orderId);
       setCompletedOrderId(state.orderId);
 
@@ -585,9 +625,9 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   const canAdvance = (() => {
     if (isSubmitting) return false;
     if (currentStep === 0) return step1Valid && state.exchangeRate > 0;
-    if (currentStep === 1) return state.orderId !== '';
-    if (currentStep === 2) return state.paymentUrl !== '';
-    if (currentStep === 3) return true; // payment confirmation
+    if (currentStep === 1) return state.orderId !== ''; // Order confirmation — needs orderId
+    if (currentStep === 2) return state.paymentUrl !== ''; // Payment generation
+    if (currentStep === 3) return true; // Payment confirmation — always OK
     if (currentStep === 4) return true; // ZapSign — optional
     return true; // steps 5 and 6 — always allow (skippable)
   })();
@@ -748,7 +788,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         {currentStep === 3 && (
           <StepConfirmacaoPagamento
             orderId={state.orderId}
-            invoiceNumber={state.invoiceNumber || undefined}
+            invoiceNumber={state.invoiceNumber || state.assignedPaymentInvoice || undefined}
             gpOrderId={state.gpOrderId || undefined}
             paymentUrl={state.paymentUrl || undefined}
             repName={state.selectedRepresentanteName}

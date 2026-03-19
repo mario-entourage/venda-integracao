@@ -41,10 +41,7 @@ export default function LoginPage() {
 
       {/* Disclaimer */}
       <p className="text-center text-xs text-muted-foreground/60 leading-relaxed">
-        Ao continuar, você concorda com nossos{' '}
-        <span className="underline cursor-pointer">Termos de Serviço</span>{' '}
-        e{' '}
-        <span className="underline cursor-pointer">Política de Privacidade</span>.
+        Ao continuar, você concorda com os Termos de Serviço e a Política de Privacidade da Entourage Lab.
       </p>
     </div>
   );

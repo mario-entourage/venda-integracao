@@ -14,6 +14,7 @@ import type { OcrData } from '@/types/anvisa';
 import type { Client } from '@/types/client';
 import type { Doctor } from '@/types/doctor';
 import { nameMatches, crmMatches, anvisaDateToSalesDate } from '@/lib/anvisa-matching-utils';
+import type { Timestamp } from 'firebase/firestore';
 
 // ─── Types matching VENDA's data model for prescription lookups ─────────────
 
@@ -24,14 +25,14 @@ type SalesPrescription = {
   doctorId: string;
   orderId: string;
   products: Array<{ productName: string }>;
-  createdAt: any;
+  createdAt: Timestamp | Date | { seconds: number; nanoseconds: number };
 };
 
 type SalesOrder = {
   id: string;
   anvisaStatus: string;
   createdById: string;
-  createdAt: any;
+  createdAt: Timestamp | Date | { seconds: number; nanoseconds: number };
 };
 
 type SalesUser = {
@@ -139,7 +140,8 @@ async function checkPrescriptionDuplicates(
 
         if (order.createdAt) {
           try {
-            const d = order.createdAt.toDate ? order.createdAt.toDate() : new Date(order.createdAt);
+            const ts = order.createdAt as { toDate?: () => Date };
+            const d = typeof ts.toDate === 'function' ? ts.toDate() : new Date(order.createdAt as unknown as string);
             createdAt = d.toISOString();
           } catch {
             /* skip */
@@ -155,7 +157,8 @@ async function checkPrescriptionDuplicates(
 
     if (!createdAt && presc.createdAt) {
       try {
-        const d = presc.createdAt.toDate ? presc.createdAt.toDate() : new Date(presc.createdAt);
+        const ts2 = presc.createdAt as { toDate?: () => Date };
+        const d = typeof ts2.toDate === 'function' ? ts2.toDate() : new Date(presc.createdAt as unknown as string);
         createdAt = d.toISOString();
       } catch {
         /* skip */

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { MoreHorizontal, RefreshCw } from 'lucide-react';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
@@ -237,7 +238,7 @@ export default function EstoquePage() {
       console.error('[tristar-sync]', err);
       toast({
         title: 'Erro ao sincronizar estoque com a Tristar.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -449,6 +450,7 @@ export default function EstoquePage() {
             loading={productsLoading}
             searchPlaceholder="Buscar produto por nome ou SKU..."
             emptyMessage="Nenhum produto ativo cadastrado."
+            exportFilename="produtos"
           />
         </TabsContent>
 
@@ -466,6 +468,7 @@ export default function EstoquePage() {
             loading={stocksLoading}
             searchPlaceholder="Buscar local de estoque..."
             emptyMessage="Nenhum local de estoque cadastrado."
+            exportFilename="locais-estoque"
           />
         </TabsContent>
       </Tabs>

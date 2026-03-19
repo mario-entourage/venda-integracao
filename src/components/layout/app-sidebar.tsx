@@ -5,8 +5,9 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck, HelpCircle, Chrome,
+  Shield, Upload, Truck, HelpCircle, Chrome, Eye,
 } from 'lucide-react';
+import { useAuditMode } from '@/contexts/audit-mode-context';
 import { BrandLogo } from '@/components/shared/brand-logo';
 import {
   Sidebar,
@@ -55,6 +56,7 @@ const anvisaNavItems = [
 
 const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
+  { href: '/auditoria', icon: Eye, label: 'Auditoria' },
   { href: '/importar', icon: Upload, label: 'Importar CSV' },
 ];
 
@@ -88,8 +90,16 @@ function NavGroup({ label, items, pathname, labelClassName }: { label: string; i
   );
 }
 
+/** Routes hidden from the sidebar in audit mode (creation/mutation pages) */
+const AUDIT_HIDDEN_ROUTES = new Set(['/remessas', '/anvisa/nova', '/importar', '/auditoria']);
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const { isAuditMode } = useAuditMode();
+
+  /** Filter out creation pages when in audit mode */
+  const filterItems = (items: typeof vendasNavItems) =>
+    isAuditMode ? items.filter((i) => !AUDIT_HIDDEN_ROUTES.has(i.href)) : items;
 
   return (
     <Sidebar>
@@ -101,14 +111,14 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>
-            <span style={{ fontFamily: 'Meddon, cursive' }} className="text-sm">
+          <SidebarGroupLabel className="h-10">
+            <span style={{ fontFamily: 'Meddon, cursive', textTransform: 'none', marginLeft: '0.75em' }} className="text-lg leading-none">
               Vendas
             </span>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {vendasNavItems.map((item) => (
+              {filterItems(vendasNavItems).map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
                     <Link href={item.href}>
@@ -122,14 +132,14 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <NavGroup label="Cadastros" items={cadastrosNavItems} pathname={pathname} />
-        <NavGroup label="Produtos & Estoque" items={productNavItems} pathname={pathname} />
-        <NavGroup label="Documentos" items={documentNavItems} pathname={pathname} />
-        <NavGroup label="Financeiro" items={paymentNavItems} pathname={pathname} />
-        <NavGroup label="ANVISA" items={anvisaNavItems} pathname={pathname} />
+        <NavGroup label="Cadastros" items={filterItems(cadastrosNavItems)} pathname={pathname} />
+        <NavGroup label="Produtos & Estoque" items={filterItems(productNavItems)} pathname={pathname} />
+        <NavGroup label="Documentos" items={filterItems(documentNavItems)} pathname={pathname} />
+        <NavGroup label="Financeiro" items={filterItems(paymentNavItems)} pathname={pathname} />
+        <NavGroup label="ANVISA" items={filterItems(anvisaNavItems)} pathname={pathname} />
 
-        <NavGroup label="Administracao" items={adminNavItems} pathname={pathname} />
-        <NavGroup label="Suporte" items={helpNavItems} pathname={pathname} />
+        <NavGroup label="Administracao" items={filterItems(adminNavItems)} pathname={pathname} />
+        <NavGroup label="Suporte" items={filterItems(helpNavItems)} pathname={pathname} />
       </SidebarContent>
 
       <SidebarFooter className="border-t">

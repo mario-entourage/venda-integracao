@@ -53,28 +53,34 @@ export function CustomerForm({
             <CardTitle>Dados do Cliente</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* CPF/CNPJ */}
+            {/* CPF/CNPJ — dynamic mask switches at 12+ digits */}
             <FormField
               control={form.control}
               name="document"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>CPF/CNPJ</FormLabel>
-                  <FormControl>
-                    <ReactInputMask
-                      mask="999.999.999-99"
-                      value={field.value ?? ''}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                    >
-                      {(inputProps: React.ComponentProps<'input'>) => (
-                        <Input {...inputProps} ref={field.ref} placeholder="000.000.000-00" />
-                      )}
-                    </ReactInputMask>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+              render={({ field }) => {
+                const digits = (field.value ?? '').replace(/\D/g, '');
+                const isCnpj = digits.length > 11;
+                const mask = isCnpj ? '99.999.999/9999-99' : '999.999.999-99';
+                const placeholder = isCnpj ? '00.000.000/0000-00' : '000.000.000-00';
+                return (
+                  <FormItem>
+                    <FormLabel>CPF/CNPJ</FormLabel>
+                    <FormControl>
+                      <ReactInputMask
+                        mask={mask}
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        onBlur={field.onBlur}
+                      >
+                        {(inputProps: React.ComponentProps<'input'>) => (
+                          <Input {...inputProps} ref={field.ref} placeholder={placeholder} />
+                        )}
+                      </ReactInputMask>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }}
             />
 
             {/* RG */}

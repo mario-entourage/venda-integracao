@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { RefreshCw, Plus, Link2 } from 'lucide-react';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
@@ -25,6 +26,9 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { TablePagination } from '@/components/shared/table-pagination';
+import { exportToCsv } from '@/lib/export-csv';
 import type { PaymentLink, User } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +79,8 @@ export default function PagamentosPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(30);
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<{ time: string; approved: number; checked: number } | null>(null);
 
@@ -100,7 +106,7 @@ export default function PagamentosPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await fetch('/api/payments/sync', { method: 'POST' });
+      const res = await fetchWithTimeout('/api/payments/sync', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -113,7 +119,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao sincronizar pagamentos.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -151,7 +157,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao criar pagamento avulso.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -178,7 +184,7 @@ export default function PagamentosPage() {
     } catch (err) {
       toast({
         title: 'Erro ao vincular pagamento.',
-        description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -231,6 +237,28 @@ export default function PagamentosPage() {
     }
     return items;
   }, [paymentLinks, statusFilter, search]);
+
+  // Paginate
+  const paginatedItems = useMemo(() => {
+    const start = currentPage * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, currentPage, pageSize]);
+
+  // Reset page when filters change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useMemo(() => setCurrentPage(0), [statusFilter, search]);
+
+  const handleExportCsv = () => {
+    exportToCsv(filtered, [
+      { key: 'invoice', header: 'Invoice' },
+      { key: 'amount', header: 'Valor', render: (pl) => String(pl.amount) },
+      { key: 'currency', header: 'Moeda' },
+      { key: 'clientName', header: 'Cliente' },
+      { key: 'repName', header: 'Representante' },
+      { key: 'createdAt', header: 'Data', render: (pl) => fmtDate(pl.createdAt) },
+      { key: 'status', header: 'Status', render: (pl) => STATUS_LABELS[pl.status]?.label ?? pl.status },
+    ], 'pagamentos');
+  };
 
   // Summary stats
   const total = paymentLinks?.length ?? 0;
@@ -342,7 +370,7 @@ export default function PagamentosPage() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((pl) => {
+                  paginatedItems.map((pl) => {
                     const isUnassigned = !pl.orderId;
                     return (
                       <TableRow
@@ -394,6 +422,17 @@ export default function PagamentosPage() {
                 )}
               </TableBody>
             </Table>
+          )}
+          {!isLoading && filtered.length > 0 && (
+            <TablePagination
+              totalItems={filtered.length}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+              itemLabel="pagamentos"
+              onExport={handleExportCsv}
+            />
           )}
         </CardContent>
       </Card>

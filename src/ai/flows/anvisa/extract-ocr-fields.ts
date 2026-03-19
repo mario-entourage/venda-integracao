@@ -6,6 +6,7 @@
  */
 
 import { ai } from '@/ai/genkit';
+import type { Part } from 'genkit';
 import { z } from 'zod';
 
 // ─── Brazilian Document Validators ──────────────────────────────────────────
@@ -336,7 +337,7 @@ export async function extractOcrFields(input: ExtractOcrFieldsInput): Promise<Ex
       ? 'googleai/gemini-2.5-pro'
       : 'googleai/gemini-2.5-flash';
 
-  const promptParts: any[] = [
+  const promptParts: Part[] = [
     { media: { url: input.fileUrl, contentType: input.contentType } },
   ];
 

@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { collection, collectionGroup, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getOrdersQuery, getOrdersByCreatorQuery } from '@/services/orders.service';
@@ -230,27 +230,34 @@ function AdminDashboard() {
     useCollection<{ id: string }>(usersQ);
 
   // ── Auxiliary queries for current-month filtering ──────────────────────────
+  // Only load data from start of last month onward (dashboard only shows this + last month)
+  const dateFloor = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1, 1);
+    d.setHours(0, 0, 0, 0);
+    return Timestamp.fromDate(d);
+  }, []);
 
-  // Prescriptions (top-level collection, linked to orders via orderId)
+  // Prescriptions (top-level collection — filtered to recent)
   const prescriptionsQ = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'prescriptions')) : null),
-    [firestore],
+    () => (firestore ? query(collection(firestore, 'prescriptions'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allPrescriptions, isLoading: prescriptionsLoading } =
     useCollection<Prescription>(prescriptionsQ);
 
-  // Payments (subcollection group across all orders)
+  // Payments (subcollection group — filtered to recent)
   const paymentsGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'payments') : null),
-    [firestore],
+    () => (firestore ? query(collectionGroup(firestore, 'payments'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allPayments, isLoading: paymentsLoading } =
     useCollection<Payment>(paymentsGroupQ);
 
-  // Shipping records (subcollection group across all orders)
+  // Shipping records (subcollection group — filtered to recent)
   const shippingGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'shipping') : null),
-    [firestore],
+    () => (firestore ? query(collectionGroup(firestore, 'shipping'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allShipping, isLoading: shippingLoading } =
     useCollection<ShippingRecord>(shippingGroupQ);

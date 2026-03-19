@@ -1,8 +1,8 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, Firestore, Query,
+  query, where, orderBy, limit, serverTimestamp, Firestore, Query,
 } from 'firebase/firestore';
-import type { Product, Stock, StockProduct, ProductFormValues } from '@/types';
+import type { Product, StockProduct, ProductFormValues } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -105,11 +105,12 @@ export async function getProductById(
 /**
  * Return a query for all active products ordered by name.
  */
-export function getActiveProductsQuery(db: Firestore): Query {
+export function getActiveProductsQuery(db: Firestore, maxResults = 500): Query {
   return query(
     getProductsRef(db),
     where('active', '==', true),
     orderBy('name', 'asc'),
+    limit(maxResults),
   );
 }
 

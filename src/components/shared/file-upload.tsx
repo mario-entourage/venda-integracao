@@ -4,6 +4,7 @@ import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useStorage } from '@/firebase/provider';
+import { compressImage } from '@/lib/compress-image';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 
@@ -101,12 +102,13 @@ export function FileUpload({
       setIsUploading(true);
       setUploadedFiles([]);
 
-      for (const file of files) {
-        if (file.size > maxSizeMB * 1024 * 1024) {
-          onError?.(new Error(`${file.name} excede o tamanho maximo de ${maxSizeMB}MB`));
+      for (const rawFile of files) {
+        if (rawFile.size > maxSizeMB * 1024 * 1024) {
+          onError?.(new Error(`${rawFile.name} excede o tamanho maximo de ${maxSizeMB}MB`));
           continue;
         }
         try {
+          const file = await compressImage(rawFile);
           await uploadSingleFile(file);
         } catch {
           // Error already handled in uploadSingleFile via onError

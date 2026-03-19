@@ -1,6 +1,6 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc,
-  query, where, orderBy, serverTimestamp, Timestamp,
+  query, where, orderBy, limit, serverTimestamp, Timestamp,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { Client } from '@/types/client';
@@ -78,11 +78,12 @@ export async function softDeleteClient(
 /**
  * Query for all active clients ordered by full name ascending.
  */
-export function getActiveClientsQuery(db: Firestore): Query {
+export function getActiveClientsQuery(db: Firestore, maxResults = 500): Query {
   return query(
     getClientsRef(db),
     where('active', '==', true),
     orderBy('fullName', 'asc'),
+    limit(maxResults),
   );
 }
 
