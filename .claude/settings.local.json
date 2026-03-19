@@ -3,7 +3,9 @@
     "allow": [
       "Bash(xargs grep:*)",
       "Bash(node -e \"const p = require\\(''./package.json''\\); console.log\\(p.dependencies.next\\)\")",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find \"/c/Users/trici/OneDrive/Área de Trabalho/Entourage/venda-integracao/src/app/\\(app\\)/remessas\" -type f -name \"*.tsx\" -o -name \"*.ts\")",
+      "Bash(ls -la \"/c/Users/trici/OneDrive/Área de Trabalho/Entourage/venda-integracao/src/app/\\(app\\)/remessas/\")"
     ]
   }
 }

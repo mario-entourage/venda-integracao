@@ -4,9 +4,10 @@
     {
       "type": "pwa-chrome",
       "request": "launch",
-      "name": "Debug Next.js",
+      "name": "Debug Next.js (Brave)",
       "url": "http://localhost:3000",
-      "webRoot": "${workspaceFolder}"
+      "webRoot": "${workspaceFolder}",
+      "runtimeExecutable": "C:/Program Files/BraveSoftware/Brave-Browser/Application/brave.exe"
     }
   ]
 }
