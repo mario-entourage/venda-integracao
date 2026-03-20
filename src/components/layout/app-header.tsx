@@ -45,8 +45,8 @@ export function AppHeader() {
       <Separator orientation="vertical" className="h-6" />
       <div className="flex-1 flex justify-center">
         <h1
-          className="text-[30px] font-semibold uppercase tracking-[0.5px] text-[#333333]"
-          style={{ fontFamily: "'Oswald', sans-serif" }}
+          className="text-[30px] font-semibold uppercase tracking-[4px] text-[#00637C]"
+          style={{ fontFamily: "'Oswald', sans-serif", fontStretch: 'condensed' }}
         >
           Vendas
         </h1>

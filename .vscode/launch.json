@@ -6,7 +6,8 @@
       "request": "launch",
       "name": "Debug Next.js",
       "url": "http://localhost:3000",
-      "webRoot": "${workspaceFolder}"
+      "webRoot": "${workspaceFolder}",
+      "runtimeExecutable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     }
   ]
 }
