@@ -22,6 +22,18 @@ service cloud.firestore {
       return request.auth.token.email.matches('.*@entouragelab[.]com');
     }
 
+    // Returns true if the caller is the creator of the given order document.
+    function isOrderOwner(orderId) {
+      return get(/databases/$(database)/documents/orders/$(orderId)).data.createdById
+             == request.auth.uid;
+    }
+
+    // Returns true if the caller owns the parent anvisa_request.
+    function isAnvisaRequestOwner(requestId) {
+      return get(/databases/$(database)/documents/anvisa_requests/$(requestId)).data.ownerEmail
+             == request.auth.token.email;
+    }
+
     match /users/{userId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow create: if isSignedIn() && isEntourageDomain() && request.auth.uid == userId;
@@ -38,13 +50,15 @@ service cloud.firestore {
 
     match /clients/{clientId} {
       allow read: if isSignedIn() && isEntourageDomain();
-      allow create, update: if isSignedIn() && isEntourageDomain();
+      allow create: if isSignedIn() && isEntourageDomain();
+      allow update: if isSignedIn() && isEntourageDomain();
       allow delete: if isAdmin();
     }
 
     match /doctors/{doctorId} {
       allow read: if isSignedIn() && isEntourageDomain();
-      allow create, update: if isSignedIn() && isEntourageDomain();
+      allow create: if isSignedIn() && isEntourageDomain();
+      allow update: if isSignedIn() && isEntourageDomain();
       allow delete: if isAdmin();
     }
 
@@ -84,14 +98,21 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read: if isSignedIn() && isEntourageDomain();
-      allow create: if isSignedIn() && isEntourageDomain();
-      allow update: if isSignedIn() && isEntourageDomain();
+      // Any entourage rep may create an order (their uid is recorded as createdById)
+      allow create: if isSignedIn() && isEntourageDomain()
+        && request.resource.data.createdById == request.auth.uid;
+      // Only the order's creator or an admin may update or soft-delete it
+      allow update: if isSignedIn() && isEntourageDomain()
+        && (resource.data.createdById == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
 
     match /orders/{orderId}/{subcollection}/{docId} {
       allow read: if isSignedIn() && isEntourageDomain();
-      allow write: if isSignedIn() && isEntourageDomain();
+      // Only the order owner or an admin may write to subcollections
+      // (payment/webhook updates go through Admin SDK and bypass these rules)
+      allow write: if isSignedIn() && isEntourageDomain()
+        && (isOrderOwner(orderId) || isAdmin());
     }
 
     // ── Collection-group rules (required for collectionGroup() queries) ──────
@@ -163,7 +184,11 @@ service cloud.firestore {
     }
 
     match /anvisa_requests/{requestId}/{docType}/{docId} {
-      allow read, write: if isSignedIn() && isEntourageDomain();
+      allow read: if isSignedIn() && isEntourageDomain();
+      // Subcollection writes are gated on the parent request owner, matching
+      // the same owner model the parent document already enforces.
+      allow write: if isSignedIn() && isEntourageDomain()
+        && (isAnvisaRequestOwner(requestId) || isAdmin());
     }
 
     match /anvisa_userProfiles/{userId} {
