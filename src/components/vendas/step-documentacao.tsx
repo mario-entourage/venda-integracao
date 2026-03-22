@@ -518,7 +518,7 @@ export function StepDocumentacao({
         if (clientIsNew) {
           // Auto-apply for new clients
           if (firestore) {
-            updateClient(firestore, clientId, fieldsToApply as Parameters<typeof updateClient>[2]).catch(console.error);
+            updateClient(firestore, clientId, fieldsToApply as Parameters<typeof updateClient>[2], user?.uid ?? undefined).catch(console.error);
           }
         } else {
           newUpdates.push({ entityType: 'client', entityId: clientId, entityLabel: `Paciente: ${clientName}`, changes, fieldsToApply });
@@ -560,7 +560,7 @@ export function StepDocumentacao({
         const newAddress = { ...(clientData.address ?? { street: '', number: '', neighborhood: '', city: '', state: '', country: 'BR', postalCode: '' }), ...addressFields };
         if (clientIsNew) {
           if (firestore) {
-            updateClient(firestore, clientId, { address: newAddress } as Parameters<typeof updateClient>[2]).catch(console.error);
+            updateClient(firestore, clientId, { address: newAddress } as Parameters<typeof updateClient>[2], user?.uid ?? undefined).catch(console.error);
           }
         } else {
           newUpdates.push({
@@ -605,7 +605,7 @@ export function StepDocumentacao({
       if (changes.length > 0) {
         if (doctorIsNew) {
           if (firestore) {
-            updateDoctor(firestore, doctorId, fieldsToApply as Parameters<typeof updateDoctor>[2]).catch(console.error);
+            updateDoctor(firestore, doctorId, fieldsToApply as Parameters<typeof updateDoctor>[2], user?.uid ?? undefined).catch(console.error);
           }
         } else {
           newUpdates.push({ entityType: 'doctor', entityId: doctorId, entityLabel: `Médico: ${doctorData.fullName}`, changes, fieldsToApply });
@@ -633,9 +633,9 @@ export function StepDocumentacao({
       if (key in currentPendingUpdate.fieldsToApply) fieldsToSave[key] = currentPendingUpdate.fieldsToApply[key];
     }
     if (currentPendingUpdate.entityType === 'client') {
-      await updateClient(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateClient>[2]);
+      await updateClient(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateClient>[2], user?.uid ?? undefined);
     } else {
-      await updateDoctor(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateDoctor>[2]);
+      await updateDoctor(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateDoctor>[2], user?.uid ?? undefined);
     }
     setPendingUpdates(prev => prev.slice(1));
   };

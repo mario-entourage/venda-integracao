@@ -194,5 +194,14 @@ service cloud.firestore {
       allow update: if isSignedIn() && isEntourageDomain();
       allow delete: if false;
     }
+
+    // ── Operation audit log (Zero Anonymous Actions) ──────────────────────
+    match /audit_log/{entryId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isEntourageDomain()
+                    && request.resource.data.performedById == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
   }
 }

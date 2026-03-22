@@ -6,6 +6,31 @@ import {
 import type { AuditSession, AuditSessionStatus, ModuleKey } from '@/types/audit';
 
 // ---------------------------------------------------------------------------
+// Operation-level audit log (Zero Anonymous Actions compliance)
+// ---------------------------------------------------------------------------
+
+export async function writeAuditLog(
+  db: Firestore,
+  entry: {
+    action: string;
+    collection: string;
+    documentId: string;
+    performedById: string;
+    changes?: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await addDoc(collection(db, 'audit_log'), {
+      ...entry,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    // Non-fatal — audit failure must not break the primary operation
+    console.error('[audit] Failed to write audit log:', err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Collection reference
 // ---------------------------------------------------------------------------
 

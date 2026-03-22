@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { query, orderBy, where } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirestore, useMemoFirebase, useUser } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getUsersRef, updateUser, createPreregistration } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
@@ -19,6 +19,7 @@ import type { User } from '@/types';
 
 export default function NovoRepresentantePage() {
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +50,7 @@ export default function NovoRepresentantePage() {
     }
     setIsLoading(true);
     try {
-      await updateUser(db, selectedUserId, { isRepresentante: true });
+      await updateUser(db, selectedUserId, { isRepresentante: true }, user?.uid);
       toast({ title: 'Usuário promovido a representante.' });
       router.push('/representantes');
     } catch (err) {
@@ -71,7 +72,7 @@ export default function NovoRepresentantePage() {
       await createPreregistration(db, newEmail.trim(), 'user', {
         isRepresentante: true,
         displayName: newDisplayName.trim() || undefined,
-      });
+      }, user?.uid);
       toast({ title: 'Pré-registro criado. O usuário será representante ao fazer login.' });
       router.push('/representantes');
     } catch (err) {
