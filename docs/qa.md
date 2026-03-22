@@ -1,7 +1,7 @@
 # QA Document
 
 > Entourage Lab — Sales Integration Platform
-> Last updated: 2026-03-17
+> Last updated: 2026-03-22
 
 ---
 
@@ -247,13 +247,55 @@ Tests the core business logic of both webhook handlers without requiring a runni
 
 ---
 
+### 3.7 Recent Changes — Manual Verification Required
+
+The following features were added in the 2026-03-22 release cycle and require manual QA verification until automated test coverage is extended.
+
+#### Audit Logging (P1)
+
+All service-layer write functions now call `writeAuditLog()` with a required `performedById` parameter. The `changes` payload records what was modified.
+
+| Area | What to Verify |
+|---|---|
+| **Orders** | Create an order → verify `audit_logs` collection has an entry with action=`create`, collection=`orders`, and the correct `performedById`. |
+| **Order status** | Mark an order as paid → verify audit entry with action=`update_status`, changes=`{ status: 'paid' }`. |
+| **Clients** | Create/edit/soft-delete a client → verify audit entries for each action. |
+| **Doctors** | Create/edit/soft-delete a doctor → verify audit entries. |
+| **Users** | Change a user's group or active status → verify audit entries. |
+| **Pre-registrations** | Pre-register a new user → verify audit entry with action=`create`, collection=`preregistrations`. |
+| **performedById enforcement** | TypeScript enforces `performedById` as required. All callers use `user!.uid` (non-null assertion). Verify no runtime errors when performing any write operation while authenticated. |
+
+#### API Route Security (P2)
+
+| Area | What to Verify |
+|---|---|
+| **Auth middleware** | Call any `/api/tristar/*` route without an Authorization header → verify 401 response. |
+| **Zod validation** | Send a malformed body to `/api/tristar/create-shipment` (e.g., missing `to_name`) → verify 422 response with field-level error details. |
+| **Webhook secrets** | If `GLOBALPAY_WEBHOOK_SECRET` or `ZAPSIGN_WEBHOOK_TOKEN` env vars are not set, verify server logs show `console.warn` messages about disabled signature checks. |
+| **Webhook token rejection** | Send a webhook request with an incorrect token → verify 401 response. |
+
+#### TriStar Express Integration Fix
+
+| Area | What to Verify |
+|---|---|
+| **Payload format** | Open the TriStar dialog from an order's shipping step. Submit a shipment. Verify the API receives flat `from_*`/`to_*` fields (not nested `recipient` objects). Check server logs for any 422 errors from TriStar. |
+| **Multi-item support** | In the TriStar dialog, click "+ Adicionar item" to add a second item. Set different types, descriptions, quantities, and prices for each. Submit the shipment → verify TriStar API accepts the multi-item payload. |
+| **CBD ANVISA fields** | Set an item's type to "CBD" (40). Verify ANVISA authorization number and commercial name fields appear for that item. Fill them in and submit → verify the fields are included in the API payload. |
+| **Description field** | Verify each item row has a "Descrição do item" input. Leave it empty and try to submit → verify validation requires it. |
+| **Sender env vars** | Remove one `TRISTAR_FROM_*` env var and attempt a shipment → verify a 500 response with a clear error message listing the missing variable. |
+| **Optional recipient contact** | Verify phone and email fields appear for the recipient (optional). Submit with and without them → verify both succeed. |
+| **Insurance toggle** | Toggle insurance on. Enter a value. Submit → verify `with_insurance: true` and `insurance_value` are sent. Toggle off → verify `with_insurance: false`. |
+| **Success state** | After successful shipment creation, verify the dialog shows tracking code, TriStar ID, and a label download button. |
+
+---
+
 ## 4. What Is NOT Tested (Gaps)
 
 ### 4.1 Not covered by automated tests
 
 | Area | Reason | Risk |
 |---|---|---|
-| **Firestore CRUD operations** (`src/services/`) | Requires Firebase Emulator or real Firestore connection. Mocking Firestore is fragile and doesn't validate query semantics. | Medium — atomic batch write logic in `createOrder()` is the most complex write operation. |
+| **Firestore CRUD operations** (`src/services/`) | Requires Firebase Emulator or real Firestore connection. Mocking Firestore is fragile and doesn't validate query semantics. | Medium — atomic batch write logic in `createOrder()` is the most complex write operation. Audit logging (`writeAuditLog`) is now called from all service write functions but is not unit tested. |
 | **React components** (`src/components/`) | No React testing library installed. Components are primarily UI wrappers around shadcn/ui primitives. | Low — UI bugs are caught during manual testing. |
 | **Next.js pages** (`src/app/(app)/`) | Server components with Firestore subscriptions. Testing requires full Next.js test server. | Low — page-level logic is thin; business logic is in services/lib. |
 | **Chrome extension** (`extensao-anvisa/`) | Runs in browser context against gov.br DOM. Cannot be unit tested. | High — ANVISA portal DOM changes will silently break it. |
@@ -315,7 +357,11 @@ Use this checklist when deploying significant changes. Each item should be verif
 ### 5.1c Shipping Choice & Email Notifications
 
 - [ ] **Post-finalization dialog**: Complete the Nova Venda wizard. Verify a shipping choice dialog appears with two options: "TriStar Express" and "Enviar do Brasil".
-- [ ] **TriStar option**: Click "TriStar Express". Verify it opens the TriStar shipment dialog pre-populated with order data.
+- [ ] **TriStar option**: Click "TriStar Express". Verify it opens the TriStar shipment dialog pre-populated with order data (recipient name, CPF, address from order's shipping address).
+- [ ] **TriStar multi-item**: In the TriStar dialog, add 2+ items with different types, descriptions, and prices. Submit → verify all items appear in the shipment.
+- [ ] **TriStar CBD item**: Add a CBD (type 40) item. Verify ANVISA fields appear. Fill them and submit → verify no API errors.
+- [ ] **TriStar insurance**: Toggle insurance on, set a value. Submit → verify the shipment is created with insurance.
+- [ ] **TriStar success**: After creating a shipment, verify tracking code and label download button appear in the success state.
 - [ ] **Brazil option**: Click "Enviar do Brasil". Verify an email notification is sent to adm@entouragelab.com with the order summary (order ID, client name, amount, products).
 - [ ] **Rep notification (TriStar)**: Ship a rep-assigned order via TriStar. Verify the assigned rep receives an email notification with the tracking code and order details.
 - [ ] **No API key graceful**: If RESEND_API_KEY is not configured, verify the system logs a warning but does not throw an error. The order flow should complete normally.
@@ -434,11 +480,14 @@ $ npm test
 | GlobalPay integration | 17 tests | **Low** | Auth, caching, retry, error mapping covered. |
 | ZapSign integration | 26 tests | **Low** | Markdown, API, sandbox, errors covered. |
 | Webhook handlers | 19 tests | **Low** | Parsing, idempotency, status logic covered. |
-| Firestore services | 0 tests | **Medium** | Atomic batch writes not tested. Recommend Firebase Emulator tests. |
+| Firestore services | 0 tests | **Medium** | Atomic batch writes not tested. Audit logging (`writeAuditLog`) called from all write functions but not unit tested. Recommend Firebase Emulator tests. |
 | React components | 0 tests | **Low** | Thin UI wrappers. Low defect probability. |
 | Chrome extension | 0 tests | **High** | Dependent on ANVISA portal DOM. Highest regression risk. |
 | AI/OCR pipeline | 0 tests | **Medium** | Dependent on image quality and model accuracy. |
 | E2E flows | 0 tests | **Medium** | Integration between modules not automatically verified. |
+| Audit logging | 0 tests | **Medium** | `writeAuditLog()` called from all service write functions. Needs Firebase Emulator tests to verify entries are written correctly. |
+| TriStar integration | 0 tests | **Medium** | Payload format corrected (flat fields, multi-item). Homologation passed (IDs 1825, 1826). No automated tests — relies on Zod validation and manual QA. |
+| API route auth/validation | 0 tests | **Low** | `requireAuth()` and `validateBody()` middleware added to all routes. Simple pass-through logic with minimal branching. |
 
 ---
 
