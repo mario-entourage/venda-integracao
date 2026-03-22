@@ -14,7 +14,8 @@
       "Skill(plan-eng-review)",
       "Skill(plan-eng-review:*)",
       "Skill(qa)",
-      "Skill(qa:*)"
+      "Skill(qa:*)",
+      "Bash(find /Users/mariobonifacio/Projects/sales_integration/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))"
     ]
   },
   "hooks": {
