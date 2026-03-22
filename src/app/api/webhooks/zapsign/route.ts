@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/firebase/admin';
 
@@ -18,22 +19,53 @@ import { adminDb } from '@/firebase/admin';
  *
  * Configure the webhook URL in the ZapSign dashboard:
  *   https://app.entouragelab.com/api/webhooks/zapsign
+ *
+ * Webhook authentication: set ZAPSIGN_WEBHOOK_TOKEN in env vars and configure
+ * the same value in ZapSign's dashboard. It will be sent as the
+ * `X-ZapSign-Token` header on each request. If the env var is not set,
+ * the check is skipped (graceful degradation).
  */
-export async function POST(request: NextRequest) {
-  let body: Record<string, unknown>;
 
+const PayloadSchema = z.object({
+  event_action: z.string().optional(),
+  document: z.object({
+    token: z.string().optional(),
+    external_id: z.string().optional(),
+    status: z.string().optional(),
+  }).passthrough().optional(),
+}).passthrough();
+
+export async function POST(request: NextRequest) {
+  // ── Webhook secret verification (optional, enabled when env var is set) ────
+  const expectedToken = process.env.ZAPSIGN_WEBHOOK_TOKEN;
+  if (expectedToken) {
+    const receivedToken = request.headers.get('x-zapsign-token') ?? '';
+    if (receivedToken !== expectedToken) {
+      console.warn('[webhook/zapsign] Invalid webhook token — request rejected');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
+
+  let raw: unknown;
   try {
-    body = await request.json();
+    raw = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  console.log('[webhook/zapsign] Received:', JSON.stringify(body));
+  const parsed = PayloadSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn('[webhook/zapsign] Payload validation failed:', parsed.error.flatten());
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 422 });
+  }
+
+  const payload = parsed.data;
+  console.log('[webhook/zapsign] Received:', JSON.stringify(payload));
 
   // ── Parse payload ──────────────────────────────────────────────────────────
 
-  const eventAction = String(body.event_action ?? '');
-  const document = (body.document ?? {}) as Record<string, unknown>;
+  const eventAction = String(payload.event_action ?? '');
+  const document = payload.document ?? {};
   const docToken = String(document.token ?? '');
   const orderId = String(document.external_id ?? '');   // set by us at creation
   const docStatus = String(document.status ?? '');

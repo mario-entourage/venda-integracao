@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { requireAuth } from '../../_require-auth';
+import { validateBody } from '../../_validate';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,13 +52,20 @@ const EMPTY_DATA: ClassifyAndExtractResponse['extractedData'] = {
   doctorMobilePhone: null, doctorEmail: null,
 };
 
-export async function POST(request: NextRequest) {
-  try {
-    const { imageBase64, mimeType = 'image/jpeg' } = await request.json();
+const BodySchema = z.object({
+  imageBase64: z.string().min(1, 'imageBase64 is required'),
+  mimeType: z.string().optional().default('image/jpeg'),
+});
 
-    if (!imageBase64) {
-      return NextResponse.json({ error: 'imageBase64 is required' }, { status: 400 });
-    }
+export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth instanceof Response) return auth;
+
+  const body = await validateBody(request, BodySchema);
+  if (body instanceof Response) return body;
+
+  try {
+    const { imageBase64, mimeType } = body;
 
     const { ai } = await import('@/ai/genkit');
 
