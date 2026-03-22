@@ -268,7 +268,7 @@ export default function OrderDetailPage() {
       await updateOrderRepresentative(firestore, orderId, {
         name: isNone ? 'Venda Direta' : name,
         userId: isNone ? '' : userId,
-      });
+      }, user!.uid);
       setRepresentative((prev) =>
         prev
           ? { ...prev, name: isNone ? 'Venda Direta' : name, userId: isNone ? '' : userId }
@@ -307,7 +307,7 @@ export default function OrderDetailPage() {
       await updateOrder(firestore, orderId, {
         [field]: 'signed',
         updatedById: user.uid,
-      });
+      }, user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark signed error:', err);
       setUpdateError('Erro ao atualizar status.');

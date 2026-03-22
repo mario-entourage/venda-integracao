@@ -70,7 +70,7 @@ export function StepPagamento({
   preAssignedInvoice,
   preAssignedAmount,
 }: StepPagamentoProps) {
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -127,7 +127,7 @@ export function StepPagamento({
 
         // Save frete to order document
         if (frete > 0) {
-          await updateOrder(firestore, orderId, { frete });
+          await updateOrder(firestore, orderId, { frete }, user!.uid);
         }
       }
 

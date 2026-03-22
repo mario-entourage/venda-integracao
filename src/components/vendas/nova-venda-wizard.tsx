@@ -572,7 +572,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
       // Persist to Firestore immediately (non-fatal)
       if (firestore && state.orderId) {
         try {
-          await updateOrderRepresentative(firestore, state.orderId, { name, userId: id });
+          await updateOrderRepresentative(firestore, state.orderId, { name, userId: id }, user!.uid);
           console.log('[wizard] Representative updated:', name);
         } catch (err) {
           console.warn('[wizard] Representative update failed (non-fatal):', err);

@@ -87,7 +87,7 @@ export default function ClienteDetailPage() {
         phone: data.phone || '',
         birthDate: data.birthDate ? Timestamp.fromDate(data.birthDate) : undefined,
         address: data.address ?? undefined,
-      }, user?.uid);
+      }, user!.uid);
       toast({ title: 'Cliente atualizado com sucesso.' });
       setEditing(false);
     } catch (err) {
@@ -101,7 +101,7 @@ export default function ClienteDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteClient(db, id, user?.uid);
+      await softDeleteClient(db, id, user!.uid);
       toast({ title: 'Cliente desativado.' });
       router.push('/clientes');
     } catch (err) {

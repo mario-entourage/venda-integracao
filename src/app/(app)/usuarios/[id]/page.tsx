@@ -88,7 +88,7 @@ export default function UsuarioDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteUser(db, id, user?.uid);
+      await softDeleteUser(db, id, user!.uid);
       toast({ title: 'Usuario desativado com sucesso.' });
       router.push('/usuarios');
     } catch (err) {
@@ -128,7 +128,7 @@ export default function UsuarioDetailPage() {
                 checked={!!userData.isRepresentante}
                 onCheckedChange={async (val) => {
                   try {
-                    await updateUser(db, id, { isRepresentante: val }, user?.uid);
+                    await updateUser(db, id, { isRepresentante: val }, user!.uid);
                     toast({ title: val ? 'Marcado como representante.' : 'Representante removido.' });
                   } catch {
                     toast({ title: 'Erro ao atualizar.', variant: 'destructive' });

@@ -21,7 +21,7 @@ export default function NovoClientePage() {
   const handleSubmit = async (data: CustomerFormValues) => {
     setIsLoading(true);
     try {
-      await createClient(db, data, user?.uid);
+      await createClient(db, data, user!.uid);
       toast({ title: 'Cliente cadastrado com sucesso.' });
       router.push('/clientes');
     } catch (err) {

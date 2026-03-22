@@ -50,7 +50,7 @@ export default function NovoRepresentantePage() {
     }
     setIsLoading(true);
     try {
-      await updateUser(db, selectedUserId, { isRepresentante: true }, user?.uid);
+      await updateUser(db, selectedUserId, { isRepresentante: true }, user!.uid);
       toast({ title: 'Usuário promovido a representante.' });
       router.push('/representantes');
     } catch (err) {
@@ -69,10 +69,10 @@ export default function NovoRepresentantePage() {
     }
     setIsLoading(true);
     try {
-      await createPreregistration(db, newEmail.trim(), 'user', {
+      await createPreregistration(db, newEmail.trim(), 'user', user!.uid, {
         isRepresentante: true,
         displayName: newDisplayName.trim() || undefined,
-      }, user?.uid);
+      });
       toast({ title: 'Pré-registro criado. O usuário será representante ao fazer login.' });
       router.push('/representantes');
     } catch (err) {

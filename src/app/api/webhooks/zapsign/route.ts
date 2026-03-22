@@ -44,6 +44,8 @@ export async function POST(request: NextRequest) {
       console.warn('[webhook/zapsign] Invalid webhook token — request rejected');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+  } else {
+    console.warn('[webhook/zapsign] ZAPSIGN_WEBHOOK_TOKEN not set — signature check disabled');
   }
 
   let raw: unknown;
