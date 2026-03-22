@@ -68,7 +68,7 @@ export default function RepresentanteDetailPage() {
   const handleRemoveRep = async () => {
     setRemoving(true);
     try {
-      await updateUser(db, id, { isRepresentante: false }, currentUser?.uid);
+      await updateUser(db, id, { isRepresentante: false }, currentUser!.uid);
       toast({ title: 'Representante removido.' });
       router.push('/representantes');
     } catch (err) {

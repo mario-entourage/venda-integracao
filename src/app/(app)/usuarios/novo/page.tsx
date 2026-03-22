@@ -59,7 +59,7 @@ export default function NovoUsuarioPage() {
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      await createPreregistration(db, values.email, values.groupId, undefined, user?.uid);
+      await createPreregistration(db, values.email, values.groupId, user!.uid);
       toast({ title: 'Usuario pre-cadastrado com sucesso.' });
       router.push('/usuarios');
     } catch (err) {

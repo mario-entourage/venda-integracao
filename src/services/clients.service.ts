@@ -30,7 +30,7 @@ export function getClientRef(db: Firestore, clientId: string) {
 export async function createClient(
   db: Firestore,
   data: CustomerFormValues,
-  performedById?: string,
+  performedById: string,
 ): Promise<string> {
   const ref = await addDoc(getClientsRef(db), {
     document: data.document,
@@ -46,9 +46,7 @@ export async function createClient(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'create', collection: 'clients', documentId: ref.id, performedById });
-  }
+  await writeAuditLog(db, { action: 'create', collection: 'clients', documentId: ref.id, performedById, changes: data as unknown as Record<string, unknown> });
   return ref.id;
 }
 
@@ -59,15 +57,13 @@ export async function updateClient(
   db: Firestore,
   clientId: string,
   data: Partial<Omit<Client, 'id' | 'createdAt'>>,
-  performedById?: string,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     ...data,
     updatedAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'update', collection: 'clients', documentId: clientId, performedById });
-  }
+  await writeAuditLog(db, { action: 'update', collection: 'clients', documentId: clientId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -76,16 +72,14 @@ export async function updateClient(
 export async function softDeleteClient(
   db: Firestore,
   clientId: string,
-  performedById?: string,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     active: false,
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'soft_delete', collection: 'clients', documentId: clientId, performedById });
-  }
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'clients', documentId: clientId, performedById, changes: { active: false } });
 }
 
 /**

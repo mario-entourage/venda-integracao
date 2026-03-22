@@ -102,7 +102,7 @@ export default function MedicoDetailPage() {
         phone: data.phone || '',
         mobilePhone: data.mobilePhone || '',
         repUserId: data.repUserId || '',
-      }, user?.uid);
+      }, user!.uid);
       toast({ title: 'Medico atualizado com sucesso.' });
       setEditing(false);
     } catch (err) {
@@ -116,7 +116,7 @@ export default function MedicoDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteDoctor(db, id, user?.uid);
+      await softDeleteDoctor(db, id, user!.uid);
       toast({ title: 'Medico desativado.' });
       router.push('/medicos');
     } catch (err) {

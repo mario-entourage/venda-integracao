@@ -21,7 +21,7 @@ export default function NovoMedicoPage() {
   const handleSubmit = async (data: DoctorFormValues) => {
     setIsLoading(true);
     try {
-      await createDoctor(db, data, user?.uid);
+      await createDoctor(db, data, user!.uid);
       toast({ title: 'Medico cadastrado com sucesso.' });
       router.push('/medicos');
     } catch (err) {

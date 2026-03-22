@@ -77,6 +77,8 @@ export async function POST(request: NextRequest) {
       console.warn('[webhook/payment] Invalid webhook token — request rejected');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+  } else {
+    console.warn('[webhook/payment] GLOBALPAY_WEBHOOK_SECRET not set — signature check disabled');
   }
 
   let raw: unknown;
