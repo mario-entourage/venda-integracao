@@ -120,11 +120,35 @@ VENDAS (menu: Vendas | rota: /remessas)
 
 ENVIO (menu: Envio | rota: /envio)
   Gerenciamento de envios e rastreamento de entregas.
-  - Integracao com TriStar para criacao de remessas.
+  - Metodos: TriStar Express, Correios (Sedex/PAC), Motoboy.
+
+  TriStar Express (envio internacional de Miami):
+  - Dialog de criacao de remessa com campos do destinatario
+    (nome, CPF, endereco, telefone, email).
+  - Suporte a MULTIPLOS ITENS por remessa: adicione linhas
+    com "+ Adicionar item". Cada item tem tipo, descricao,
+    quantidade e preco unitario.
+  - Tipos de item: Produtos (10), Livros (20), Medicamento
+    (30), CBD (40), THC (41), Outro (90).
+  - Para itens CBD (tipo 40): campos adicionais de numero
+    de autorizacao ANVISA e nome comercial do produto.
+  - Seguro: toggle para incluir seguro com valor declarado.
+  - Dados do remetente (Entourage Lab Miami) sao inseridos
+    automaticamente pelo servidor — nao e necessario
+    preencher.
+  - Apos criar a remessa: exibe codigo de rastreamento,
+    ID da remessa, e botao para baixar etiqueta (PDF).
   - Gera etiquetas de envio (PDF).
   - Rastreamento de encomendas.
   - Status de envio atualizado automaticamente.
-  - Metodos: TriStar, Correios (Sedex/PAC), Motoboy.
+
+  Correios (envio nacional):
+  - Entrada manual: codigo de rastreio, transportadora
+    (Sedex/PAC), data de envio.
+
+  Motoboy (entrega local):
+  - Entrada manual: nome do entregador, telefone, previsao
+    de entrega.
 
 CONTROLE (menu: Controle | rota: /controle)
   Lista de pedidos com filtros robustos e visao detalhada.
