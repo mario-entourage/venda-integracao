@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import type { Client } from '@/types/client';
 import type { CustomerFormValues } from '@/types/forms';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -29,6 +30,7 @@ export function getClientRef(db: Firestore, clientId: string) {
 export async function createClient(
   db: Firestore,
   data: CustomerFormValues,
+  performedById?: string,
 ): Promise<string> {
   const ref = await addDoc(getClientsRef(db), {
     document: data.document,
@@ -44,6 +46,9 @@ export async function createClient(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'create', collection: 'clients', documentId: ref.id, performedById });
+  }
   return ref.id;
 }
 
@@ -54,11 +59,15 @@ export async function updateClient(
   db: Firestore,
   clientId: string,
   data: Partial<Omit<Client, 'id' | 'createdAt'>>,
+  performedById?: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'update', collection: 'clients', documentId: clientId, performedById });
+  }
 }
 
 /**
@@ -67,12 +76,16 @@ export async function updateClient(
 export async function softDeleteClient(
   db: Firestore,
   clientId: string,
+  performedById?: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     active: false,
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'soft_delete', collection: 'clients', documentId: clientId, performedById });
+  }
 }
 
 /**

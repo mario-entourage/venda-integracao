@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import type { Doctor } from '@/types/doctor';
 import type { DoctorFormValues } from '@/types/forms';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -29,6 +30,7 @@ export function getDoctorRef(db: Firestore, doctorId: string) {
 export async function createDoctor(
   db: Firestore,
   data: DoctorFormValues,
+  performedById?: string,
 ): Promise<string> {
   const ref = await addDoc(getDoctorsRef(db), {
     firstName: data.firstName,
@@ -46,6 +48,9 @@ export async function createDoctor(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'create', collection: 'doctors', documentId: ref.id, performedById });
+  }
   return ref.id;
 }
 
@@ -56,11 +61,15 @@ export async function updateDoctor(
   db: Firestore,
   doctorId: string,
   data: Partial<Omit<Doctor, 'id' | 'createdAt'>>,
+  performedById?: string,
 ): Promise<void> {
   await updateDoc(getDoctorRef(db, doctorId), {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'update', collection: 'doctors', documentId: doctorId, performedById });
+  }
 }
 
 /**
@@ -69,12 +78,16 @@ export async function updateDoctor(
 export async function softDeleteDoctor(
   db: Firestore,
   doctorId: string,
+  performedById?: string,
 ): Promise<void> {
   await updateDoc(getDoctorRef(db, doctorId), {
     active: false,
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  if (performedById) {
+    await writeAuditLog(db, { action: 'soft_delete', collection: 'doctors', documentId: doctorId, performedById });
+  }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { TriStarStockListResponse } from '@/types/shipping';
+import { requireAuth } from '../../_require-auth';
 
 /**
  * Fetch current stock/inventory levels from the TriStar Express API.
@@ -12,6 +13,9 @@ import type { TriStarStockListResponse } from '@/types/shipping';
  * TriStar endpoint: GET /stocks
  */
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth instanceof Response) return auth;
+
   const apiUrl = process.env.TRISTAR_API_URL;
   const apiKey = process.env.TRISTAR_API_KEY;
 

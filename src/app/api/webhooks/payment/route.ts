@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/firebase/admin';
 import { Resend } from 'resend';
@@ -19,10 +20,25 @@ import { Resend } from 'resend';
  * The `invoice` field equals the `referenceId` we passed at link creation time.
  * For new orders this is the programmatic invoice number ("ETGA NS #####").
  * For legacy orders this is the Firestore order ID.
+ *
+ * Webhook authentication: set GLOBALPAY_WEBHOOK_SECRET in env vars and configure
+ * the same value in GlobalPay's dashboard to send it as the `X-Webhook-Token` header.
+ * If the env var is not set, the check is skipped (graceful degradation).
  */
 
 // GlobalPay "approved" status values
 const APPROVED_STATUSES = new Set(['approved', 'paid', 'completed', 'success']);
+
+const PayloadSchema = z.object({
+  invoice: z.string().optional(),
+  referenceId: z.string().optional(),
+  orderId: z.string().optional(),
+  gpOrderId: z.string().optional(),
+  status: z.string().optional(),
+  statusType: z.string().optional(),
+  amount: z.number().optional().default(0),
+  currency: z.string().optional().default('USD'),
+}).passthrough();
 
 /**
  * Resolve the Firestore order ID from the webhook's invoice/referenceId.
@@ -53,23 +69,39 @@ async function resolveOrderId(
 }
 
 export async function POST(request: NextRequest) {
-  let body: Record<string, unknown>;
+  // ── Webhook secret verification (optional, enabled when env var is set) ────
+  const expectedSecret = process.env.GLOBALPAY_WEBHOOK_SECRET;
+  if (expectedSecret) {
+    const receivedToken = request.headers.get('x-webhook-token') ?? '';
+    if (receivedToken !== expectedSecret) {
+      console.warn('[webhook/payment] Invalid webhook token — request rejected');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+  }
 
+  let raw: unknown;
   try {
-    body = await request.json();
+    raw = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  console.log('[webhook/payment] Received:', JSON.stringify(body));
+  const parsed = PayloadSchema.safeParse(raw);
+  if (!parsed.success) {
+    console.warn('[webhook/payment] Payload validation failed:', parsed.error.flatten());
+    return NextResponse.json({ error: 'Invalid payload' }, { status: 422 });
+  }
+
+  const payload = parsed.data;
+  console.log('[webhook/payment] Received:', JSON.stringify(payload));
 
   // ── Parse payload ──────────────────────────────────────────────────────────
 
-  const invoiceOrId = String(body.invoice ?? body.referenceId ?? '').trim();
-  const gpOrderId = String(body.orderId ?? body.gpOrderId ?? '').trim();
-  const rawStatus = String(body.status ?? body.statusType ?? '').toLowerCase().trim();
-  const amount = Number(body.amount ?? 0);
-  const currency = String(body.currency ?? 'USD');
+  const invoiceOrId = String(payload.invoice ?? payload.referenceId ?? '').trim();
+  const gpOrderId = String(payload.orderId ?? payload.gpOrderId ?? '').trim();
+  const rawStatus = String(payload.status ?? payload.statusType ?? '').toLowerCase().trim();
+  const amount = payload.amount ?? 0;
+  const currency = payload.currency ?? 'USD';
 
   const isApproved = APPROVED_STATUSES.has(rawStatus);
 
