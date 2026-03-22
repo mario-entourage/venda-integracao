@@ -28,37 +28,57 @@ export type TriStarItemTypeValue = (typeof TRISTAR_ITEM_TYPES)[number]['value'];
 // ---------------------------------------------------------------------------
 
 export interface TriStarShipmentItem {
-  type: TriStarItemTypeValue;
+  shipment_item_type: TriStarItemTypeValue;
+  description: string;
   quantity: number;
-  value: number;
-  /** Required when type === 40 (CBD) */
+  unit_price: number;
+  /** Required when shipment_item_type === 40 (CBD) */
   anvisa_import_authorization_number?: string;
-  /** Required when type === 40 (CBD) */
+  /** Required when shipment_item_type === 40 (CBD) */
   anvisa_product_commercial_name?: string;
 }
 
-export interface TriStarRecipientAddress {
-  street: string;
-  number: string;
-  complement?: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  country: string;
-  postal_code: string;
-}
-
-export interface TriStarRecipient {
-  name: string;
-  document: string;
-  address: TriStarRecipientAddress;
-}
-
-export interface TriStarCreateShipmentRequest {
-  recipient: TriStarRecipient;
+/**
+ * Payload sent by the TriStar dialog to our /api/tristar/create-shipment route.
+ * Does NOT include from_* sender fields — those are injected server-side from env vars.
+ */
+export interface TriStarDialogPayload {
+  to_name: string;
+  to_document: string;
+  to_address: string;
+  to_number: string;
+  to_complement?: string;
+  to_neighborhood: string;
+  to_city: string;
+  to_state: string;
+  to_country: string;
+  to_postcode: string;
+  to_phone?: string;
+  to_email?: string;
   items: TriStarShipmentItem[];
-  insurance: boolean;
-  insurance_value: number;
+  with_insurance: boolean;
+  insurance_value?: number;
+}
+
+/**
+ * Full payload sent to the TriStar API.
+ * Extends TriStarDialogPayload with sender (from_*) fields and integration_code,
+ * which are injected server-side from environment variables.
+ */
+export interface TriStarCreateShipmentRequest extends TriStarDialogPayload {
+  from_name: string;
+  from_document: string;
+  from_address: string;
+  from_number: string;
+  from_complement?: string;
+  from_neighborhood: string;
+  from_city: string;
+  from_state: string;
+  from_country: string;
+  from_postcode: string;
+  from_phone: string;
+  from_email: string;
+  integration_code: number;
 }
 
 export interface TriStarShipmentResponse {
