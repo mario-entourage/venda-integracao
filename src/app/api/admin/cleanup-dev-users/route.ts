@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { applicationDefault, getApps, initializeApp } from 'firebase-admin/app';
+import { requireAdmin } from '../_require-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,11 @@ if (getApps().length === 0) {
 
 const DEV_EMAILS = ['dev-admin@entouragelab.com'];
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth_result = await requireAdmin(request);
+  if (auth_result instanceof Response) return auth_result;
+  console.log(`[cleanup-dev-users] Triggered by ${auth_result.email}`);
+
   try {
     const db = getFirestore();
     const auth = getAuth();
