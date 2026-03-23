@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { MoreHorizontal, RefreshCw } from 'lucide-react';
 import { friendlyError } from '@/lib/friendly-error';
-import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirebase, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
   getActiveProductsQuery,
@@ -50,6 +50,7 @@ type DialogMode = 'create' | 'edit' | null;
 
 export default function EstoquePage() {
   const db = useFirestore();
+  const { user } = useFirebase();
   const { toast } = useToast();
 
   // ── Firestore subscriptions ────────────────────────────────────────────────
@@ -174,7 +175,9 @@ export default function EstoquePage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch(SHIPPING_API_ROUTES.inventory);
+      const idToken = await user?.getIdToken();
+      if (!idToken) { toast({ title: 'Sessão expirada. Recarregue.', variant: 'destructive' }); setSyncing(false); return; }
+      const res = await fetch(SHIPPING_API_ROUTES.inventory, { headers: { Authorization: `Bearer ${idToken}` } });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);

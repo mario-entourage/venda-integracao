@@ -178,9 +178,11 @@ export function TriStarDialog({
         insurance_value: withInsurance ? parseFloat(insuranceValue) || 0 : undefined,
       };
 
+      const shipToken = await user?.getIdToken();
+      if (!shipToken) throw new Error('Sessão expirada. Recarregue a página.');
       const res = await fetch(SHIPPING_API_ROUTES.createShipment, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${shipToken}` },
         body: JSON.stringify(payload),
       });
 
