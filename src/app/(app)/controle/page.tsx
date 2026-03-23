@@ -501,7 +501,7 @@ export default function ControlePage() {
         await updateOrder(firestore, orderId, {
           [field]: value,
           updatedById: user.uid,
-        } as Partial<Order>);
+        } as Partial<Order>, user.uid);
         // Optimistic: update local rows
         setRows((prev) =>
           prev.map((r) =>

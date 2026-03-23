@@ -1,6 +1,41 @@
 # **Entourage Lab — Sales Integration Platform**
 
-Comprehensive requirements document for developer handoff. Last updated: 2026-03-17
+Comprehensive requirements document for developer handoff. Last updated: 2026-03-22
+
+---
+
+## **Letter to the Board**
+
+> **ENTOURAGE LAB — OFFICE OF THE CTO**
+>
+> To: The Board of Directors, Entourage Lab
+>
+> Re: Strategic Value of the Sales Integration Platform and Alignment with the Entourage IT Mission Statement
+>
+> Dear Members of the Board,
+>
+> I am writing to communicate the significant progress and increased strategic value that our internally developed Sales Integration Platform now represents for Entourage Lab. What began as an operational tool to replace fragmented spreadsheet-and-WhatsApp workflows has matured into a comprehensive, enterprise-grade system that embodies our company's commitment to regulatory excellence, operational integrity, and patient-centered service.
+>
+> **The Entourage IT Mission Statement** guides every architectural and design decision we make: *to build technology that consolidates complexity into clarity, that respects the intelligence of our operators, that treats regulatory compliance as a first-class engineering concern, and that protects patient data with the same diligence we apply to the medicines we deliver.* This platform is the living expression of that mission.
+>
+> In this latest release cycle, we have made three investments that directly reflect these values:
+>
+> **1. Comprehensive Audit Logging.** Every mutation to patient records, order data, client information, physician records, and user accounts is now tracked with full attribution — who performed the action, when, and exactly what changed. This is not merely a technical feature; it is our commitment to regulatory accountability. In a business that handles controlled pharmaceutical imports under ANVISA oversight, the ability to produce a complete audit trail for any data change is both a compliance requirement and a trust signal to our regulators and partners.
+>
+> **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event. These measures protect against unauthorized access, malformed data injection, and payload tampering — safeguarding both our systems and the sensitive patient data they contain.
+>
+> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the actual API specification, with support for multi-item shipments, proper customs declaration fields, and ANVISA authorization data per item. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry between systems. We have completed API homologation testing and are prepared to transition to the production environment.
+>
+> Together, these improvements transform the platform from an operational convenience into a defensible competitive asset. The audit trail provides regulatory confidence that no spreadsheet can match. The API security posture protects our patients' data at a standard that reflects the pharmaceutical-grade trust our brand represents. And the shipping integration directly reduces the time between a patient's payment and their receipt of medication — which is, ultimately, the outcome that matters most.
+>
+> The platform now processes the complete sale lifecycle — from prescription intake through payment, regulatory authorization, document signing, and international delivery — in a single integrated workflow. Every step is tracked, every mutation is logged, and every external integration is validated and secured. This is technology built not to impress, but to serve — and I believe it reflects the best of what Entourage Lab stands for.
+>
+> Respectfully submitted,
+>
+> **Mario Bonifacio**
+> Chief Technology Officer, Entourage Lab
+>
+> CC: Caio — CEO, Entourage Lab
 
 ---
 
@@ -285,7 +320,8 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | ID | Requirement |
 | :---- | :---- |
 |  | The user may select between three types of shipping: Tristar Express, in-Brazil sending, and local hand-delivery.  |
-| FR-07.1 | TriStar Express: Create shipments via API with recipient address, items (type, quantity, value, ANVISA authorization number, product name). |
+| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, and optional ANVISA fields for CBD products. |
+| FR-07.1a | The TriStar dialog supports dynamic item management: operators can add and remove item rows. Each item has its own product type, description, quantity, and unit price. ANVISA authorization number and commercial name fields appear automatically when an item's type is set to CBD (40). |
 | FR-07.2 | TriStar item types: Produtos (10), Livros (20), Medicamento (30), CBD (40), THC (41), Outro (90). |
 | FR-07.3 | Track shipment status and retrieve tracking codes. |
 | FR-07.4 | Generate and download shipping labels. |
@@ -371,6 +407,9 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-03.4 | Sensitive API keys stored as Firebase App Hosting secrets, never in client code. Secrets: GOOGLE\_API\_KEY, GLOBALPAY\_API\_URL, GLOBALPAY\_PUB\_KEY, ZAPSIGN\_API\_KEY, TRISTAR\_API\_KEY. |
 | NFR-03.5 | ANVISA requests: owner-or-admin access control. Users can only read/update their own requests unless they are admins. |
 | NFR-03.6 | Super-admin status checked via hardcoded email list in both client code and Firestore rules. |
+| NFR-03.7 | **API route authentication:** All server-side API routes enforce Firebase Authentication via a `requireAuth()` middleware that verifies the Firebase ID token from the request's Authorization header. Unauthenticated requests receive a 401 response. Admin-only routes use a `requireAdmin()` variant. |
+| NFR-03.8 | **Request body validation:** All API routes that accept a request body validate it against a Zod schema via `validateBody()`. Malformed or missing fields return a 422 response with structured error details. This prevents injection of unexpected data types or missing required fields. |
+| NFR-03.9 | **Webhook secret verification:** The GlobalPay webhook verifies the `X-GP-Signature` header against `GLOBALPAY_WEBHOOK_SECRET`. The ZapSign webhook verifies the `X-ZapSign-Token` header against `ZAPSIGN_WEBHOOK_TOKEN`. When these environment variables are not configured, a `console.warn` is emitted on every request to surface the misconfiguration. Invalid tokens return 401. |
 
 #### **NFR-04 Scalability**
 
@@ -387,6 +426,9 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-05.1 | Every document tracks createdAt, updatedAt, createdById, updatedById. |
 | NFR-05.2 | Soft deletes preserve historical records. Active flags: active (products, clients, doctors, reps, users) and softDeleted (orders, ANVISA requests). |
 | NFR-05.3 | Deleted ANVISA requests are archived to anvisa\_deleted\_requests (write-protected collection). |
+| NFR-05.4 | **Comprehensive audit logging:** All write operations (create, update, soft-delete) on orders, clients, doctors, users, and pre-registrations are logged to the `audit_logs` collection via `writeAuditLog()`. Each log entry records: action type, target collection, document ID, `performedById` (the authenticated user who performed the action), a `changes` payload documenting what was modified, and a server-generated timestamp. |
+| NFR-05.5 | **Mandatory audit context:** The `performedById` parameter is required (not optional) on all service-layer write functions. TypeScript enforces this at compile time — callers that omit the authenticated user's UID will not compile. This prevents accidental unaudited writes. |
+| NFR-05.6 | **Audit trail for orders:** The orders collection — the most business-critical entity — has full audit coverage across all four write functions: `createOrder`, `updateOrderStatus`, `updateOrder`, and `updateOrderRepresentative`. Each logs the performing user and the specific changes made. |
 
 #### **NFR-06 Usability**
 
@@ -459,13 +501,16 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Attribute | Value |
 | :---- | :---- |
 | Purpose | Create shipments from Miami warehouse, generate labels, and track delivery. |
-| Base URL | https://sandbox.tristarexpress.com/v1/ (configurable via TRISTAR\_API\_URL). NOTE: Currently configured for sandbox. |
+| Base URL | https://sandbox.tristarexpress.com/v1/ (configurable via TRISTAR\_API\_URL). NOTE: Currently configured for sandbox. Homologation complete — shipment IDs 1825 and 1826 created successfully. Awaiting production API credentials from TriStar. |
 | Authentication | Bearer API key. |
 | Endpoints | POST /shipments — create shipment |
 |  | GET /tracking/{shipmentId} — track status |
 |  | POST /shipments/{shipmentId}/label — generate label |
 |  | POST /shipments/{shipmentId}/confirm — confirm dispatch |
-| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret) |
+| Payload format | Flat field structure: `from_*` fields (sender, read from env vars server-side) and `to_*` fields (recipient, sent from dialog). Items array uses `shipment_item_type` (numeric code), `description`, `quantity`, `unit_price`. CBD items (type 40) include `anvisa_import_authorization_number` and `anvisa_product_commercial_name`. Boolean `with_insurance` flag. `integration_code` from env var. |
+| Multi-item | The TriStar dialog supports multiple items per shipment. Each item has its own type, description, quantity, and unit price. ANVISA fields appear per-item when the item type is CBD (40). |
+| Sender config | Static sender (Entourage Lab Miami warehouse) configured via `TRISTAR_FROM_*` environment variables. The API route reads these server-side and injects them into the TriStar payload — the client dialog never sees or sends sender data. |
+| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret), TRISTAR\_FROM\_NAME, TRISTAR\_FROM\_DOCUMENT, TRISTAR\_FROM\_ADDRESS, TRISTAR\_FROM\_NUMBER, TRISTAR\_FROM\_NEIGHBORHOOD, TRISTAR\_FROM\_CITY, TRISTAR\_FROM\_STATE, TRISTAR\_FROM\_COUNTRY, TRISTAR\_FROM\_POSTCODE, TRISTAR\_FROM\_PHONE, TRISTAR\_FROM\_EMAIL, TRISTAR\_INTEGRATION\_CODE (all plain) |
 
 #### **INT-05 Google Gemini — AI Document Processing**
 
@@ -751,6 +796,21 @@ Each request has subcollections: pacienteDocuments, procuracaoDocuments, comprov
 
 ---
 
+#### **audit\_logs/{logId} — Audit trail**
+
+Every write operation (create, update, soft-delete) on business-critical collections is logged here.
+
+| Field | Type | Description |
+| :---- | :---- | :---- |
+| action | string | create, update, soft\_delete, update\_representative, update\_status |
+| collection | string | Target collection name (orders, clients, doctors, users, preregistrations) |
+| documentId | string | ID of the affected document |
+| performedById | string | Firebase Auth UID of the user who performed the action |
+| changes | object | Key-value map of what was changed |
+| timestamp | Timestamp | Server-generated timestamp |
+
+---
+
 #### **Supporting Collections**
 
 | Collection | Purpose |
@@ -788,7 +848,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | :---- | :---- | :---- | :---- |
 | ANVISA portal DOM changes | High | High | The Chrome extension relies on specific CSS selectors and DOM structure of the gov.br ANVISA portal. Any redesign of the portal will break the extension. There is no API alternative — ANVISA only offers a web form. Monitor the portal for changes; maintain a test suite of expected selectors. |
 | GlobalPay API instability | Medium | Medium | GlobalPay uses non-standard conventions (statusCode \=== 1 for success, custom error codes). Documentation is sparse. The integration has 40+ error code mappings that were reverse-engineered. New error codes may appear without notice. |
-| TriStar API in sandbox mode | High | Certain | The TriStar API URL is currently set to sandbox (https://sandbox.tristarexpress.com/v1/). Before going live with TriStar shipping, this must be switched to production AND the API behavior validated against real shipments. The inventory sync endpoint is not yet known. |
+| TriStar API in sandbox mode | Medium | Certain | The TriStar API URL is currently set to sandbox. Homologation testing is complete (shipment IDs 1825 and 1826 created successfully with multi-item payloads). The payload format has been corrected to match the actual API specification (flat `from_*`/`to_*` fields, `shipment_item_type`, `unit_price`, `description`). Production migration requires: (1) receiving production API credentials from TriStar, (2) updating `TRISTAR_API_URL` and `TRISTAR_API_KEY` env vars, (3) validating one test shipment in production. The inventory sync endpoint is not yet known. |
 | Firestore batch write limits | Low | Low | Firestore limits batch writes to 500 operations. CSV import chunks at 80 rows to stay safe. If order subcollections grow significantly, single-order creation could approach limits. Currently well within bounds. |
 | AI OCR accuracy | Medium | Medium | Gemini OCR extraction depends on image quality. Poor scans, handwritten prescriptions, or unusual formats may produce incorrect field values. The system shows confidence scores and allows manual correction, but operators must verify. |
 | Exchange rate timing | Low | Low | PTAX rates are fetched at order creation time and stored with the order. If there is a significant delay between order creation and payment, the rate used may differ from the actual rate at payment time. Currently mitigated by the 30-minute cache and the fact that most payments happen within 24 hours. |
@@ -923,6 +983,20 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | ZAPSIGN\_API\_KEY | Secret | ZapSign API key |
 | TRISTAR\_API\_URL | Plain | https://sandbox.tristarexpress.com/v1/ |
 | TRISTAR\_API\_KEY | Secret | TriStar Express API key |
+| TRISTAR\_FROM\_NAME | Plain | Sender name (Entourage Lab) |
+| TRISTAR\_FROM\_DOCUMENT | Plain | Sender document/tax ID |
+| TRISTAR\_FROM\_ADDRESS | Plain | Sender street address |
+| TRISTAR\_FROM\_NUMBER | Plain | Sender address number |
+| TRISTAR\_FROM\_NEIGHBORHOOD | Plain | Sender neighborhood |
+| TRISTAR\_FROM\_CITY | Plain | Sender city (Miami) |
+| TRISTAR\_FROM\_STATE | Plain | Sender state (FL) |
+| TRISTAR\_FROM\_COUNTRY | Plain | Sender country (US) |
+| TRISTAR\_FROM\_POSTCODE | Plain | Sender postal code |
+| TRISTAR\_FROM\_PHONE | Plain | Sender phone number |
+| TRISTAR\_FROM\_EMAIL | Plain | Sender email (logistics@entouragelab.com) |
+| TRISTAR\_INTEGRATION\_CODE | Plain | TriStar integration identifier (default: 1) |
+| GLOBALPAY\_WEBHOOK\_SECRET | Secret | GlobalPay webhook signature verification token |
+| ZAPSIGN\_WEBHOOK\_TOKEN | Secret | ZapSign webhook token verification |
 | RESEND\_API\_KEY | Secret | Resend email API key (for shipping notifications) |
 
 ## **Appendix: Tech Stack**

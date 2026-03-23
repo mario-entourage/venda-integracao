@@ -6,6 +6,7 @@ import {
 import type {
   Order, ShippingAddress,
 } from '@/types';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -194,6 +195,18 @@ export async function createOrder(
 
   // Phase 4 -- Commit everything atomically.
   await batch.commit();
+  await writeAuditLog(db, {
+    action: 'create',
+    collection: 'orders',
+    documentId: orderId,
+    performedById: createdById,
+    changes: {
+      amount,
+      currency: orderData.currency || 'BRL',
+      customerName: orderData.customer.name,
+      products: orderData.products.map((p) => `${p.productName} x${p.quantity}`),
+    },
+  });
   return orderId;
 }
 
@@ -216,6 +229,7 @@ export async function updateOrderStatus(
     updatedById,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update_status', collection: 'orders', documentId: orderId, performedById: updatedById, changes: { status } });
 }
 
 /**
@@ -225,12 +239,14 @@ export async function updateOrder(
   db: Firestore,
   orderId: string,
   data: Partial<Omit<Order, 'id' | 'createdAt' | 'createdById'>>,
+  performedById: string,
 ): Promise<void> {
   const orderRef = getOrderRef(db, orderId);
   await updateDoc(orderRef, {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'orders', documentId: orderId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +371,7 @@ export async function updateOrderRepresentative(
   db: Firestore,
   orderId: string,
   representative: { name: string; userId: string },
+  performedById: string,
 ): Promise<void> {
   const repRef = collection(db, 'orders', orderId, 'representative');
   const snap = await getDocs(repRef);
@@ -365,4 +382,5 @@ export async function updateOrderRepresentative(
       updatedAt: serverTimestamp(),
     });
   }
+  await writeAuditLog(db, { action: 'update_representative', collection: 'orders', documentId: orderId, performedById, changes: representative });
 }

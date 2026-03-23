@@ -35,8 +35,8 @@ export async function createPreregistration(
   db: Firestore,
   email: string,
   groupId: string,
+  performedById: string,
   options?: { isRepresentante?: boolean; displayName?: string },
-  performedById?: string,
 ): Promise<void> {
   const ref = getPreregistrationRef(db, email);
   await setDoc(ref, {
@@ -46,9 +46,7 @@ export async function createPreregistration(
     ...(options?.displayName ? { displayName: options.displayName } : {}),
     createdAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'create', collection: 'preregistrations', documentId: ref.id, performedById });
-  }
+  await writeAuditLog(db, { action: 'create', collection: 'preregistrations', documentId: ref.id, performedById, changes: { email, groupId, ...options } });
 }
 
 /**
@@ -185,16 +183,14 @@ export async function updateUser(
   db: Firestore,
   userId: string,
   data: Partial<Omit<User, 'id' | 'createdAt'>>,
-  performedById?: string,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
     ...data,
     updatedAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'update', collection: 'users', documentId: userId, performedById });
-  }
+  await writeAuditLog(db, { action: 'update', collection: 'users', documentId: userId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -203,7 +199,7 @@ export async function updateUser(
 export async function softDeleteUser(
   db: Firestore,
   userId: string,
-  performedById?: string,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
@@ -211,9 +207,7 @@ export async function softDeleteUser(
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
-  if (performedById) {
-    await writeAuditLog(db, { action: 'soft_delete', collection: 'users', documentId: userId, performedById });
-  }
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'users', documentId: userId, performedById, changes: { active: false } });
 }
 
 /**

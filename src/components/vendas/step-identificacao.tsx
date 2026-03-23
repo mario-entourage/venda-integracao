@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import { useToast } from '@/hooks/use-toast';
 import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useFirebase } from '@/firebase/provider';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -151,6 +152,7 @@ export function StepIdentificacao({
   frete, onFreteChange,
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
+  const { user } = useFirebase();
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -359,12 +361,15 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      const idToken = await user?.getIdToken();
+      if (!idToken) { setExtractionMsg('Sessão expirada. Recarregue a página.'); return; }
       const res = await fetchWithTimeout('/api/ai/extract-prescription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
+      if (!res.ok) { setExtractionMsg('Falha na autenticação. Recarregue a página.'); return; }
       const data: PrescriptionExtraction = await res.json();
       if (data._error) { setExtractionMsg(data._error); return; }
 
@@ -445,7 +450,7 @@ export function StepIdentificacao({
     } finally {
       setIsExtracting(false);
     }
-  }, [clients, doctors, allProducts, onChange, exchangeRate]);
+  }, [user, clients, doctors, allProducts, onChange, exchangeRate]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
