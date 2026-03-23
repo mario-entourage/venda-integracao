@@ -135,6 +135,7 @@ export function StepPagamento({
 
       // Notify rep (fire-and-forget)
       if (firestore && repUserId && repEmail) {
+        const tkn = await user?.getIdToken().catch(() => undefined);
         notifyPaymentLinkCreated(firestore, {
           recipientUserId: repUserId,
           recipientEmail: repEmail,
@@ -142,6 +143,7 @@ export function StepPagamento({
           invoiceNumber: result.invoiceNumber,
           amount: totalWithFrete,
           currency,
+          idToken: tkn,
         }).catch(() => {});
       }
     } catch (err) {

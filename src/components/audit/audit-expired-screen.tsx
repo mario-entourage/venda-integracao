@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { Clock, Mail } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
+import { useFirebase } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { MODULE_KEYS, type ModuleKey } from '@/types/audit';
 
 export function AuditExpiredScreen() {
   const { auditSession, deactivateAuditMode } = useAuditMode();
+  const { user } = useFirebase();
   const [requestSent, setRequestSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
@@ -21,9 +23,11 @@ export function AuditExpiredScreen() {
   const handleRequestMoreTime = async () => {
     setIsSending(true);
     try {
+      const idToken = await user?.getIdToken();
+      if (!idToken) { console.error('[AuditExpired] No auth token'); setIsSending(false); return; }
       await fetch('/api/notifications/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           to: auditSession.creatingUserEmail,
           subject: 'Solicitação de Extensão de Auditoria',

@@ -73,7 +73,7 @@ function fmtDate(ts: unknown): string {
 // ---------------------------------------------------------------------------
 
 export default function PagamentosPage() {
-  const { firestore, isAdmin } = useFirebase();
+  const { firestore, isAdmin, user } = useFirebase();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -106,7 +106,9 @@ export default function PagamentosPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await fetchWithTimeout('/api/payments/sync', { method: 'POST' });
+      const idToken = await user?.getIdToken();
+      if (!idToken) { toast({ title: 'Sessão expirada. Recarregue.', variant: 'destructive' }); setSyncing(false); return; }
+      const res = await fetchWithTimeout('/api/payments/sync', { method: 'POST', headers: { Authorization: `Bearer ${idToken}` } });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

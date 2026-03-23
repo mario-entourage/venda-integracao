@@ -218,12 +218,14 @@ export function TriStarDialog({
 
       // Notify rep with tracking code (fire-and-forget)
       if (firestore && repUserId && repEmail && responseData.tracking_code) {
+        const tkn = await user?.getIdToken().catch(() => undefined);
         notifyShipmentTracking(firestore, {
           recipientUserId: repUserId,
           recipientEmail: repEmail,
           orderId: order.id,
           trackingCode: responseData.tracking_code,
           invoiceNumber: repInvoice,
+          idToken: tkn,
         }).catch(() => {});
       }
 

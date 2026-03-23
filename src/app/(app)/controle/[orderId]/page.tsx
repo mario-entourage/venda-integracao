@@ -175,9 +175,11 @@ export default function OrderDetailPage() {
     try {
       // AI classification
       const base64 = await fileToBase64(file);
+      const idToken = await user?.getIdToken();
+      if (!idToken) { console.warn('[OrderDetailPage] No auth token — skipping classification'); return; }
       const res = await fetchWithTimeout('/api/ai/classify-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000, // AI classification can be slow
       });
@@ -235,9 +237,11 @@ export default function OrderDetailPage() {
     setIsSyncing(true);
     setSyncMsg(null);
     try {
+      const idToken = await user?.getIdToken();
+      if (!idToken) { setSyncMsg('Sessão expirada. Recarregue a página.'); setIsSyncing(false); return; }
       const res = await fetchWithTimeout('/api/payments/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ orderId }),
       });
       if (!res.ok) throw new Error(`Sync failed: HTTP ${res.status}`);
