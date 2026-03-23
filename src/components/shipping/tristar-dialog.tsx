@@ -178,9 +178,11 @@ export function TriStarDialog({
         insurance_value: withInsurance ? parseFloat(insuranceValue) || 0 : undefined,
       };
 
+      const shipToken = await user?.getIdToken();
+      if (!shipToken) throw new Error('Sessão expirada. Recarregue a página.');
       const res = await fetch(SHIPPING_API_ROUTES.createShipment, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${shipToken}` },
         body: JSON.stringify(payload),
       });
 
@@ -218,12 +220,14 @@ export function TriStarDialog({
 
       // Notify rep with tracking code (fire-and-forget)
       if (firestore && repUserId && repEmail && responseData.tracking_code) {
+        const tkn = await user?.getIdToken().catch(() => undefined);
         notifyShipmentTracking(firestore, {
           recipientUserId: repUserId,
           recipientEmail: repEmail,
           orderId: order.id,
           trackingCode: responseData.tracking_code,
           invoiceNumber: repInvoice,
+          idToken: tkn,
         }).catch(() => {});
       }
 
