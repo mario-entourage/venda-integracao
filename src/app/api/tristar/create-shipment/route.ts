@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { TriStarCreateShipmentRequest, TriStarShipmentResponse, TriStarItemTypeValue } from '@/types/shipping';
+import type { TriStarShipmentResponse, TriStarItemTypeValue } from '@/types/shipping';
 import { requireAuth } from '../../_require-auth';
 import { validateBody } from '../../_validate';
+
+// ─── HS codes by item type ─────────────────────────────────────────────────
+// Required by TriStar for customs declaration. CBD/THC use pharmaceutical HS code.
+const HSCODE_BY_ITEM_TYPE: Record<number, string> = {
+  40: '30049069', // CBD — pharmaceutical preparations containing cannabidiol
+  41: '30049069', // THC — same pharmaceutical HS code
+  30: '30049099', // Medicamento — other pharmaceutical preparations
+  10: '99250000', // Produtos — general merchandise (personal import)
+  20: '49019900', // Livros — printed books
+  90: '99250000', // Outro (imune) — general merchandise
+};
 
 const ShipmentItemSchema = z.object({
   shipment_item_type: z.number().int(),
@@ -58,6 +69,7 @@ export async function POST(request: NextRequest) {
   const fromPostcode = process.env.TRISTAR_FROM_POSTCODE;
   const fromPhone = process.env.TRISTAR_FROM_PHONE;
   const fromEmail = process.env.TRISTAR_FROM_EMAIL;
+  const fromTradingName = process.env.TRISTAR_FROM_TRADING_NAME;
   const integrationCode = parseInt(process.env.TRISTAR_INTEGRATION_CODE ?? '1', 10);
 
   const missingVars = (
@@ -72,6 +84,7 @@ export async function POST(request: NextRequest) {
       ['TRISTAR_FROM_POSTCODE', fromPostcode],
       ['TRISTAR_FROM_PHONE', fromPhone],
       ['TRISTAR_FROM_EMAIL', fromEmail],
+      ['TRISTAR_FROM_TRADING_NAME', fromTradingName],
     ] as [string, string | undefined][]
   )
     .filter(([, v]) => !v)
@@ -88,25 +101,66 @@ export async function POST(request: NextRequest) {
   const body = await validateBody(request, BodySchema);
   if (body instanceof Response) return body;
 
-  const tristarPayload: TriStarCreateShipmentRequest = {
-    ...body,
-    // Cast Zod-inferred `number` back to the const literal union TriStarItemTypeValue
-    items: body.items.map((item) => ({
-      ...item,
-      shipment_item_type: item.shipment_item_type as TriStarItemTypeValue,
-    })),
+  // ── Map our internal field names to TriStar's API field names ────────────
+  // TriStar updated their API to require:
+  //   - *_person_type (1=physical, 2=juridical)
+  //   - *_document_type (1=CPF, 2=CNPJ)
+  //   - *_address_1 instead of *_address
+  //   - *_state_code instead of *_state
+  //   - *_country_code instead of *_country
+  //   - from_trading_name (company trade name, required when person_type=2)
+  //   - hscode per item (HS tariff code for customs)
+  const tristarPayload = {
+    // Recipient — always a physical person (individual patient) with CPF
+    to_person_type: 1,
+    to_document_type: 1,
+    to_name: body.to_name,
+    to_document: body.to_document,
+    to_address_1: body.to_address,
+    to_number: body.to_number,
+    to_complement: body.to_complement,
+    to_neighborhood: body.to_neighborhood,
+    to_city: body.to_city,
+    to_state_code: body.to_state,
+    to_country_code: body.to_country,
+    to_postcode: body.to_postcode,
+    to_phone: body.to_phone,
+    to_email: body.to_email,
+
+    // Sender — always Entourage Lab (juridical entity)
+    from_person_type: 2,
+    from_document_type: 2,
     from_name: fromName!,
+    from_trading_name: fromTradingName!,
     from_document: fromDocument!,
-    from_address: fromAddress!,
+    from_address_1: fromAddress!,
     from_number: fromNumber!,
     from_complement: process.env.TRISTAR_FROM_COMPLEMENT,
     from_neighborhood: fromNeighborhood!,
     from_city: fromCity!,
-    from_state: fromState!,
-    from_country: fromCountry,
+    from_state_code: fromState!,
+    from_country_code: fromCountry,
     from_postcode: fromPostcode!,
     from_phone: fromPhone!,
     from_email: fromEmail!,
+
+    // Items — add hscode per item type
+    items: body.items.map((item) => ({
+      shipment_item_type: item.shipment_item_type as TriStarItemTypeValue,
+      description: item.description,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      hscode: HSCODE_BY_ITEM_TYPE[item.shipment_item_type] ?? '99250000',
+      ...(item.anvisa_import_authorization_number && {
+        anvisa_import_authorization_number: item.anvisa_import_authorization_number,
+      }),
+      ...(item.anvisa_product_commercial_name && {
+        anvisa_product_commercial_name: item.anvisa_product_commercial_name,
+      }),
+    })),
+
+    with_insurance: body.with_insurance,
+    insurance_value: body.insurance_value,
     integration_code: integrationCode,
   };
 
@@ -115,6 +169,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'application/json',
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(tristarPayload),
