@@ -3,6 +3,7 @@ import {
   query, where, orderBy, limit, serverTimestamp,
   Firestore, Query,
 } from 'firebase/firestore';
+import { authFetchWithToken } from '@/hooks/use-auth-fetch';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -130,20 +131,17 @@ export async function notifyShipmentTracking(
     emailSent: false,
   });
 
-  if (opts.idToken) {
-    try {
-      await fetch('/api/notifications/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.idToken}` },
-        body: JSON.stringify({
-          to: opts.recipientEmail,
-          subject: `${title} — Pedido ${ref}`,
-          html: `<p>Olá,</p><p>A remessa TriStar do pedido <strong>${ref}</strong> foi criada com sucesso.</p><p><strong>Código de rastreio:</strong> ${opts.trackingCode}</p><p>Acesse o sistema para baixar a etiqueta.</p>`,
-        }),
-      });
-    } catch {
-      // Email failure is non-fatal
-    }
+  try {
+    await authFetchWithToken(opts.idToken, '/api/notifications/send-email', {
+      method: 'POST',
+      body: JSON.stringify({
+        to: opts.recipientEmail,
+        subject: `${title} — Pedido ${ref}`,
+        html: `<p>Olá,</p><p>A remessa TriStar do pedido <strong>${ref}</strong> foi criada com sucesso.</p><p><strong>Código de rastreio:</strong> ${opts.trackingCode}</p><p>Acesse o sistema para baixar a etiqueta.</p>`,
+      }),
+    });
+  } catch {
+    // Email failure is non-fatal
   }
 }
 
@@ -182,19 +180,16 @@ export async function notifyPaymentLinkCreated(
   });
 
   // Email (fire-and-forget)
-  if (opts.idToken) {
-    try {
-      await fetch('/api/notifications/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${opts.idToken}` },
-        body: JSON.stringify({
-          to: opts.recipientEmail,
-          subject: `${title} — ${body}`,
-          html: `<p>Olá,</p><p>Um link de pagamento foi criado para o pedido <strong>${opts.invoiceNumber || opts.orderId.slice(0, 8).toUpperCase()}</strong> no valor de <strong>${fmtAmount}</strong>.</p><p>Acesse o sistema para mais detalhes.</p>`,
-        }),
-      });
-    } catch {
-      // Email failure should not block the flow
-    }
+  try {
+    await authFetchWithToken(opts.idToken, '/api/notifications/send-email', {
+      method: 'POST',
+      body: JSON.stringify({
+        to: opts.recipientEmail,
+        subject: `${title} — ${body}`,
+        html: `<p>Olá,</p><p>Um link de pagamento foi criado para o pedido <strong>${opts.invoiceNumber || opts.orderId.slice(0, 8).toUpperCase()}</strong> no valor de <strong>${fmtAmount}</strong>.</p><p>Acesse o sistema para mais detalhes.</p>`,
+      }),
+    });
+  } catch {
+    // Email failure should not block the flow
   }
 }

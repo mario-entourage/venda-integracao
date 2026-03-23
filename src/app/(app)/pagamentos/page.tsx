@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { RefreshCw, Plus, Link2 } from 'lucide-react';
 import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useCollection } from '@/firebase';
 import { getAllPaymentLinksQuery } from '@/services/payments.service';
 import { getActiveRepUsersQuery } from '@/services/users.service';
@@ -26,7 +27,6 @@ import {
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
 import { TablePagination } from '@/components/shared/table-pagination';
 import { exportToCsv } from '@/lib/export-csv';
 import type { PaymentLink, User } from '@/types';
@@ -73,7 +73,8 @@ function fmtDate(ts: unknown): string {
 // ---------------------------------------------------------------------------
 
 export default function PagamentosPage() {
-  const { firestore, isAdmin, user } = useFirebase();
+  const { firestore, isAdmin } = useFirebase();
+  const authFetch = useAuthFetch();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -106,9 +107,7 @@ export default function PagamentosPage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const idToken = await user?.getIdToken();
-      if (!idToken) { toast({ title: 'Sessão expirada. Recarregue.', variant: 'destructive' }); setSyncing(false); return; }
-      const res = await fetchWithTimeout('/api/payments/sync', { method: 'POST', headers: { Authorization: `Bearer ${idToken}` } });
+      const res = await authFetch('/api/payments/sync', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });

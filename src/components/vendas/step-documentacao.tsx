@@ -19,7 +19,7 @@ import { ref, uploadBytesResumable } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { cn } from '@/lib/utils';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import type { Client, Doctor, Order } from '@/types';
 import type { ClassifyAndExtractResponse } from '@/app/api/ai/classify-and-extract-document/route';
 
@@ -145,6 +145,7 @@ export function StepDocumentacao({
   cvSignatarioName = '', cvSignatarioCpf = '',
 }: StepDocumentacaoProps) {
   const { firestore, storage, user } = useFirebase();
+  const authFetch = useAuthFetch();
 
   // Load doc requests
   const docRequestsRef = useMemoFirebase(
@@ -378,15 +379,12 @@ export function StepDocumentacao({
         reader.readAsDataURL(file);
       });
 
-      const idToken = await user?.getIdToken();
-      if (!idToken) { setProcessingMsg('Sessão expirada. Recarregue a página.'); return; }
-      const res = await fetchWithTimeout('/api/ai/classify-and-extract-document', {
+      const res = await authFetch('/api/ai/classify-and-extract-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
-      if (!res.ok) { setProcessingMsg('Falha na autenticação. Recarregue a página.'); return; }
+      if (!res.ok) { setProcessingMsg('Falha na classificação. Tente novamente.'); return; }
       const classification: ClassifyAndExtractResponse = await res.json();
       if (classification._error) {
         setProcessingMsg(`Erro ao classificar "${file.name}": ${classification._error}`);

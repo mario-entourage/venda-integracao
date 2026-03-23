@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
@@ -87,6 +87,7 @@ export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
   const { firestore, user } = useFirebase();
+  const authFetch = useAuthFetch();
 
   // Real-time order subscription
   const orderRef = useMemoFirebase(
@@ -175,11 +176,8 @@ export default function OrderDetailPage() {
     try {
       // AI classification
       const base64 = await fileToBase64(file);
-      const idToken = await user?.getIdToken();
-      if (!idToken) { console.warn('[OrderDetailPage] No auth token — skipping classification'); return; }
-      const res = await fetchWithTimeout('/api/ai/classify-document', {
+      const res = await authFetch('/api/ai/classify-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000, // AI classification can be slow
       });
@@ -237,11 +235,8 @@ export default function OrderDetailPage() {
     setIsSyncing(true);
     setSyncMsg(null);
     try {
-      const idToken = await user?.getIdToken();
-      if (!idToken) { setSyncMsg('Sessão expirada. Recarregue a página.'); setIsSyncing(false); return; }
-      const res = await fetchWithTimeout('/api/payments/sync', {
+      const res = await authFetch('/api/payments/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ orderId }),
       });
       if (!res.ok) throw new Error(`Sync failed: HTTP ${res.status}`);

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase } from '@/firebase/provider';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -99,6 +100,7 @@ export function TriStarDialog({
   repInvoice,
 }: TriStarDialogProps) {
   const { firestore, user } = useFirebase();
+  const authFetch = useAuthFetch();
 
   // Item list state — starts with one item pre-filled with the order amount
   const [items, setItems] = useState<ItemLine[]>(() => [
@@ -178,11 +180,8 @@ export function TriStarDialog({
         insurance_value: withInsurance ? parseFloat(insuranceValue) || 0 : undefined,
       };
 
-      const shipToken = await user?.getIdToken();
-      if (!shipToken) throw new Error('Sessão expirada. Recarregue a página.');
-      const res = await fetch(SHIPPING_API_ROUTES.createShipment, {
+      const res = await authFetch(SHIPPING_API_ROUTES.createShipment, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${shipToken}` },
         body: JSON.stringify(payload),
       });
 
