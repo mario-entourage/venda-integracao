@@ -19,7 +19,7 @@ import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import { useToast } from '@/hooks/use-toast';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useFirebase } from '@/firebase/provider';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
@@ -153,6 +153,7 @@ export function StepIdentificacao({
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
   const { user } = useFirebase();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -361,15 +362,12 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const idToken = await user?.getIdToken();
-      if (!idToken) { setExtractionMsg('Sessão expirada. Recarregue a página.'); return; }
-      const res = await fetchWithTimeout('/api/ai/extract-prescription', {
+      const res = await authFetch('/api/ai/extract-prescription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
-      if (!res.ok) { setExtractionMsg('Falha na autenticação. Recarregue a página.'); return; }
+      if (!res.ok) { setExtractionMsg('Falha na extração. Tente novamente.'); return; }
       const data: PrescriptionExtraction = await res.json();
       if (data._error) { setExtractionMsg(data._error); return; }
 

@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { useFirebase } from '@/firebase';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 
 interface ShippingChoiceDialogProps {
@@ -32,7 +32,7 @@ export function ShippingChoiceDialog({
   onDone,
 }: ShippingChoiceDialogProps) {
   const { toast } = useToast();
-  const { user } = useFirebase();
+  const authFetch = useAuthFetch();
   const [sending, setSending] = useState(false);
 
   const handleBrazilShip = async () => {
@@ -47,11 +47,8 @@ export function ShippingChoiceDialog({
         <p>Por favor, providencie o envio a partir do estoque Brasil.</p>
       `;
 
-      const idToken = await user?.getIdToken();
-      if (!idToken) { toast({ variant: 'destructive', title: 'Erro', description: 'Sessão expirada. Recarregue.' }); setSending(false); return; }
-      const res = await fetch('/api/notifications/send-email', {
+      const res = await authFetch('/api/notifications/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({
           to: 'adm@entouragelab.com',
           subject: `Envio Brasil — Pedido #${orderId.slice(0, 8).toUpperCase()} — ${clientName}`,
