@@ -753,6 +753,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             doctorCrm={state.step1.doctorCrm}
             products={state.step1.products}
             orderAmount={state.orderAmount}
+            frete={state.frete}
             representanteName={state.selectedRepresentanteName}
           />
         )}
