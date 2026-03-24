@@ -68,15 +68,34 @@ const userNavItems = [
   { href: '/perfil', icon: User, label: 'Perfil' },
 ];
 
-function NavGroup({ label, items, pathname, labelClassName }: { label: string; items: typeof vendasNavItems; pathname: string; labelClassName?: string }) {
+function NavGroup({
+  label,
+  items,
+  pathname,
+  labelClassName,
+}: {
+  label: string;
+  items: typeof vendasNavItems;
+  pathname: string;
+  labelClassName?: string;
+}) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className={labelClassName}>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel className={labelClassName}>
+        {label}
+      </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  pathname === item.href ||
+                  (item.href !== '/dashboard' &&
+                    pathname.startsWith(item.href))
+                }
+              >
                 <Link href={item.href}>
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
@@ -90,63 +109,93 @@ function NavGroup({ label, items, pathname, labelClassName }: { label: string; i
   );
 }
 
-/** Routes hidden from the sidebar in audit mode (creation/mutation pages) */
-const AUDIT_HIDDEN_ROUTES = new Set(['/remessas', '/anvisa/nova', '/importar', '/auditoria']);
+/** Routes hidden from the sidebar in audit mode */
+const AUDIT_HIDDEN_ROUTES = new Set([
+  '/remessas',
+  '/anvisa/nova',
+  '/importar',
+  '/auditoria',
+]);
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { isAuditMode } = useAuditMode();
 
-  /** Filter out creation pages when in audit mode */
   const filterItems = (items: typeof vendasNavItems) =>
-    isAuditMode ? items.filter((i) => !AUDIT_HIDDEN_ROUTES.has(i.href)) : items;
+    isAuditMode
+      ? items.filter((i) => !AUDIT_HIDDEN_ROUTES.has(i.href))
+      : items;
 
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2">
-          <BrandLogo variant="light" className="text-sidebar-primary-foreground" />
+          <BrandLogo
+            variant="light"
+            className="text-sidebar-primary-foreground"
+          />
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="h-10">
-            <span style={{ fontFamily: 'Meddon, cursive', textTransform: 'none', marginLeft: '0.75em' }} className="text-lg leading-none">
-              Vendas
-            </span>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterItems(vendasNavItems).map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
-                    <Link href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {/* VENDAS */}
+        <NavGroup
+          label="Vendas"
+          items={filterItems(vendasNavItems)}
+          pathname={pathname}
+        />
 
-        <NavGroup label="Cadastros" items={filterItems(cadastrosNavItems)} pathname={pathname} />
-        <NavGroup label="Produtos & Estoque" items={filterItems(productNavItems)} pathname={pathname} />
-        <NavGroup label="Documentos" items={filterItems(documentNavItems)} pathname={pathname} />
-        <NavGroup label="Financeiro" items={filterItems(paymentNavItems)} pathname={pathname} />
-        <NavGroup label="ANVISA" items={filterItems(anvisaNavItems)} pathname={pathname} />
+        <NavGroup
+          label="Cadastros"
+          items={filterItems(cadastrosNavItems)}
+          pathname={pathname}
+        />
 
-        <NavGroup label="Administração" items={filterItems(adminNavItems)} pathname={pathname} />
-        <NavGroup label="Suporte" items={filterItems(helpNavItems)} pathname={pathname} />
+        <NavGroup
+          label="Produtos & Estoque"
+          items={filterItems(productNavItems)}
+          pathname={pathname}
+        />
+
+        <NavGroup
+          label="Documentos"
+          items={filterItems(documentNavItems)}
+          pathname={pathname}
+        />
+
+        <NavGroup
+          label="Financeiro"
+          items={filterItems(paymentNavItems)}
+          pathname={pathname}
+        />
+
+        <NavGroup
+          label="ANVISA"
+          items={filterItems(anvisaNavItems)}
+          pathname={pathname}
+        />
+
+        <NavGroup
+          label="Administração"
+          items={filterItems(adminNavItems)}
+          pathname={pathname}
+        />
+
+        <NavGroup
+          label="Suporte"
+          items={filterItems(helpNavItems)}
+          pathname={pathname}
+        />
       </SidebarContent>
 
       <SidebarFooter className="border-t">
         <SidebarMenu>
           {userNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)}>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.startsWith(item.href)}
+              >
                 <Link href={item.href}>
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>
