@@ -19,6 +19,7 @@ interface StepOrderConfirmationProps {
   doctorCrm: string;
   products: ProductLine[];
   orderAmount: number;
+  frete: number;
   representanteName: string;
 }
 
@@ -29,11 +30,14 @@ export function StepOrderConfirmation({
   doctorCrm,
   products,
   orderAmount,
+  frete,
   representanteName,
 }: StepOrderConfirmationProps) {
   const { toast } = useToast();
 
   const orderNumber = `#${orderId.slice(0, 8).toUpperCase()}`;
+
+  const totalWithFrete = orderAmount + frete;
 
   const handleCopy = () => {
     const productLines = products
@@ -45,7 +49,7 @@ export function StepOrderConfirmation({
       `Paciente: ${clientName}`,
       `Médico: ${doctorName}${doctorCrm ? ` (CRM: ${doctorCrm})` : ''}`,
       `Produtos:\n${productLines}`,
-      `Total: ${fmtBRL(orderAmount)}`,
+      `Total: ${fmtBRL(totalWithFrete)}${frete > 0 ? ` (frete: ${fmtBRL(frete)})` : ''}`,
       `Representante: ${representanteName}`,
     ].join('\n');
 
@@ -112,8 +116,14 @@ export function StepOrderConfirmation({
 
           <div className="flex items-center justify-between border-t pt-4">
             <div>
+              {frete > 0 && (
+                <div className="mb-1 flex gap-6 text-sm">
+                  <span className="text-muted-foreground">Subtotal: <span className="font-mono">{fmtBRL(orderAmount)}</span></span>
+                  <span className="text-muted-foreground">Frete: <span className="font-mono">{fmtBRL(frete)}</span></span>
+                </div>
+              )}
               <p className="text-muted-foreground text-xs">Total</p>
-              <p className="text-xl font-bold font-mono">{fmtBRL(orderAmount)}</p>
+              <p className="text-xl font-bold font-mono">{fmtBRL(totalWithFrete)}</p>
             </div>
             <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1.5">
               <Copy className="h-3.5 w-3.5" />

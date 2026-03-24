@@ -229,6 +229,11 @@ export function StepIdentificacao({
   // Local editing state for the frete (shipping cost) input field
   const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
 
+  // Sync freteInput when the frete prop changes externally (e.g., session restore / resume)
+  useEffect(() => {
+    setFreteInput(frete > 0 ? String(frete) : '');
+  }, [frete]);
+
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
   const [editingTotals, setEditingTotals] = useState<Record<string, string>>({});
@@ -961,7 +966,7 @@ export function StepIdentificacao({
 
             {/* Total — editable, distributes changes equally across product lines */}
             <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
-              <label className="text-sm font-medium">Total:</label>
+              <label className="text-sm font-medium">Subtotal:</label>
               <div className="relative w-36">
                 <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
                 <Input
@@ -982,6 +987,37 @@ export function StepIdentificacao({
                   className="pl-8 text-right font-bold text-primary"
                 />
               </div>
+            </div>
+
+            {/* Frete — directly below products */}
+            <div className="flex items-center justify-end gap-2 pr-2">
+              <label htmlFor="frete-input" className="text-sm font-medium">Frete:</label>
+              <div className="relative w-36">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
+                <Input
+                  id="frete-input"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0,00"
+                  value={freteInput}
+                  onChange={(e) => setFreteInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseFloat(freteInput) || 0;
+                    onFreteChange(Math.max(0, parsed));
+                    setFreteInput(parsed > 0 ? String(parsed) : '');
+                  }}
+                  className="pl-8 text-right"
+                />
+              </div>
+            </div>
+
+            {/* Grand total (products + frete) */}
+            <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
+              <label className="text-sm font-semibold">Total:</label>
+              <p className="w-36 text-right text-lg font-bold font-mono text-primary">
+                {fmtBRL(orderTotal + frete)}
+              </p>
             </div>
           </div>
         )}
@@ -1071,6 +1107,8 @@ export function StepIdentificacao({
           ))}
         </div>
       </div>
+
+
 
       {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}
       {isAdmin && unassignedPayments.length > 0 && (
