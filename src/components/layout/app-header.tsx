@@ -61,7 +61,7 @@ export function AppHeader() {
       </div>
 
       {/* Right: notification bell + user menu */}
-      <div className="ml-auto flex items-center gap-2">
+      <div className="relative z-10 ml-auto flex items-center gap-2 text-white">
         {!isAuditMode && <NotificationBell />}
 
         <DropdownMenu>
