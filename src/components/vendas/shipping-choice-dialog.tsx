@@ -65,7 +65,7 @@ export function ShippingChoiceDialog({
       onDone();
     } catch (err) {
       console.error('Failed to send Brazil shipping email:', err);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao enviar e-mail de notificação.' });
+      toast({ variant: 'destructive', title: 'Falha ao enviar notificação', description: 'Não foi possível notificar a equipe sobre o envio Brasil. Tente novamente ou avise manualmente.' });
     } finally {
       setSending(false);
     }
