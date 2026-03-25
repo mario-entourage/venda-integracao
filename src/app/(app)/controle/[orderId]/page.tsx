@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useAuthFetch } from '@/hooks/use-auth-fetch';
+import { useToast } from '@/hooks/use-toast';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
@@ -88,6 +89,7 @@ export default function OrderDetailPage() {
   const router = useRouter();
   const { firestore, user } = useFirebase();
   const authFetch = useAuthFetch();
+  const { toast } = useToast();
 
   // Real-time order subscription
   const orderRef = useMemoFirebase(
@@ -219,11 +221,18 @@ export default function OrderDetailPage() {
   const handleTypeOverride = async (idx: number, newType: string) => {
     const doc = uploadedDocs[idx];
     if (!firestore || !doc) return;
+    const prevType = doc.type;
     setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: newType } : d)));
     try {
       await updateDocumentRecord(firestore, doc.docRecordId, { type: newType });
     } catch (err) {
       console.error('[OrderDetailPage] type override error:', err);
+      setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: prevType } : d)));
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar tipo',
+        description: 'Não foi possível salvar o tipo do documento. Tente novamente.',
+      });
     }
   };
 
@@ -247,7 +256,7 @@ export default function OrderDetailPage() {
           : `${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`,
       );
     } catch {
-      setSyncMsg('Erro ao sincronizar. Tente novamente.');
+      setSyncMsg('Não foi possível sincronizar o pagamento. Verifique sua conexão e tente novamente.');
     } finally {
       setIsSyncing(false);
     }
@@ -275,6 +284,11 @@ export default function OrderDetailPage() {
       );
     } catch (err) {
       console.error('[OrderDetailPage] rep update error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar representante',
+        description: 'Não foi possível alterar o representante. Tente novamente.',
+      });
     } finally {
       setRepSaving(false);
     }
@@ -292,7 +306,7 @@ export default function OrderDetailPage() {
       await updateOrderStatus(firestore, orderId, 'paid', user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark paid error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível marcar como pago. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -309,7 +323,7 @@ export default function OrderDetailPage() {
       }, user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark signed error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível atualizar o status de assinatura. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -327,6 +341,13 @@ export default function OrderDetailPage() {
       router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
+      setConfirmCancel(false);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao cancelar pedido',
+        description: 'Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.',
+      });
+    } finally {
       setIsCancelling(false);
     }
   };

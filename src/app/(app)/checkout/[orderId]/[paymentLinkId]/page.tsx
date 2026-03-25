@@ -66,12 +66,14 @@ export default function PagamentoDetailPage() {
   const [customer, setCustomer] = useState<OrderCustomer | null>(null);
   const [payments, setPayments] = useState<(Payment & { id: string })[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Load payment link data
   useEffect(() => {
     if (!firestore || !orderId || !paymentLinkId) return;
 
     setLoading(true);
+    setLoadError(null);
 
     const linkRef = doc(getOrderPaymentLinksRef(firestore, orderId), paymentLinkId);
 
@@ -88,7 +90,10 @@ export default function PagamentoDetailPage() {
         setCustomer(customers[0] ?? null);
         setPayments(pmts);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error('[PagamentoDetailPage] load error:', err);
+        setLoadError('Não foi possível carregar os dados do pagamento. Recarregue a página e tente novamente.');
+      })
       .finally(() => setLoading(false));
   }, [firestore, orderId, paymentLinkId]);
 
@@ -105,6 +110,23 @@ export default function PagamentoDetailPage() {
 
   if (loading) {
     return <div className="p-6">Carregando pagamento...</div>;
+  }
+
+  if (loadError) {
+    return (
+      <div className="p-6 space-y-3">
+        <Button variant="ghost" onClick={() => router.push('/checkout')}>
+          ← Voltar
+        </Button>
+        <p className="text-sm text-destructive">{loadError}</p>
+        <button
+          className="text-xs text-muted-foreground underline"
+          onClick={() => window.location.reload()}
+        >
+          Recarregar página
+        </button>
+      </div>
+    );
   }
 
   if (!link) {
