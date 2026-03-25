@@ -2,13 +2,18 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Josefin_Sans } from 'next/font/google';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
   Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign,
 } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
-import { BrandLogo } from '@/components/shared/brand-logo';
+
+const josefinSans = Josefin_Sans({
+  subsets: ['latin'],
+  weight: '700',
+});
 import {
   Sidebar,
   SidebarContent,
@@ -129,11 +134,12 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <BrandLogo
-            variant="light"
-            className="text-sidebar-primary-foreground"
-          />
+        <Link href="/dashboard" className="flex items-center justify-center">
+          <h1
+            className={`${josefinSans.className} text-xl font-bold uppercase tracking-[0.3em] text-[#2EE6D6]`}
+          >
+            VENDAS
+          </h1>
         </Link>
       </SidebarHeader>
 
