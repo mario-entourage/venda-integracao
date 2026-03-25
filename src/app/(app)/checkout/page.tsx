@@ -77,6 +77,7 @@ export default function PagamentosPage() {
 
   const [rows, setRows] = useState<PaymentRow[]>([]);
   const [loadingLinks, setLoadingLinks] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // orders subscription
   const ordersQ = useMemoFirebase(
@@ -99,6 +100,7 @@ export default function PagamentosPage() {
     }
 
     setLoadingLinks(true);
+    setLoadError(null);
 
     Promise.all(
       orders.map(async (order) => {
@@ -123,7 +125,10 @@ export default function PagamentosPage() {
         });
         setRows(flat);
       })
-      .catch(console.error)
+      .catch((err) => {
+        console.error('[PagamentosPage] load error:', err);
+        setLoadError('Não foi possível carregar os links de pagamento. Recarregue a página e tente novamente.');
+      })
       .finally(() => setLoadingLinks(false));
   }, [firestore, orders]);
 
@@ -157,6 +162,16 @@ export default function PagamentosPage() {
               {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="h-12 rounded bg-muted animate-pulse" />
               ))}
+            </div>
+          ) : loadError ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center gap-3 px-6">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <button
+                className="text-xs text-muted-foreground underline"
+                onClick={() => window.location.reload()}
+              >
+                Recarregar página
+              </button>
             </div>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
