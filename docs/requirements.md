@@ -1,6 +1,6 @@
 # **Entourage Lab — Sales Integration Platform**
 
-Comprehensive requirements document for developer handoff. Last updated: 2026-03-22
+Comprehensive requirements document for developer handoff. Last updated: 2026-03-25
 
 ---
 
@@ -18,15 +18,19 @@ Comprehensive requirements document for developer handoff. Last updated: 2026-03
 >
 > **The Entourage IT Mission Statement** guides every architectural and design decision we make: *to build technology that consolidates complexity into clarity, that respects the intelligence of our operators, that treats regulatory compliance as a first-class engineering concern, and that protects patient data with the same diligence we apply to the medicines we deliver.* This platform is the living expression of that mission.
 >
-> In this latest release cycle, we have made three investments that directly reflect these values:
+> In this latest release cycle, we have made five investments that directly reflect these values:
 >
 > **1. Comprehensive Audit Logging.** Every mutation to patient records, order data, client information, physician records, and user accounts is now tracked with full attribution — who performed the action, when, and exactly what changed. This is not merely a technical feature; it is our commitment to regulatory accountability. In a business that handles controlled pharmaceutical imports under ANVISA oversight, the ability to produce a complete audit trail for any data change is both a compliance requirement and a trust signal to our regulators and partners.
 >
-> **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event. These measures protect against unauthorized access, malformed data injection, and payload tampering — safeguarding both our systems and the sensitive patient data they contain.
+> **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Every client-side API call is wrapped in authenticated fetch utilities (`useAuthFetch` / `authFetchWithToken`) that automatically inject Firebase ID tokens — eliminating an entire class of silent 401 failures that previously broke features without surfacing any error to the operator. When an authentication failure does occur, users now receive a structured error code (e.g. `AUTH-20260325143012-api-ai-extract-prescription`) they can forward to an administrator, replacing the blank screen they would have seen before. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event.
 >
-> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the actual API specification, with support for multi-item shipments, proper customs declaration fields, and ANVISA authorization data per item. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry between systems. We have completed API homologation testing and are prepared to transition to the production environment.
+> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the current API specification. This includes proper customs declaration HS codes per item type, person type and document type classification for sender and recipient, the sender entity's trading name, and corrected field names for address, state, and country. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry. Homologation testing is complete.
 >
-> Together, these improvements transform the platform from an operational convenience into a defensible competitive asset. The audit trail provides regulatory confidence that no spreadsheet can match. The API security posture protects our patients' data at a standard that reflects the pharmaceutical-grade trust our brand represents. And the shipping integration directly reduces the time between a patient's payment and their receipt of medication — which is, ultimately, the outcome that matters most.
+> **4. Prescription Auto-Fill Restored.** The root cause of prescription upload failing to auto-populate client, doctor, and product fields was identified and fixed: the AI extraction API call was missing its authentication header, causing a silent 401. Prescription upload now reliably auto-fills all available fields in the Nova Venda wizard on every upload.
+>
+> **5. Operator Experience Hardening.** Nine silent failure points across the platform — actions that would fail without any visible feedback to the operator — have been corrected. Representative changes, order cancellations, document type overrides, payment sync errors, and status update failures now produce specific, actionable error messages with retry guidance. Network errors on the Pagamentos and Checkout detail pages now show an error state with a reload prompt instead of a misleading empty state or "not found" message. Wizard back-navigation is now reliable at every step.
+>
+> Together, these improvements transform the platform from an operational convenience into a defensible competitive asset. The audit trail provides regulatory confidence that no spreadsheet can match. The API security posture protects our patients' data at a standard that reflects the pharmaceutical-grade trust our brand represents. The prescription auto-fill and UX hardening directly reduce the time operators spend diagnosing silent failures — time they can spend processing orders instead. And the shipping integration directly reduces the time between a patient's payment and their receipt of medication — which is, ultimately, the outcome that matters most.
 >
 > The platform now processes the complete sale lifecycle — from prescription intake through payment, regulatory authorization, document signing, and international delivery — in a single integrated workflow. Every step is tracked, every mutation is logged, and every external integration is validated and secured. This is technology built not to impress, but to serve — and I believe it reflects the best of what Entourage Lab stands for.
 >
@@ -320,7 +324,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | ID | Requirement |
 | :---- | :---- |
 |  | The user may select between three types of shipping: Tristar Express, in-Brazil sending, and local hand-delivery.  |
-| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, and optional ANVISA fields for CBD products. |
+| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, `hscode` (customs tariff code, computed server-side from item type), and optional ANVISA fields for CBD products. All field name mapping (e.g. `to_address_1`, `to_state_code`, `to_country_code`, `from_trading_name`) is done server-side in the API route — the client dialog uses internal names. |
 | FR-07.1a | The TriStar dialog supports dynamic item management: operators can add and remove item rows. Each item has its own product type, description, quantity, and unit price. ANVISA authorization number and commercial name fields appear automatically when an item's type is set to CBD (40). |
 | FR-07.2 | TriStar item types: Produtos (10), Livros (20), Medicamento (30), CBD (40), THC (41), Outro (90). |
 | FR-07.3 | Track shipment status and retrieve tracking codes. |
@@ -438,8 +442,10 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-06.1 | All UI labels in Brazilian Portuguese. |
 | NFR-06.2 | Responsive layout for desktop and tablet. |
 | NFR-06.3 | Loading skeletons for all async data fetches. |
-| NFR-06.4 | Inline error messages with toast notifications. |
+| NFR-06.4 | Inline error messages with toast notifications. All async mutations that can fail (representative change, order cancel, document type override, payment sync, status overrides) must show a destructive toast with an actionable description on failure. Generic "Erro" titles are prohibited — titles must name the specific operation that failed. |
 | NFR-06.5 | Tooltip helpers on action buttons with delayDuration={300}. |
+| NFR-06.6 | **Actionable load-error states:** Pages that load data asynchronously must distinguish between "data not found" and "network/auth error." If a load fails due to an error, show a specific error message with a "Recarregar página" affordance. Never show "not found" or an empty state when the cause of the empty result is a failed fetch rather than a genuinely empty dataset. |
+| NFR-06.7 | **Optimistic update rollbacks:** Any UI state updated before an async operation completes (optimistic update) must be rolled back to the previous value if the operation fails, and must show a toast explaining what failed. |
 
 #### **NFR-07 Brand & Visual Identity**
 
@@ -502,16 +508,17 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Attribute | Value |
 | :---- | :---- |
 | Purpose | Create shipments from Miami warehouse, generate labels, and track delivery. |
-| Base URL | https://sandbox.tristarexpress.com/v1/ (configurable via TRISTAR\_API\_URL). NOTE: Currently configured for sandbox. Homologation complete — shipment IDs 1825 and 1826 created successfully. Awaiting production API credentials from TriStar. |
-| Authentication | Bearer API key. |
+| Base URL | Configurable via TRISTAR\_API\_URL. Sandbox URL used during homologation; production credentials pending from TriStar. Homologation complete — shipments 1825 and 1826 created successfully in sandbox. |
+| Authentication | Bearer API key. All requests must include `Accept: application/json` header or TriStar returns a 302 redirect instead of JSON. |
 | Endpoints | POST /shipments — create shipment |
 |  | GET /tracking/{shipmentId} — track status |
 |  | POST /shipments/{shipmentId}/label — generate label |
 |  | POST /shipments/{shipmentId}/confirm — confirm dispatch |
-| Payload format | Flat field structure: `from_*` fields (sender, read from env vars server-side) and `to_*` fields (recipient, sent from dialog). Items array uses `shipment_item_type` (numeric code), `description`, `quantity`, `unit_price`. CBD items (type 40) include `anvisa_import_authorization_number` and `anvisa_product_commercial_name`. Boolean `with_insurance` flag. `integration_code` from env var. |
+| Payload format | **Recipient (`to_*`):** `to_person_type` (1 = physical), `to_document_type` (1 = CPF), `to_name`, `to_document`, `to_address_1` (not `to_address`), `to_number`, `to_complement`, `to_neighborhood`, `to_city`, `to_state_code` (not `to_state`), `to_country_code` (not `to_country`), `to_postcode`, `to_phone`, `to_email`. **Sender (`from_*`):** `from_person_type` (2 = juridical), `from_document_type` (2 = CNPJ), `from_name`, `from_trading_name` (required for juridical entities), `from_document`, `from_address_1`, `from_number`, `from_complement`, `from_neighborhood`, `from_city`, `from_state_code`, `from_country_code`, `from_postcode`, `from_phone`, `from_email`. **Items:** `shipment_item_type` (numeric code), `description`, `quantity`, `unit_price`, `hscode` (HS tariff code, required — see HSCODE\_BY\_ITEM\_TYPE map in route). CBD items (type 40) additionally include `anvisa_import_authorization_number` and `anvisa_product_commercial_name`. **Other:** boolean `with_insurance`, numeric `insurance_value` (when insured), `integration_code` from env var. |
+| HS codes by item type | 40 (CBD) → `30049069`, 41 (THC) → `30049069`, 30 (Medicamento) → `30049099`, 10 (Produtos) → `99250000`, 20 (Livros) → `49019900`, 90 (Outro) → `99250000`. |
 | Multi-item | The TriStar dialog supports multiple items per shipment. Each item has its own type, description, quantity, and unit price. ANVISA fields appear per-item when the item type is CBD (40). |
 | Sender config | Static sender (Entourage Lab Miami warehouse) configured via `TRISTAR_FROM_*` environment variables. The API route reads these server-side and injects them into the TriStar payload — the client dialog never sees or sends sender data. |
-| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret), TRISTAR\_FROM\_NAME, TRISTAR\_FROM\_DOCUMENT, TRISTAR\_FROM\_ADDRESS, TRISTAR\_FROM\_NUMBER, TRISTAR\_FROM\_NEIGHBORHOOD, TRISTAR\_FROM\_CITY, TRISTAR\_FROM\_STATE, TRISTAR\_FROM\_COUNTRY, TRISTAR\_FROM\_POSTCODE, TRISTAR\_FROM\_PHONE, TRISTAR\_FROM\_EMAIL, TRISTAR\_INTEGRATION\_CODE (all plain) |
+| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret), TRISTAR\_FROM\_NAME, TRISTAR\_FROM\_DOCUMENT, TRISTAR\_FROM\_ADDRESS, TRISTAR\_FROM\_NUMBER, TRISTAR\_FROM\_COMPLEMENT (optional), TRISTAR\_FROM\_NEIGHBORHOOD, TRISTAR\_FROM\_CITY, TRISTAR\_FROM\_STATE, TRISTAR\_FROM\_COUNTRY (default: US), TRISTAR\_FROM\_POSTCODE, TRISTAR\_FROM\_PHONE, TRISTAR\_FROM\_EMAIL, **TRISTAR\_FROM\_TRADING\_NAME** (required — juridical entity trade name), TRISTAR\_INTEGRATION\_CODE (all plain) |
 
 #### **INT-05 Google Gemini — AI Document Processing**
 
