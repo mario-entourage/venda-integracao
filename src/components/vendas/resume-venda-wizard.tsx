@@ -156,8 +156,9 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
         onStepChange={(s) => setCurrentStep(s)}
         onComplete={handleComplete}
         canAdvance={canAdvance}
-        canGoBack={!isSubmitting && currentStep > 0}
+        canGoBack={!isSubmitting}
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
+        exitUrl="/pedidos"
       >
         {currentStep === 0 && (
           <StepPagamento
