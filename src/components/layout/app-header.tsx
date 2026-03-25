@@ -1,6 +1,5 @@
 'use client';
 
-import { Josefin_Sans } from 'next/font/google';
 import { useUser, useAuth } from '@/firebase/provider';
 import { useAuditMode } from '@/contexts/audit-mode-context';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,11 +16,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Separator } from '@/components/ui/separator';
 import { LogOut, Eye } from 'lucide-react';
 import { NotificationBell } from './notification-bell';
-
-const josefinSans = Josefin_Sans({
-  subsets: ['latin'],
-  weight: '700',
-});
+import { BrandLogo } from '@/components/shared/brand-logo';
 
 export function AppHeader() {
   const { user } = useUser();
@@ -51,13 +46,9 @@ export function AppHeader() {
       <SidebarTrigger className="text-white" />
       <Separator orientation="vertical" className="h-6" />
 
-      {/* Center: VENDAS title — absolutely positioned for true centering */}
+      {/* Center: Entourage logo — absolutely positioned for true centering */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        <h1
-          className={`${josefinSans.className} text-3xl font-bold uppercase tracking-[0.35em] text-[#2EE6D6]`}
-        >
-          VENDAS
-        </h1>
+        <BrandLogo variant="light" size={32} className="text-white" />
       </div>
 
       {/* Right: notification bell + user menu */}
