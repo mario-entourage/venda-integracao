@@ -123,4 +123,4 @@ firebase apphosting:rollouts:create vend-backend --git-branch main
 | **user** | Create and manage orders, clients, doctors, representatives |
 | **view_only** | Read-only access to all modules |
 
-Authentication is restricted to `@entouragelab.com` Google accounts. Super-admin users are defined by a hardcoded email list; additional admins are managed via the `roles_admin` Firestore collection.
+Authentication is restricted to `@entouragelab.com` Google accounts. Super-admin users are defined by the `config/superAdmins` Firestore document (managed via Firebase Admin SDK); additional admins are managed via the `roles_admin` Firestore collection.

@@ -12,10 +12,8 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return request.auth.token.email == 'caio@entouragelab.com'
-          || request.auth.token.email == 'mario@entouragelab.com'
-          || request.auth.token.email == 'marcos.freitas@entouragelab.com'
-          || request.auth.token.email == 'tiago.fonseca@entouragelab.com';
+      return exists(/databases/$(database)/documents/config/superAdmins)
+          && request.auth.token.email in get(/databases/$(database)/documents/config/superAdmins).data.emails;
     }
 
     function isEntourageDomain() {
@@ -149,6 +147,15 @@ service cloud.firestore {
     match /medicalSpecialties/{specId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+    }
+
+    match /config/{docId} {
+      // Any signed-in user may read config (needed to resolve super-admin list on login).
+      allow read: if isSignedIn();
+      // Only existing super-admins may write config — this prevents dynamic admins from
+      // escalating themselves to super-admin. The circular dependency means the initial
+      // config/superAdmins document must be created via Firebase Admin SDK (server-side).
+      allow write: if isSuperAdmin();
     }
 
     match /roles_admin/{userId} {
