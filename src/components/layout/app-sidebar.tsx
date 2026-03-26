@@ -144,9 +144,9 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        {/* VENDAS */}
         <NavGroup
           label="Vendas"
+          labelClassName="sr-only"
           items={filterItems(vendasNavItems)}
           pathname={pathname}
         />
