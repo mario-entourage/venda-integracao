@@ -486,7 +486,17 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
     });
 
     useEffect(() => {
-        form.reset(defaultValues);
+        // Only update fields the user hasn't manually edited (non-dirty),
+        // so user-typed values are never overwritten by incoming OCR/DB data.
+        const dirtyFields = form.formState.dirtyFields;
+        const currentValues = form.getValues();
+        const merged = { ...currentValues };
+        for (const key of Object.keys(defaultValues) as (keyof typeof defaultValues)[]) {
+            if (!dirtyFields[key]) {
+                merged[key] = defaultValues[key];
+            }
+        }
+        form.reset(merged, { keepDirtyValues: true });
     }, [defaultValues, form]);
 
     async function onSubmit(data: z.infer<typeof ocrSchema>) {
