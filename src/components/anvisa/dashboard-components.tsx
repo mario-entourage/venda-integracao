@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, File, ListFilter, Plus, Trash2, Loader2, Search } from "lucide-react";
+import { MoreHorizontal, File, Plus, Trash2, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +31,13 @@ import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
 import { TablePagination } from "@/components/shared/table-pagination";
 import { exportToCsv } from "@/lib/export-csv";
 
+
+const TAB_STATUSES: Record<string, AnvisaRequestStatus[]> = {
+  // active = in-flight (being processed); draft = pending (not yet picked up)
+  active:   ['EM_AJUSTE', 'EM_AUTOMACAO', 'ERRO'],
+  draft:    ['PENDENTE'],
+  archived: ['CONCLUIDO'],
+};
 
 const statusMap: Record<AnvisaRequestStatus, { label: string; className: string }> = {
   PENDENTE: { label: "Pendente", className: "bg-yellow-100 text-yellow-800 border-yellow-300" },
@@ -71,23 +78,26 @@ export function RequestTable() {
 
   const { data: requests, isLoading } = useCollection<PatientRequest>(requestsQuery);
 
-  // Search filter + pagination
+  // Tab + search filter + pagination
+  const [activeTab, setActiveTab] = useState('all');
   const [search, setSearch] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
 
-  const filteredRequests = (requests ?? []).filter(
-    (r) => !search.trim() || r.patientDisplayName?.toLowerCase().includes(search.toLowerCase()),
-  );
+  const filteredRequests = (requests ?? []).filter((r) => {
+    const tabStatuses = TAB_STATUSES[activeTab];
+    if (tabStatuses && !tabStatuses.includes(r.status)) return false;
+    return !search.trim() || r.patientDisplayName?.toLowerCase().includes(search.toLowerCase());
+  });
 
   const paginatedRequests = useMemo(() => {
     const start = currentPage * pageSize;
     return filteredRequests.slice(start, start + pageSize);
   }, [filteredRequests, currentPage, pageSize]);
 
-  // Reset page when search changes
+  // Reset page when search or tab changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [search]);
+  useMemo(() => setCurrentPage(0), [search, activeTab]);
 
   const handleExportCsv = useCallback(() => {
     exportToCsv(filteredRequests, [
@@ -150,11 +160,10 @@ export function RequestTable() {
   };
 
   const toggleSelectAll = () => {
-    if (!requests) return;
-    if (selectedIds.size === requests.length) {
+    if (selectedIds.size === filteredRequests.length && filteredRequests.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(requests.map(r => r.id)));
+      setSelectedIds(new Set(filteredRequests.map(r => r.id)));
     }
   };
 
@@ -183,7 +192,7 @@ export function RequestTable() {
 
   return (
     <>
-    <Tabs defaultValue="all">
+    <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setCurrentPage(0); }}>
       <div className="flex items-center">
         <TabsList>
           <TabsTrigger value="all">Todas</TabsTrigger>
@@ -214,28 +223,13 @@ export function RequestTable() {
               <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Nova Solicitacao</span>
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1">
-                <ListFilter className="h-3.5 w-3.5" />
-                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Filtrar</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filtrar por</DropdownMenuLabel>
-              <DropdownMenuItem>Status</DropdownMenuItem>
-              <DropdownMenuItem>Data</DropdownMenuItem>
-              <DropdownMenuItem>Operador</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
           <Button size="sm" variant="outline" className="h-8 gap-1" onClick={handleExportCsv}>
             <File className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Exportar CSV</span>
           </Button>
         </div>
       </div>
-      <TabsContent value="all">
-        <Card>
+      <Card className="mt-2">
           <CardHeader>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -364,8 +358,7 @@ export function RequestTable() {
               />
             )}
           </CardFooter>
-        </Card>
-      </TabsContent>
+      </Card>
     </Tabs>
 
     {/* Single-delete confirmation dialog */}
