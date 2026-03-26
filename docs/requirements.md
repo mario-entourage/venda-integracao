@@ -143,7 +143,7 @@ The platform's visual identity should feel professional, trustworthy, and calm. 
 
 | Role | Access level | Description |
 | :---- | :---- | :---- |
-| Admin | Full access | Can create/edit/delete all records, manage users, perform batch operations, access all modules. Currently: caio@entouragelab.com, mario@entouragelab.com (hardcoded super-admins), plus dynamic admins via roles\_admin collection. |
+| Admin | Full access | Can create/edit/delete all records, manage users, perform batch operations, access all modules. Super-admins are defined by the `config/superAdmins` Firestore document (see FR-08.3); dynamic admins are managed via the `roles_admin` collection. |
 | User (Operator) | Standard access | Can create sales, manage orders, process ANVISA requests, manage clients/doctors. Cannot delete records or manage other users. |
 | View Only | Read-only access | Can view orders and data but cannot create or modify records. |
 
