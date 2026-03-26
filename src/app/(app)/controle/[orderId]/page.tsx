@@ -189,8 +189,15 @@ export default function OrderDetailPage() {
           docType = data.documentType;
         }
       }
-    } catch {
-      // Classification failed — default to 'general'
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+      toast({
+        title: 'Tipo não reconhecido',
+        description: isTimeout
+          ? 'A classificação demorou muito. Selecione o tipo manualmente.'
+          : 'Não foi possível classificar o documento. Selecione o tipo manualmente.',
+      });
+      // Either way, fall back to 'general'
     } finally {
       setClassifyingFiles((prev) => {
         const next = new Set(prev);
