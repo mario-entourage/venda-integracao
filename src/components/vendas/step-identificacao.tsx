@@ -936,12 +936,20 @@ export function StepIdentificacao({
 
       {/* ── Frete ───────────────────────────────────────────────── */}
       <div className="space-y-2">
+<<<<<<< HEAD
         <Label htmlFor="frete-input-standalone" className="text-sm font-semibold">Frete (R$)</Label>
+=======
+        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
+>>>>>>> origin/main
         <p className="text-xs text-muted-foreground">
           Custo de envio incluído no valor do link de pagamento GlobalPay.
         </p>
         <Input
+<<<<<<< HEAD
           id="frete-input-standalone"
+=======
+          id="frete-input"
+>>>>>>> origin/main
           type="number"
           min={0}
           step="0.01"

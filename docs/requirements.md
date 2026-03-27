@@ -1,6 +1,6 @@
 # **Entourage Lab — Sales Integration Platform**
 
-Comprehensive requirements document for developer handoff. Last updated: 2026-03-22
+Comprehensive requirements document for developer handoff. Last updated: 2026-03-26
 
 ---
 
@@ -18,15 +18,21 @@ Comprehensive requirements document for developer handoff. Last updated: 2026-03
 >
 > **The Entourage IT Mission Statement** guides every architectural and design decision we make: *to build technology that consolidates complexity into clarity, that respects the intelligence of our operators, that treats regulatory compliance as a first-class engineering concern, and that protects patient data with the same diligence we apply to the medicines we deliver.* This platform is the living expression of that mission.
 >
-> In this latest release cycle, we have made three investments that directly reflect these values:
+> In this latest release cycle, we have made six investments that directly reflect these values:
 >
 > **1. Comprehensive Audit Logging.** Every mutation to patient records, order data, client information, physician records, and user accounts is now tracked with full attribution — who performed the action, when, and exactly what changed. This is not merely a technical feature; it is our commitment to regulatory accountability. In a business that handles controlled pharmaceutical imports under ANVISA oversight, the ability to produce a complete audit trail for any data change is both a compliance requirement and a trust signal to our regulators and partners.
 >
-> **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event. These measures protect against unauthorized access, malformed data injection, and payload tampering — safeguarding both our systems and the sensitive patient data they contain.
+> **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Every client-side API call is wrapped in authenticated fetch utilities (`useAuthFetch` / `authFetchWithToken`) that automatically inject Firebase ID tokens — eliminating an entire class of silent 401 failures that previously broke features without surfacing any error to the operator. When an authentication failure does occur, users now receive a structured error code (e.g. `AUTH-20260325143012-api-ai-extract-prescription`) they can forward to an administrator, replacing the blank screen they would have seen before. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event.
 >
-> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the actual API specification, with support for multi-item shipments, proper customs declaration fields, and ANVISA authorization data per item. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry between systems. We have completed API homologation testing and are prepared to transition to the production environment.
+> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the current API specification. This includes proper customs declaration HS codes per item type, person type and document type classification for sender and recipient, the sender entity's trading name, and corrected field names for address, state, and country. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry. Homologation testing is complete.
 >
-> Together, these improvements transform the platform from an operational convenience into a defensible competitive asset. The audit trail provides regulatory confidence that no spreadsheet can match. The API security posture protects our patients' data at a standard that reflects the pharmaceutical-grade trust our brand represents. And the shipping integration directly reduces the time between a patient's payment and their receipt of medication — which is, ultimately, the outcome that matters most.
+> **4. Prescription Auto-Fill Restored.** The root cause of prescription upload failing to auto-populate client, doctor, and product fields was identified and fixed: the AI extraction API call was missing its authentication header, causing a silent 401. Prescription upload now reliably auto-fills all available fields in the Nova Venda wizard on every upload.
+>
+> **5. Operator Experience Hardening.** Nine silent failure points across the platform — actions that would fail without any visible feedback to the operator — have been corrected. Representative changes, order cancellations, document type overrides, payment sync errors, and status update failures now produce specific, actionable error messages with retry guidance. Network errors on the Pagamentos and Checkout detail pages now show an error state with a reload prompt instead of a misleading empty state or "not found" message. Wizard back-navigation is now reliable at every step.
+>
+> **6. Super-Admin Access Control Hardened.** Super-admin identity is no longer defined by a hardcoded email list in source code. It is now backed by a `config/superAdmins` Firestore document managed via the Firebase Admin SDK, readable by all authenticated users and writable only by existing super-admins. This closes a privilege escalation path — previously, any dynamic admin could have written the super-admin list to elevate themselves. It also means super-admin management no longer requires a code deploy. Separately, the ANVISA solicitation dashboard now has correctly wired tabs (Rascunho, Ativas, Arquivadas), with each status group cleanly mapped and select-all scoped to the active tab to prevent cross-tab contamination in batch operations. Document classification errors — whether from a network timeout or a server failure — now always surface a user-visible toast with an actionable description.
+>
+> Together, these improvements transform the platform from an operational convenience into a defensible competitive asset. The audit trail provides regulatory confidence that no spreadsheet can match. The API security posture protects our patients' data at a standard that reflects the pharmaceutical-grade trust our brand represents. The prescription auto-fill and UX hardening directly reduce the time operators spend diagnosing silent failures — time they can spend processing orders instead. And the shipping integration directly reduces the time between a patient's payment and their receipt of medication — which is, ultimately, the outcome that matters most.
 >
 > The platform now processes the complete sale lifecycle — from prescription intake through payment, regulatory authorization, document signing, and international delivery — in a single integrated workflow. Every step is tracked, every mutation is logged, and every external integration is validated and secured. This is technology built not to impress, but to serve — and I believe it reflects the best of what Entourage Lab stands for.
 >
@@ -137,7 +143,7 @@ The platform's visual identity should feel professional, trustworthy, and calm. 
 
 | Role | Access level | Description |
 | :---- | :---- | :---- |
-| Admin | Full access | Can create/edit/delete all records, manage users, perform batch operations, access all modules. Currently: caio@entouragelab.com, mario@entouragelab.com (hardcoded super-admins), plus dynamic admins via roles\_admin collection. |
+| Admin | Full access | Can create/edit/delete all records, manage users, perform batch operations, access all modules. Super-admins are defined by the `config/superAdmins` Firestore document (see FR-08.3); dynamic admins are managed via the `roles_admin` collection. |
 | User (Operator) | Standard access | Can create sales, manage orders, process ANVISA requests, manage clients/doctors. Cannot delete records or manage other users. |
 | View Only | Read-only access | Can view orders and data but cannot create or modify records. |
 
@@ -262,7 +268,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-03.0 | Display a list of all orders with robust filters. Filter options: Start Date, End Date, Order Status. The date options should default to the last 30 days. The list should be paginated when it reaches a certain length. A dropdown should let the user determine how many entries to show at once, with a default value of 30 items per page. The other options for entries per page must be 30, 50, 100, and all. If the user selects to view all, a warning should pop up saying that this might be a lot and asks if they’re sure |
 | FR-03.1 | Order detail page displays the full order checklist with real-time status for each item. |
 | FR-03.2 | Multi-file drag-and-drop upload: The document upload area accepts multiple files at once. Files are uploaded sequentially with per-file progress indicators, and each completed file is listed by name. |
-| FR-03.3 | AI document classification: After each file is uploaded, the system automatically classifies it using Gemini vision AI into one of: prescription, identity, proof_of_address, medical_report, invoice, anvisa_authorization, or general. No manual type dropdown is shown. A "Classificando..." spinner is displayed during classification. The detected type is shown inline with an optional override select. |
+| FR-03.3 | AI document classification: After each file is uploaded, the system automatically classifies it using Gemini vision AI into one of: prescription, identity, proof_of_address, medical_report, invoice, anvisa_authorization, or general. No manual type dropdown is shown. A "Classificando..." spinner is displayed during classification. The detected type is shown inline with an optional override select. If classification fails for any reason, a destructive toast is shown: "A classificação demorou muito. Selecione o tipo manualmente." for 60-second timeouts, or "Não foi possível classificar o documento. Selecione o tipo manualmente." for all other errors. The system falls back to type `general` in both cases. |
 | FR-03.4 | Frete display in sales summary: When an order has a shipping cost (frete > 0), the products table footer shows Subtotal (products only), Frete, and Grand Total as separate rows. |
 | FR-03.5 | Continue Sale: A "Continuar Venda" action on an order opens the full Nova Venda wizard pre-populated with the order's existing data, resuming from the appropriate step. |
 | FR-03.6 |  |
@@ -279,7 +285,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 |  | Once the user has selected the order, the system should check whether other necessary documents have already been uploaded (patient ID, proof of residence, and power of attorney or proof of residence by relationship) and offer to import data from these documents. The user may select zero, some, or all of these documents. On subsequent screens, the user should be given a chance to see the image for any document they select  |
 |  | After the system has checked which documents have already been uploaded and the user has chosen which data to reuse, a checklist will appear. Any document that is already present and which the user has chosen to reuse should already be checked off of this checklist |
 | FR-04.3 | Document upload: User uploads remaining documents (patient ID, proof of residence, and power of attorney or proof of residence by relationship). AI classifies and extracts OCR data via Gemini or Google Cloud Vision. |
-| FR-04.4 | Status tracking: PENDENTE, EM\_AJUSTE, EM\_AUTOMACAO, CONCLUIDO, ERRO. |
+| FR-04.4 | Status tracking: PENDENTE, EM\_AJUSTE, EM\_AUTOMACAO, CONCLUIDO, ERRO. The dashboard groups these into three tabs — **Rascunho** (PENDENTE: submitted but not yet picked up for automation), **Ativas** (EM\_AJUSTE, EM\_AUTOMACAO, ERRO: in-flight requests being processed), and **Arquivadas** (CONCLUIDO: completed requests). Select-all on each tab only selects records visible in that tab — it never bleeds into other tabs. |
 | FR-04.5 | AI suggests field corrections when extracted data is incomplete or inconsistent. |
 | FR-04.6 | Bidirectional linking: ANVISA request stores orderId; order stores anvisaRequestId. |
 | FR-04.7 | Modelo Solicitante: user profile for ANVISA requester details (name, email, RG, gender, date of birth, address, CEP, state (UF), municipality, phone, landline). State and municipality are sent to the extension separately from patient data to fill the DADOS DO SOLICITANTE section. Autofills the solicitation form. |
@@ -320,7 +326,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | ID | Requirement |
 | :---- | :---- |
 |  | The user may select between three types of shipping: Tristar Express, in-Brazil sending, and local hand-delivery.  |
-| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, and optional ANVISA fields for CBD products. |
+| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, `hscode` (customs tariff code, computed server-side from item type), and optional ANVISA fields for CBD products. All field name mapping (e.g. `to_address_1`, `to_state_code`, `to_country_code`, `from_trading_name`) is done server-side in the API route — the client dialog uses internal names. |
 | FR-07.1a | The TriStar dialog supports dynamic item management: operators can add and remove item rows. Each item has its own product type, description, quantity, and unit price. ANVISA authorization number and commercial name fields appear automatically when an item's type is set to CBD (40). |
 | FR-07.2 | TriStar item types: Produtos (10), Livros (20), Medicamento (30), CBD (40), THC (41), Outro (90). |
 | FR-07.3 | Track shipment status and retrieve tracking codes. |
@@ -335,7 +341,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | :---- | :---- |
 | FR-08.1 | Google OAuth authentication restricted to @entouragelab.com domain. Account picker always shown; domain enforced both client-side (sign out non-matching) and in Firestore rules. |
 | FR-08.2 | Three roles: admin (full access), user (standard operations), view\_only (read-only). |
-| FR-08.3 | Super-admins: caio@entouragelab.com, mario@entouragelab.com, marcos.freitas@entouragelab.com, and tiago.fonseca@entouragelab.com (hardcoded in provider and Firestore rules). Dynamic admins via roles\_admin collection. When an admin changes a user's group to/from admin, the roles\_admin collection is synced automatically. |
+| FR-08.3 | Super-admins are defined by the `config/superAdmins` Firestore document (field: `emails` — array of email strings). This document is readable by all authenticated users and writable only by existing super-admins; it must be bootstrapped via the Firebase Admin SDK. The provider subscribes to this document via `onSnapshot` and exposes `isSuperAdmin` to the app context. Dynamic admins (below super-admin level) are managed via the `roles_admin` collection. When an admin changes a user's group to/from admin, the roles\_admin collection is synced automatically. |
 | FR-08.4 | Pre-registration: admins assign roles before a user's first login via preregistrations collection. |
 | FR-08.5 | User management UI for admins to create, edit, and deactivate accounts. |
 
@@ -406,7 +412,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-03.3 | Delete operations restricted to admin role in Firestore security rules. |
 | NFR-03.4 | Sensitive API keys stored as Firebase App Hosting secrets, never in client code. Secrets: GOOGLE\_API\_KEY, GLOBALPAY\_API\_URL, GLOBALPAY\_PUB\_KEY, ZAPSIGN\_API\_KEY, TRISTAR\_API\_KEY. |
 | NFR-03.5 | ANVISA requests: owner-or-admin access control. Users can only read/update their own requests unless they are admins. |
-| NFR-03.6 | Super-admin status checked via hardcoded email list in both client code and Firestore rules. |
+| NFR-03.6 | Super-admin status is determined by the `config/superAdmins` Firestore document (not a hardcoded list). The `isSuperAdmin()` Firestore rule function reads the `emails` array from this document. The client provider subscribes via `onSnapshot`. The `config` collection is readable by all authenticated users (`isSignedIn()`) and writable only by users whose email is already in the super-admin list — preventing any form of privilege escalation via dynamic admin role. |
 | NFR-03.7 | **API route authentication:** All server-side API routes enforce Firebase Authentication via a `requireAuth()` middleware that verifies the Firebase ID token from the request's Authorization header. Unauthenticated requests receive a 401 response. Admin-only routes use a `requireAdmin()` variant. |
 | NFR-03.7a | **Client-side authenticated fetch (MANDATORY):** All client-side code that calls `/api/*` routes MUST use the `useAuthFetch()` hook (in React components) or the `authFetchWithToken()` utility (in service files). These wrappers auto-inject the `Authorization: Bearer <token>` header. Raw `fetch()` or `fetchWithTimeout()` calls to protected API routes are prohibited — they will silently fail with 401. See `src/hooks/use-auth-fetch.ts`. Exceptions: webhook endpoints (`/api/webhooks/*`) which use their own secret tokens. |
 | NFR-03.8 | **Request body validation:** All API routes that accept a request body validate it against a Zod schema via `validateBody()`. Malformed or missing fields return a 422 response with structured error details. This prevents injection of unexpected data types or missing required fields. |
@@ -438,8 +444,10 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-06.1 | All UI labels in Brazilian Portuguese. |
 | NFR-06.2 | Responsive layout for desktop and tablet. |
 | NFR-06.3 | Loading skeletons for all async data fetches. |
-| NFR-06.4 | Inline error messages with toast notifications. |
+| NFR-06.4 | Inline error messages with toast notifications. All async mutations that can fail (representative change, order cancel, document type override, payment sync, status overrides) must show a destructive toast with an actionable description on failure. Generic "Erro" titles are prohibited — titles must name the specific operation that failed. |
 | NFR-06.5 | Tooltip helpers on action buttons with delayDuration={300}. |
+| NFR-06.6 | **Actionable load-error states:** Pages that load data asynchronously must distinguish between "data not found" and "network/auth error." If a load fails due to an error, show a specific error message with a "Recarregar página" affordance. Never show "not found" or an empty state when the cause of the empty result is a failed fetch rather than a genuinely empty dataset. |
+| NFR-06.7 | **Optimistic update rollbacks:** Any UI state updated before an async operation completes (optimistic update) must be rolled back to the previous value if the operation fails, and must show a toast explaining what failed. |
 
 #### **NFR-07 Brand & Visual Identity**
 
@@ -502,16 +510,17 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Attribute | Value |
 | :---- | :---- |
 | Purpose | Create shipments from Miami warehouse, generate labels, and track delivery. |
-| Base URL | https://sandbox.tristarexpress.com/v1/ (configurable via TRISTAR\_API\_URL). NOTE: Currently configured for sandbox. Homologation complete — shipment IDs 1825 and 1826 created successfully. Awaiting production API credentials from TriStar. |
-| Authentication | Bearer API key. |
+| Base URL | Configurable via TRISTAR\_API\_URL. Sandbox URL used during homologation; production credentials pending from TriStar. Homologation complete — shipments 1825 and 1826 created successfully in sandbox. |
+| Authentication | Bearer API key. All requests must include `Accept: application/json` header or TriStar returns a 302 redirect instead of JSON. |
 | Endpoints | POST /shipments — create shipment |
 |  | GET /tracking/{shipmentId} — track status |
 |  | POST /shipments/{shipmentId}/label — generate label |
 |  | POST /shipments/{shipmentId}/confirm — confirm dispatch |
-| Payload format | Flat field structure: `from_*` fields (sender, read from env vars server-side) and `to_*` fields (recipient, sent from dialog). Items array uses `shipment_item_type` (numeric code), `description`, `quantity`, `unit_price`. CBD items (type 40) include `anvisa_import_authorization_number` and `anvisa_product_commercial_name`. Boolean `with_insurance` flag. `integration_code` from env var. |
+| Payload format | **Recipient (`to_*`):** `to_person_type` (1 = physical), `to_document_type` (1 = CPF), `to_name`, `to_document`, `to_address_1` (not `to_address`), `to_number`, `to_complement`, `to_neighborhood`, `to_city`, `to_state_code` (not `to_state`), `to_country_code` (not `to_country`), `to_postcode`, `to_phone`, `to_email`. **Sender (`from_*`):** `from_person_type` (2 = juridical), `from_document_type` (2 = CNPJ), `from_name`, `from_trading_name` (required for juridical entities), `from_document`, `from_address_1`, `from_number`, `from_complement`, `from_neighborhood`, `from_city`, `from_state_code`, `from_country_code`, `from_postcode`, `from_phone`, `from_email`. **Items:** `shipment_item_type` (numeric code), `description`, `quantity`, `unit_price`, `hscode` (HS tariff code, required — see HSCODE\_BY\_ITEM\_TYPE map in route). CBD items (type 40) additionally include `anvisa_import_authorization_number` and `anvisa_product_commercial_name`. **Other:** boolean `with_insurance`, numeric `insurance_value` (when insured), `integration_code` from env var. |
+| HS codes by item type | 40 (CBD) → `30049069`, 41 (THC) → `30049069`, 30 (Medicamento) → `30049099`, 10 (Produtos) → `99250000`, 20 (Livros) → `49019900`, 90 (Outro) → `99250000`. |
 | Multi-item | The TriStar dialog supports multiple items per shipment. Each item has its own type, description, quantity, and unit price. ANVISA fields appear per-item when the item type is CBD (40). |
 | Sender config | Static sender (Entourage Lab Miami warehouse) configured via `TRISTAR_FROM_*` environment variables. The API route reads these server-side and injects them into the TriStar payload — the client dialog never sees or sends sender data. |
-| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret), TRISTAR\_FROM\_NAME, TRISTAR\_FROM\_DOCUMENT, TRISTAR\_FROM\_ADDRESS, TRISTAR\_FROM\_NUMBER, TRISTAR\_FROM\_NEIGHBORHOOD, TRISTAR\_FROM\_CITY, TRISTAR\_FROM\_STATE, TRISTAR\_FROM\_COUNTRY, TRISTAR\_FROM\_POSTCODE, TRISTAR\_FROM\_PHONE, TRISTAR\_FROM\_EMAIL, TRISTAR\_INTEGRATION\_CODE (all plain) |
+| Env vars | TRISTAR\_API\_URL (plain), TRISTAR\_API\_KEY (secret), TRISTAR\_FROM\_NAME, TRISTAR\_FROM\_DOCUMENT, TRISTAR\_FROM\_ADDRESS, TRISTAR\_FROM\_NUMBER, TRISTAR\_FROM\_COMPLEMENT (optional), TRISTAR\_FROM\_NEIGHBORHOOD, TRISTAR\_FROM\_CITY, TRISTAR\_FROM\_STATE, TRISTAR\_FROM\_COUNTRY (default: US), TRISTAR\_FROM\_POSTCODE, TRISTAR\_FROM\_PHONE, TRISTAR\_FROM\_EMAIL, **TRISTAR\_FROM\_TRADING\_NAME** (required — juridical entity trade name), TRISTAR\_INTEGRATION\_CODE (all plain) |
 
 #### **INT-05 Google Gemini — AI Document Processing**
 
@@ -531,7 +540,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Services | Authentication (Google OAuth), Firestore (database), Storage (file uploads), App Hosting (deployment), Cloud Functions (OCR pipeline). |
 | Runtime | Node.js 20 for Cloud Functions. |
 | Deployment | Firebase App Hosting with GitHub-triggered auto-deploy from main branch. Manual trigger: firebase apphosting:rollouts:create vend-backend \--git-branch main. |
-| Security rules | Domain-restricted reads/writes. Admin-only deletes. Subcollection access follows parent order permissions. Super-admin defined by email check. |
+| Security rules | Domain-restricted reads/writes. Admin-only deletes. Subcollection access follows parent order permissions. Super-admin determined via `config/superAdmins` Firestore document — only existing super-admins may write to the `config` collection. |
 | Env vars | NEXT\_PUBLIC\_FIREBASE\_API\_KEY (plain), plus 5 other NEXT\_PUBLIC\_FIREBASE\_\* client config vars. |
 
 #### **INT-07 ANVISA Auto-Fill Chrome Extension**
@@ -817,6 +826,7 @@ Every write operation (create, update, soft-delete) on business-critical collect
 | Collection | Purpose |
 | :---- | :---- |
 | roles\_admin/{userId} | Dynamic admin role assignments |
+| config/{docId} | Platform configuration. `config/superAdmins` stores `{ emails: string[] }` — the super-admin email list. Readable by all authenticated users; writable only by existing super-admins. Must be bootstrapped via Firebase Admin SDK. |
 | exchangeQuotes/{quoteId} | Currency exchange quotes for payments |
 | paymentMethods/{paymentMethodId} | Payment method configurations and installment plans |
 | medicalSpecialties/{specialtyId} | Lookup table for doctor specialties |
@@ -938,10 +948,10 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
    * Run dev server: npm run dev.  
    * Deploy: push to main branch (auto-deploy) or firebase apphosting:rollouts:create vend-backend \--git-branch main.  
 4. Known technical debt:  
-   * Some order fields are legacy from CSV import and are not used by the wizard (invoiceCorrecao, statusOrcamento, dataOrcamento, lead, lote).  
-   * The zapsignDocId / zapsignStatus / zapsignSignUrl fields are marked as legacy — new orders use Comprovante de Vinculo (zapsignCvDocId) but the old Procuracao fields are still read for backward compatibility.  
-   * The inventory field on products is legacy — inventory is now tracked via the stockProducts junction table.  
-   * Super-admin emails are hardcoded in both TypeScript and Firestore rules. Adding a new super-admin requires code changes.
+   * Some order fields are legacy from CSV import and are not used by the wizard (invoiceCorrecao, statusOrcamento, dataOrcamento, lead, lote).
+   * The zapsignDocId / zapsignStatus / zapsignSignUrl fields are marked as legacy — new orders use Comprovante de Vinculo (zapsignCvDocId) but the old Procuracao fields are still read for backward compatibility.
+   * The inventory field on products is legacy — inventory is now tracked via the stockProducts junction table.
+   * Super-admin management: the `config/superAdmins` document must be created and updated via the Firebase Admin SDK. There is no UI for this — use the Firebase Console or a one-off Admin SDK script.
 
 ---
 
@@ -995,6 +1005,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | TRISTAR\_FROM\_POSTCODE | Plain | Sender postal code |
 | TRISTAR\_FROM\_PHONE | Plain | Sender phone number |
 | TRISTAR\_FROM\_EMAIL | Plain | Sender email (logistics@entouragelab.com) |
+| TRISTAR\_FROM\_TRADING\_NAME | Plain | Sender trading name (required for juridical entities — Entourage Lab trade name) |
 | TRISTAR\_INTEGRATION\_CODE | Plain | TriStar integration identifier (default: 1) |
 | GLOBALPAY\_WEBHOOK\_SECRET | Secret | GlobalPay webhook signature verification token |
 | ZAPSIGN\_WEBHOOK\_TOKEN | Secret | ZapSign webhook token verification |

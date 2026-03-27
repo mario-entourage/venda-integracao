@@ -711,7 +711,11 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         onStepChange={handleStepChange}
         onComplete={handleComplete}
         canAdvance={canAdvance}
+<<<<<<< HEAD
         canGoBack={!isSubmitting && (state.orderId === '' || !!resumeOrderId)}
+=======
+        canGoBack={!isSubmitting}
+>>>>>>> origin/main
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
         exitUrl="/pedidos"
       >
