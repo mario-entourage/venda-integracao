@@ -19,7 +19,8 @@ import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
 import { computeFileHash } from '@/lib/file-hash';
 import { useToast } from '@/hooks/use-toast';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
+import { useFirebase } from '@/firebase/provider';
 import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
@@ -151,6 +152,8 @@ export function StepIdentificacao({
   frete, onFreteChange,
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
+  const { user } = useFirebase();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
@@ -359,12 +362,12 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await fetchWithTimeout('/api/ai/extract-prescription', {
+      const res = await authFetch('/api/ai/extract-prescription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
+      if (!res.ok) { setExtractionMsg('Falha na extração. Tente novamente.'); return; }
       const data: PrescriptionExtraction = await res.json();
       if (data._error) { setExtractionMsg(data._error); return; }
 
@@ -445,7 +448,7 @@ export function StepIdentificacao({
     } finally {
       setIsExtracting(false);
     }
-  }, [clients, doctors, allProducts, onChange, exchangeRate]);
+  }, [user, clients, doctors, allProducts, onChange, exchangeRate]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!acceptedFiles[0]) return;
@@ -895,6 +898,29 @@ export function StepIdentificacao({
         )}
       </div>
 
+      {/* ── Frete ───────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
+        <p className="text-xs text-muted-foreground">
+          Custo de envio incluído no valor do link de pagamento GlobalPay.
+        </p>
+        <Input
+          id="frete-input"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="0,00"
+          value={freteInput}
+          onChange={(e) => setFreteInput(e.target.value)}
+          onBlur={() => {
+            const parsed = parseFloat(freteInput) || 0;
+            onFreteChange(Math.max(0, parsed));
+            setFreteInput(parsed > 0 ? String(parsed) : '');
+          }}
+          className="max-w-[200px]"
+        />
+      </div>
+
       {/* ── Representante ──────────────────────────────────────── */}
       <div className="space-y-3">
         <div>
@@ -955,29 +981,6 @@ export function StepIdentificacao({
             </label>
           ))}
         </div>
-      </div>
-
-      {/* ── Frete ───────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
-        <p className="text-xs text-muted-foreground">
-          Custo de envio incluído no valor do link de pagamento GlobalPay.
-        </p>
-        <Input
-          id="frete-input"
-          type="number"
-          min={0}
-          step="0.01"
-          placeholder="0,00"
-          value={freteInput}
-          onChange={(e) => setFreteInput(e.target.value)}
-          onBlur={() => {
-            const parsed = parseFloat(freteInput) || 0;
-            onFreteChange(Math.max(0, parsed));
-            setFreteInput(parsed > 0 ? String(parsed) : '');
-          }}
-          className="max-w-[200px]"
-        />
       </div>
 
       {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}

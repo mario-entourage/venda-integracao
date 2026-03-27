@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { requireAdmin } from '../_require-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,10 +119,16 @@ async function run() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth_result = await requireAdmin(request);
+  if (auth_result instanceof Response) return auth_result;
+  console.log(`[backfill-anvisa-profiles] Triggered by ${auth_result.email}`);
   return run();
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth_result = await requireAdmin(request);
+  if (auth_result instanceof Response) return auth_result;
+  console.log(`[backfill-anvisa-profiles] Triggered by ${auth_result.email}`);
   return run();
 }

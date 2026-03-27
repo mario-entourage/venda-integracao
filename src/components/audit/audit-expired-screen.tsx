@@ -3,12 +3,14 @@
 import { useState } from 'react';
 import { Clock, Mail } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { MODULE_KEYS, type ModuleKey } from '@/types/audit';
 
 export function AuditExpiredScreen() {
   const { auditSession, deactivateAuditMode } = useAuditMode();
+  const authFetch = useAuthFetch();
   const [requestSent, setRequestSent] = useState(false);
   const [isSending, setIsSending] = useState(false);
 
@@ -21,9 +23,8 @@ export function AuditExpiredScreen() {
   const handleRequestMoreTime = async () => {
     setIsSending(true);
     try {
-      await fetch('/api/notifications/send-email', {
+      await authFetch('/api/notifications/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: auditSession.creatingUserEmail,
           subject: 'Solicitação de Extensão de Auditoria',

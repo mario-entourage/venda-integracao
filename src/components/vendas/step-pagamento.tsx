@@ -70,7 +70,7 @@ export function StepPagamento({
   preAssignedInvoice,
   preAssignedAmount,
 }: StepPagamentoProps) {
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -127,7 +127,7 @@ export function StepPagamento({
 
         // Save frete to order document
         if (frete > 0) {
-          await updateOrder(firestore, orderId, { frete });
+          await updateOrder(firestore, orderId, { frete }, user!.uid);
         }
       }
 
@@ -139,6 +139,7 @@ export function StepPagamento({
 
       // Notify rep (fire-and-forget)
       if (firestore && repUserId && repEmail) {
+        const tkn = await user?.getIdToken().catch(() => undefined);
         notifyPaymentLinkCreated(firestore, {
           recipientUserId: repUserId,
           recipientEmail: repEmail,
@@ -146,6 +147,7 @@ export function StepPagamento({
           invoiceNumber: result.invoiceNumber,
           amount: totalWithFrete,
           currency,
+          idToken: tkn,
         }).catch(() => {});
       }
     } catch (err) {

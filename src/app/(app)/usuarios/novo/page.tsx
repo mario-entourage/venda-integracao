@@ -45,7 +45,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NovoUsuarioPage() {
-  const { isAdmin, isAdminLoading } = useUser();
+  const { user, isAdmin, isAdminLoading } = useUser();
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -59,7 +59,7 @@ export default function NovoUsuarioPage() {
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
     try {
-      await createPreregistration(db, values.email, values.groupId);
+      await createPreregistration(db, values.email, values.groupId, user!.uid);
       toast({ title: 'Usuario pre-cadastrado com sucesso.' });
       router.push('/usuarios');
     } catch (err) {

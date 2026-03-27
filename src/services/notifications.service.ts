@@ -3,6 +3,7 @@ import {
   query, where, orderBy, limit, serverTimestamp,
   Firestore, Query,
 } from 'firebase/firestore';
+import { authFetchWithToken } from '@/hooks/use-auth-fetch';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,6 +114,7 @@ export async function notifyShipmentTracking(
     orderId: string;
     trackingCode: string;
     invoiceNumber?: string;
+    idToken?: string;
   },
 ): Promise<void> {
   const ref = opts.invoiceNumber || opts.orderId.slice(0, 8).toUpperCase();
@@ -130,9 +132,8 @@ export async function notifyShipmentTracking(
   });
 
   try {
-    await fetch('/api/notifications/send-email', {
+    await authFetchWithToken(opts.idToken, '/api/notifications/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to: opts.recipientEmail,
         subject: `${title} — Pedido ${ref}`,
@@ -156,6 +157,7 @@ export async function notifyPaymentLinkCreated(
     invoiceNumber?: string;
     amount: number;
     currency: string;
+    idToken?: string;
   },
 ): Promise<void> {
   const fmtAmount = new Intl.NumberFormat('pt-BR', {
@@ -179,9 +181,8 @@ export async function notifyPaymentLinkCreated(
 
   // Email (fire-and-forget)
   try {
-    await fetch('/api/notifications/send-email', {
+    await authFetchWithToken(opts.idToken, '/api/notifications/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         to: opts.recipientEmail,
         subject: `${title} — ${body}`,

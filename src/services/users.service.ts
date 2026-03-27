@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import type { User, UserProfile } from '@/types';
 import { ANVISA_COLLECTIONS } from '@/lib/anvisa-paths';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Pre-registration collection (keyed by email)
@@ -34,15 +35,18 @@ export async function createPreregistration(
   db: Firestore,
   email: string,
   groupId: string,
+  performedById: string,
   options?: { isRepresentante?: boolean; displayName?: string },
 ): Promise<void> {
-  await setDoc(getPreregistrationRef(db, email), {
+  const ref = getPreregistrationRef(db, email);
+  await setDoc(ref, {
     email,
     groupId,
     ...(options?.isRepresentante ? { isRepresentante: true } : {}),
     ...(options?.displayName ? { displayName: options.displayName } : {}),
     createdAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'create', collection: 'preregistrations', documentId: ref.id, performedById, changes: { email, groupId, ...options } });
 }
 
 /**
@@ -179,12 +183,14 @@ export async function updateUser(
   db: Firestore,
   userId: string,
   data: Partial<Omit<User, 'id' | 'createdAt'>>,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'users', documentId: userId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -193,6 +199,7 @@ export async function updateUser(
 export async function softDeleteUser(
   db: Firestore,
   userId: string,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
@@ -200,6 +207,7 @@ export async function softDeleteUser(
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'users', documentId: userId, performedById, changes: { active: false } });
 }
 
 /**

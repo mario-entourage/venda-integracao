@@ -46,7 +46,7 @@ export function StepDocumentosZapSign({
   cvSignatarioCpf,
   onCvSignatarioCpfChange,
 }: StepDocumentosZapSignProps) {
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
 
   // ── client data (for address / CPF needed by ZapSign API) ──────────────
   const clientRef = useMemoFirebase(
@@ -127,7 +127,7 @@ export function StepDocumentosZapSign({
         zapsignDocId: result.docId,
         zapsignStatus: result.status,
         zapsignSignUrl: result.signUrl,
-      });
+      }, user!.uid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao gerar procuração.';
       setProcuracaoError(msg);
@@ -174,7 +174,7 @@ export function StepDocumentosZapSign({
         zapsignCvDocId: result.docId,
         zapsignCvStatus: result.status,
         zapsignCvSignUrl: result.signUrl,
-      });
+      }, user!.uid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao gerar Comprovante de Vínculo.';
       setCvError(msg);

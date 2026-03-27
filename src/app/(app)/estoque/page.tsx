@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { MoreHorizontal, RefreshCw } from 'lucide-react';
 import { friendlyError } from '@/lib/friendly-error';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
   getActiveProductsQuery,
@@ -50,6 +51,7 @@ type DialogMode = 'create' | 'edit' | null;
 
 export default function EstoquePage() {
   const db = useFirestore();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
 
   // ── Firestore subscriptions ────────────────────────────────────────────────
@@ -174,7 +176,7 @@ export default function EstoquePage() {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch(SHIPPING_API_ROUTES.inventory);
+      const res = await authFetch(SHIPPING_API_ROUTES.inventory);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);

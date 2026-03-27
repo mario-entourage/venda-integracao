@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 
 interface ShippingChoiceDialogProps {
@@ -31,6 +32,7 @@ export function ShippingChoiceDialog({
   onDone,
 }: ShippingChoiceDialogProps) {
   const { toast } = useToast();
+  const authFetch = useAuthFetch();
   const [sending, setSending] = useState(false);
 
   const handleBrazilShip = async () => {
@@ -45,9 +47,8 @@ export function ShippingChoiceDialog({
         <p>Por favor, providencie o envio a partir do estoque Brasil.</p>
       `;
 
-      const res = await fetch('/api/notifications/send-email', {
+      const res = await authFetch('/api/notifications/send-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           to: 'adm@entouragelab.com',
           subject: `Envio Brasil — Pedido #${orderId.slice(0, 8).toUpperCase()} — ${clientName}`,
@@ -64,7 +65,7 @@ export function ShippingChoiceDialog({
       onDone();
     } catch (err) {
       console.error('Failed to send Brazil shipping email:', err);
-      toast({ variant: 'destructive', title: 'Erro', description: 'Falha ao enviar e-mail de notificação.' });
+      toast({ variant: 'destructive', title: 'Falha ao enviar notificação', description: 'Não foi possível notificar a equipe sobre o envio Brasil. Tente novamente ou avise manualmente.' });
     } finally {
       setSending(false);
     }

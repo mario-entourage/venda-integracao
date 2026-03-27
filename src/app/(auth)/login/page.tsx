@@ -20,8 +20,8 @@ export default function LoginPage() {
     <div className="w-full max-w-sm rounded-2xl bg-white px-8 py-10 shadow-md space-y-6">
       {/* Logo */}
       <div className="flex flex-col items-center gap-3">
-        <Image src="/logo.png" alt="Entourage Phytolab" width={240} height={80} priority />
-        <span style={{ fontFamily: 'Meddon, cursive' }} className="text-2xl text-muted-foreground">
+        <Image src="/logo.png" alt="Entourage Phytolab" width={240} height={80} style={{ height: 'auto' }} priority />
+        <span style={{ fontFamily: 'Meddon, cursive' }} className="text-4xl text-muted-foreground">
           Vendas
         </span>
       </div>

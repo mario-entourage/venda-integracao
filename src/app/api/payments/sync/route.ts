@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/firebase/admin';
 import { getGlobalPayTransaction } from '@/server/integrations/globalpay';
+import { requireAuth } from '../../_require-auth';
+import { validateBody } from '../../_validate';
 
 /**
  * POST /api/payments/sync
@@ -20,10 +23,19 @@ import { getGlobalPayTransaction } from '@/server/integrations/globalpay';
 const APPROVED_STATUSES = new Set(['approved', 'paid', 'completed', 'success']);
 const TERMINAL_STATUSES = new Set(['expired', 'cancelled', 'failed', 'rejected']);
 
-export async function POST(request: Request) {
+const BodySchema = z.object({
+  orderId: z.string().optional(),
+});
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth instanceof Response) return auth;
+
+  const body = await validateBody(request, BodySchema);
+  if (body instanceof Response) return body;
+
   try {
     const db = adminDb;
-    const body = await request.json().catch(() => ({})) as { orderId?: string };
     const targetOrderId = body.orderId ?? null;
 
     // When orderId is provided, only check that order's payment links.
@@ -122,7 +134,7 @@ export async function POST(request: Request) {
     }
 
     console.log(
-      `[payments/sync] checked=${checked} approved=${approved} terminal=${terminal} errors=${errors}`,
+      `[payments/sync] checked=${checked} approved=${approved} terminal=${terminal} errors=${errors} triggeredBy=${auth.email}`,
     );
 
     return NextResponse.json({
