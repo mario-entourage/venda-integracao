@@ -898,6 +898,29 @@ export function StepIdentificacao({
         )}
       </div>
 
+      {/* ── Frete ───────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
+        <p className="text-xs text-muted-foreground">
+          Custo de envio incluído no valor do link de pagamento GlobalPay.
+        </p>
+        <Input
+          id="frete-input"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="0,00"
+          value={freteInput}
+          onChange={(e) => setFreteInput(e.target.value)}
+          onBlur={() => {
+            const parsed = parseFloat(freteInput) || 0;
+            onFreteChange(Math.max(0, parsed));
+            setFreteInput(parsed > 0 ? String(parsed) : '');
+          }}
+          className="max-w-[200px]"
+        />
+      </div>
+
       {/* ── Representante ──────────────────────────────────────── */}
       <div className="space-y-3">
         <div>
@@ -958,29 +981,6 @@ export function StepIdentificacao({
             </label>
           ))}
         </div>
-      </div>
-
-      {/* ── Frete ───────────────────────────────────────────────── */}
-      <div className="space-y-2">
-        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
-        <p className="text-xs text-muted-foreground">
-          Custo de envio incluído no valor do link de pagamento GlobalPay.
-        </p>
-        <Input
-          id="frete-input"
-          type="number"
-          min={0}
-          step="0.01"
-          placeholder="0,00"
-          value={freteInput}
-          onChange={(e) => setFreteInput(e.target.value)}
-          onBlur={() => {
-            const parsed = parseFloat(freteInput) || 0;
-            onFreteChange(Math.max(0, parsed));
-            setFreteInput(parsed > 0 ? String(parsed) : '');
-          }}
-          className="max-w-[200px]"
-        />
       </div>
 
       {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}
