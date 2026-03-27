@@ -15,7 +15,22 @@
       "Skill(plan-eng-review:*)",
       "Skill(qa)",
       "Skill(qa:*)",
-      "Bash(find /Users/mariobonifacio/Projects/sales_integration/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))"
+      "Bash(find /Users/mariobonifacio/Projects/sales_integration/src -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(grep -n \"Authorization.*Bearer\" /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(npx next:*)",
+      "Bash(mkdir -p ~/.gstack)",
+      "Bash(~/.gstack/just-upgraded-from)",
+      "Bash(rm -f ~/.gstack/last-update-check ~/.gstack/update-snoozed)",
+      "Bash(grep -l \"onClick\\\\|onSubmit\\\\|onClick=\" /Users/mariobonifacio/Projects/sales_integration/src/components/**/*.tsx)",
+      "Bash(grep -B5 -A3 \"catch.*err\\\\|catch.*e\" /Users/mariobonifacio/Projects/sales_integration/src/components/vendas/*.tsx)",
+      "Bash(grep -n \"toast\\\\|setError\\\\|setMsg.*[''''\"\"]Erro\\\\|[''''\"\"]Ocorreu um erro\" /Users/mariobonifacio/Projects/sales_integration/src/components/vendas/step-*.tsx)",
+      "Bash(grep -A 20 \"handleCancel = async\" /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(grep -n \"useState.*false\\\\|useState\\(false\\)\" /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(grep -n \"useState\\(false\\)\" /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(grep -B 5 -A 10 \"isCancelling\" /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(grep -n \"setError.*''Erro\\\\|setMsg.*''Erro\\\\|setProcessingMsg.*''Erro\\\\|setExtractionMsg.*''Erro\\\\|setSyncMsg.*''Erro\\\\|toast.*''Erro\\\\|title.*''Erro\" /Users/mariobonifacio/Projects/sales_integration/src/components/vendas/*.tsx /Users/mariobonifacio/Projects/sales_integration/src/app/\\\\\\(app\\\\\\)/controle/[orderId]/page.tsx)",
+      "Bash(tail -20 echo --- grep -r \"TODO\\\\|FIXME\\\\|HACK\\\\|XXX\" --include=*.ts --include=*.tsx -l)",
+      "Bash(find /Users/mariobonifacio/Projects/sales_integration/src -name dashboard-components* -o -name RequestTable*)"
     ]
   },
   "hooks": {

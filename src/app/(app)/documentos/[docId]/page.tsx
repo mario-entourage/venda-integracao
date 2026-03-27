@@ -29,6 +29,8 @@ function docTypeConfig(type: string) {
 // ─── metadata field labels ────────────────────────────────────────────────────
 
 const METADATA_LABELS: Record<string, string> = {
+  // File info
+  fileName:         'Nome do Arquivo',
   // Patient / identity
   fullName:         'Nome Completo',
   rg:               'RG',
@@ -55,6 +57,17 @@ const METADATA_LABELS: Record<string, string> = {
   confidence:       'Confiança da Extração',
   documentType:     'Tipo Detectado',
 };
+
+/** Fields rendered specially — excluded from the generic metadata table. */
+const HIDDEN_META_KEYS = new Set(['url']);
+
+function isPdf(fileName: string) {
+  return fileName.toLowerCase().endsWith('.pdf');
+}
+
+function isImage(fileName: string) {
+  return /\.(jpe?g|png|webp|gif|bmp|tiff?)$/i.test(fileName);
+}
 
 function labelFor(key: string): string {
   return METADATA_LABELS[key] ?? key;
@@ -130,8 +143,11 @@ export default function DocumentDetailPage() {
 
   const typeCfg = docTypeConfig(doc.type);
 
-  // Filter metadata entries — skip null/undefined values for display but show all keys
-  const metaEntries = Object.entries(doc.metadata ?? {});
+  const fileUrl = doc.metadata?.url as string | undefined;
+  const fileName = doc.metadata?.fileName as string | undefined;
+
+  // Filter metadata entries — skip the url field (shown as embedded viewer instead)
+  const metaEntries = Object.entries(doc.metadata ?? {}).filter(([k]) => !HIDDEN_META_KEYS.has(k));
 
   return (
     <div className="space-y-6">
@@ -151,6 +167,54 @@ export default function DocumentDetailPage() {
           {typeCfg.label}
         </Badge>
       </div>
+
+      {/* ── File viewer ── */}
+      {fileUrl && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>Documento</span>
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-normal text-primary hover:underline"
+              >
+                Abrir em nova aba ↗
+              </a>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 overflow-hidden rounded-b-lg">
+            {fileName && isPdf(fileName) ? (
+              <iframe
+                src={fileUrl}
+                className="w-full border-0"
+                style={{ height: '600px' }}
+                title={fileName}
+              />
+            ) : fileName && isImage(fileName) ? (
+              <img
+                src={fileUrl}
+                alt={fileName}
+                className="w-full object-contain max-h-[600px]"
+              />
+            ) : (
+              // Unknown type — show a download link
+              <div className="px-6 py-4">
+                <a
+                  href={fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={fileName}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {fileName ?? 'Baixar documento'}
+                </a>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Core fields ── */}
       <Card>
@@ -195,7 +259,7 @@ export default function DocumentDetailPage() {
         <CardContent>
           {metaEntries.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhum campo extraído disponível para este documento.
+              Nenhum campo extraído disponível para este documento. O arquivo pode ter sido enviado sem extração automática de dados.
             </p>
           ) : (
             <dl className="divide-y">
