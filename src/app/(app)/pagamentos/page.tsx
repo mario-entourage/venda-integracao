@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { RefreshCw, Plus, Link2 } from 'lucide-react';
+import {
+  RefreshCw, Plus, Link2, MoreHorizontal, Trash2, Eye, Pencil, CheckCircle2, ExternalLink, Copy,
+} from 'lucide-react';
 import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useAuthFetch } from '@/hooks/use-auth-fetch';
@@ -25,6 +27,13 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { TablePagination } from '@/components/shared/table-pagination';
@@ -68,6 +77,14 @@ function fmtDate(ts: unknown): string {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+function fmtDateTime(ts: unknown): string {
+  if (!ts) return '—';
+  const d = typeof (ts as { toDate?: () => Date }).toDate === 'function'
+    ? (ts as { toDate: () => Date }).toDate()
+    : new Date(ts as string);
+  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -104,10 +121,26 @@ export default function PagamentosPage() {
   const [assignOrderId, setAssignOrderId] = useState('');
   const [assigning, setAssigning] = useState(false);
 
+  // Admin per-link actions
+  const [viewLink, setViewLink] = useState<PaymentLink | null>(null);
+  const [editLink, setEditLink] = useState<PaymentLink | null>(null);
+  const [editClientName, setEditClientName] = useState('');
+  const [editRepName, setEditRepName] = useState('');
+  const [editInvoice, setEditInvoice] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<PaymentLink | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null); // link id being verified
+
+  // ── Sync all ──────────────────────────────────────────────────────────────
+
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const res = await authFetch('/api/payments/sync', { method: 'POST' });
+      const res = await authFetch('/api/payments/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
       const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -118,15 +151,23 @@ export default function PagamentosPage() {
         toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), nenhuma mudança.` });
       }
     } catch (err) {
-      toast({
-        title: 'Erro ao sincronizar pagamentos.',
-        description: friendlyError(err),
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao sincronizar pagamentos.', description: friendlyError(err), variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
   };
+
+  // Auto-sync on mount — runs once when the page first loads.
+  // useRef guards against double-fire in React strict mode.
+  const didAutoSync = useRef(false);
+  useEffect(() => {
+    if (didAutoSync.current) return;
+    didAutoSync.current = true;
+    handleSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Create standalone ─────────────────────────────────────────────────────
 
   const handleCreateStandalone = async () => {
     const amount = parseFloat(createAmount);
@@ -156,15 +197,13 @@ export default function PagamentosPage() {
         toast({ title: `Link criado: ${result.invoiceNumber}` });
       }
     } catch (err) {
-      toast({
-        title: 'Erro ao criar pagamento avulso.',
-        description: friendlyError(err),
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao criar pagamento avulso.', description: friendlyError(err), variant: 'destructive' });
     } finally {
       setCreating(false);
     }
   };
+
+  // ── Assign ────────────────────────────────────────────────────────────────
 
   const handleAssign = async () => {
     if (!assignOrderId.trim()) {
@@ -183,15 +222,94 @@ export default function PagamentosPage() {
         toast({ title: result.error || 'Erro ao vincular.', variant: 'destructive' });
       }
     } catch (err) {
-      toast({
-        title: 'Erro ao vincular pagamento.',
-        description: friendlyError(err),
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro ao vincular pagamento.', description: friendlyError(err), variant: 'destructive' });
     } finally {
       setAssigning(false);
     }
   };
+
+  // ── Verify single link ────────────────────────────────────────────────────
+
+  const handleVerify = async (pl: PaymentLink) => {
+    setActionLoading(pl.id);
+    try {
+      const res = await authFetch('/api/payments/verify-link', {
+        method: 'POST',
+        body: JSON.stringify({ linkId: pl.id, orderId: pl.orderId ?? '' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      if (data.approved) {
+        toast({ title: 'Pagamento confirmado!', description: `Status atualizado para: Pago.` });
+      } else if (data.terminal) {
+        toast({ title: `Status atualizado: ${data.newStatus}` });
+      } else {
+        toast({ title: `GlobalPay confirma: ainda pendente (${data.globalPayStatus || 'sem status'}).` });
+      }
+    } catch (err) {
+      toast({ title: 'Erro ao verificar link.', description: friendlyError(err), variant: 'destructive' });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ── Edit metadata ─────────────────────────────────────────────────────────
+
+  const openEdit = (pl: PaymentLink) => {
+    setEditLink(pl);
+    setEditClientName(pl.clientName ?? '');
+    setEditRepName(pl.repName ?? '');
+    setEditInvoice(pl.invoice ?? '');
+  };
+
+  const handleEditSave = async () => {
+    if (!editLink) return;
+    setSaving(true);
+    try {
+      const res = await authFetch('/api/payments/update-link', {
+        method: 'POST',
+        body: JSON.stringify({
+          linkId: editLink.id,
+          orderId: editLink.orderId ?? '',
+          clientName: editClientName,
+          repName: editRepName,
+          invoice: editInvoice,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      toast({ title: 'Metadados atualizados.' });
+      setEditLink(null);
+    } catch (err) {
+      toast({ title: 'Erro ao salvar.', description: friendlyError(err), variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
+  const handleDeleteConfirmed = async () => {
+    if (!deleteTarget) return;
+    setActionLoading(deleteTarget.id);
+    try {
+      const res = await authFetch('/api/payments/delete-link', {
+        method: 'POST',
+        body: JSON.stringify({ linkId: deleteTarget.id, orderId: deleteTarget.orderId ?? '' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      toast({ title: 'Link excluído.' });
+      setDeleteTarget(null);
+    } catch (err) {
+      toast({ title: 'Erro ao excluir link.', description: friendlyError(err), variant: 'destructive' });
+      setDeleteTarget(null);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   const resetCreateDialog = () => {
     setCreateOpen(false);
@@ -205,6 +323,13 @@ export default function PagamentosPage() {
     setCreatedUrl('');
     setCreatedInvoice('');
   };
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast({ title: `${label} copiado!` });
+  };
+
+  // ── Data ──────────────────────────────────────────────────────────────────
 
   const paymentLinksQ = useMemoFirebase(
     () => (firestore ? getAllPaymentLinksQuery(firestore) : null),
@@ -245,7 +370,6 @@ export default function PagamentosPage() {
     return filtered.slice(start, start + pageSize);
   }, [filtered, currentPage, pageSize]);
 
-  // Reset page when filters change
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(() => setCurrentPage(0), [statusFilter, search]);
 
@@ -278,11 +402,7 @@ export default function PagamentosPage() {
                 Novo Pagamento
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={handleSync}
-              disabled={syncing}
-            >
+            <Button variant="outline" onClick={handleSync} disabled={syncing}>
               <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Sincronizando...' : 'Sincronizar GlobalPay'}
             </Button>
@@ -360,7 +480,7 @@ export default function PagamentosPage() {
                   <TableHead>Representante</TableHead>
                   <TableHead>Data</TableHead>
                   <TableHead>Status</TableHead>
-                  {isAdmin && <TableHead className="w-[100px]" />}
+                  {isAdmin && <TableHead className="w-[48px]" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -373,6 +493,7 @@ export default function PagamentosPage() {
                 ) : (
                   paginatedItems.map((pl) => {
                     const isUnassigned = !pl.orderId;
+                    const isVerifying = actionLoading === pl.id;
                     return (
                       <TableRow
                         key={pl.id}
@@ -399,22 +520,52 @@ export default function PagamentosPage() {
                         <TableCell className="text-sm">{fmtDate(pl.createdAt)}</TableCell>
                         <TableCell><StatusBadge status={pl.status} /></TableCell>
                         {isAdmin && (
-                          <TableCell>
-                            {isUnassigned && pl.status === 'created' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 text-xs"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setAssignPaymentId(pl.id);
-                                  setAssignOpen(true);
-                                }}
-                              >
-                                <Link2 className="mr-1 h-3 w-3" />
-                                Vincular
-                              </Button>
-                            )}
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isVerifying}>
+                                  {isVerifying
+                                    ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    : <MoreHorizontal className="h-3.5 w-3.5" />}
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setViewLink(pl)}>
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  Ver detalhes
+                                </DropdownMenuItem>
+                                {pl.referenceId && (
+                                  <DropdownMenuItem onClick={() => handleVerify(pl)}>
+                                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                                    Verificar no GlobalPay
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onClick={() => openEdit(pl)}>
+                                  <Pencil className="mr-2 h-4 w-4" />
+                                  Alterar metadados
+                                </DropdownMenuItem>
+                                {isUnassigned && pl.status === 'created' && (
+                                  <DropdownMenuItem
+                                    onClick={() => { setAssignPaymentId(pl.id); setAssignOpen(true); }}
+                                  >
+                                    <Link2 className="mr-2 h-4 w-4" />
+                                    Vincular a pedido
+                                  </DropdownMenuItem>
+                                )}
+                                {pl.status !== 'paid' && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-destructive focus:text-destructive"
+                                      onClick={() => setDeleteTarget(pl)}
+                                    >
+                                      <Trash2 className="mr-2 h-4 w-4" />
+                                      Excluir
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         )}
                       </TableRow>
@@ -438,7 +589,136 @@ export default function PagamentosPage() {
         </CardContent>
       </Card>
 
-      {/* ── Create Standalone Payment Dialog ──────────────────────── */}
+      {/* ── View Detail Dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!viewLink} onOpenChange={(open) => { if (!open) setViewLink(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Link</DialogTitle>
+            <DialogDescription>{viewLink?.invoice || viewLink?.id}</DialogDescription>
+          </DialogHeader>
+          {viewLink && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <StatusBadge status={viewLink.status} />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Valor</p>
+                  <p className="font-medium">{fmtAmount(viewLink.amount, viewLink.currency)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Cliente</p>
+                  <p>{viewLink.clientName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Representante</p>
+                  <p>{viewLink.repName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Médico</p>
+                  <p>{viewLink.doctorName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Pedido</p>
+                  {viewLink.orderId
+                    ? <button className="text-primary underline" onClick={() => { setViewLink(null); router.push(`/controle/${viewLink.orderId}`); }}>{viewLink.orderId.slice(0, 12)}…</button>
+                    : <span className="text-orange-600">Avulso</span>
+                  }
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Criado em</p>
+                  <p>{fmtDateTime(viewLink.createdAt)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Expira em</p>
+                  <p>{fmtDateTime(viewLink.expiresAt)}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">Referência GlobalPay</p>
+                  <p className="font-mono text-xs break-all">{viewLink.referenceId || '—'}</p>
+                </div>
+              </div>
+              {viewLink.paymentUrl && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">URL de Pagamento</p>
+                  <div className="flex items-center gap-2">
+                    <Input value={viewLink.paymentUrl} readOnly className="text-xs h-8" />
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0"
+                      onClick={() => copyToClipboard(viewLink.paymentUrl!, 'URL')}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="outline" size="icon" className="h-8 w-8 shrink-0" asChild>
+                      <a href={viewLink.paymentUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewLink(null)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Edit Metadata Dialog ───────────────────────────────────────── */}
+      <Dialog open={!!editLink} onOpenChange={(open) => { if (!open) setEditLink(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Alterar Metadados</DialogTitle>
+            <DialogDescription>
+              Atualiza os campos de exibição do link. Valor e moeda não podem ser alterados.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome do Cliente</Label>
+              <Input value={editClientName} onChange={(e) => setEditClientName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Representante</Label>
+              <Input value={editRepName} onChange={(e) => setEditRepName(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Invoice / Referência</Label>
+              <Input value={editInvoice} onChange={(e) => setEditInvoice(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditLink(null)}>Cancelar</Button>
+            <Button onClick={handleEditSave} disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation ────────────────────────────────────────── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir link de pagamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O link <strong>{deleteTarget?.invoice || deleteTarget?.id}</strong> ({fmtAmount(deleteTarget?.amount ?? 0, deleteTarget?.currency ?? 'BRL')}) será excluído permanentemente.
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteConfirmed}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Create Standalone Payment Dialog ──────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={(open) => { if (!open) resetCreateDialog(); }}>
         <DialogContent>
           <DialogHeader>
@@ -459,14 +739,7 @@ export default function PagamentosPage() {
                 <Label className="text-xs">URL do Pagamento</Label>
                 <div className="flex gap-2">
                   <Input value={createdUrl} readOnly className="text-xs" />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      navigator.clipboard.writeText(createdUrl);
-                      toast({ title: 'Link copiado!' });
-                    }}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => { navigator.clipboard.writeText(createdUrl); toast({ title: 'Link copiado!' }); }}>
                     Copiar
                   </Button>
                 </div>
@@ -480,21 +753,12 @@ export default function PagamentosPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Valor *</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="0,00"
-                    value={createAmount}
-                    onChange={(e) => setCreateAmount(e.target.value)}
-                  />
+                  <Input type="number" step="0.01" min="0.01" placeholder="0,00" value={createAmount} onChange={(e) => setCreateAmount(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Moeda</Label>
                   <Select value={createCurrency} onValueChange={setCreateCurrency}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="BRL">BRL</SelectItem>
                       <SelectItem value="USD">USD</SelectItem>
@@ -505,52 +769,32 @@ export default function PagamentosPage() {
               <div className="space-y-1.5">
                 <Label className="text-xs">Representante</Label>
                 <Select value={createRepId} onValueChange={setCreateRepId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione (opcional)" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Selecione (opcional)" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">Nenhum</SelectItem>
                     {(repUsers ?? []).map((rep) => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.displayName || rep.email}
-                      </SelectItem>
+                      <SelectItem key={rep.id} value={rep.id}>{rep.displayName || rep.email}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Nome do Cliente</Label>
-                <Input
-                  placeholder="Opcional"
-                  value={createCustomerName}
-                  onChange={(e) => setCreateCustomerName(e.target.value)}
-                />
+                <Input placeholder="Opcional" value={createCustomerName} onChange={(e) => setCreateCustomerName(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Telefone</Label>
-                  <Input
-                    placeholder="Opcional"
-                    value={createCustomerPhone}
-                    onChange={(e) => setCreateCustomerPhone(e.target.value)}
-                  />
+                  <Input placeholder="Opcional" value={createCustomerPhone} onChange={(e) => setCreateCustomerPhone(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">E-mail</Label>
-                  <Input
-                    placeholder="Opcional"
-                    value={createCustomerEmail}
-                    onChange={(e) => setCreateCustomerEmail(e.target.value)}
-                  />
+                  <Input placeholder="Opcional" value={createCustomerEmail} onChange={(e) => setCreateCustomerEmail(e.target.value)} />
                 </div>
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">CPF / Documento</Label>
-                <Input
-                  placeholder="Opcional"
-                  value={createCustomerDoc}
-                  onChange={(e) => setCreateCustomerDoc(e.target.value)}
-                />
+                <Input placeholder="Opcional" value={createCustomerDoc} onChange={(e) => setCreateCustomerDoc(e.target.value)} />
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={resetCreateDialog}>Cancelar</Button>
@@ -563,7 +807,7 @@ export default function PagamentosPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Assign to Order Dialog ────────────────────────────────── */}
+      {/* ── Assign to Order Dialog ────────────────────────────────────── */}
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader>
@@ -575,11 +819,7 @@ export default function PagamentosPage() {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">ID do Pedido</Label>
-              <Input
-                placeholder="Cole o ID do pedido aqui"
-                value={assignOrderId}
-                onChange={(e) => setAssignOrderId(e.target.value)}
-              />
+              <Input placeholder="Cole o ID do pedido aqui" value={assignOrderId} onChange={(e) => setAssignOrderId(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
