@@ -21,7 +21,10 @@ export default function ExtensaoPage() {
                 <Download className="h-5 w-5" />
                 Baixar Extensão
               </CardTitle>
-              <Badge variant="secondary">v1.3.0</Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">v1.3.0</Badge>
+                <span className="text-xs text-muted-foreground">27/03/2026</span>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
