@@ -17,6 +17,7 @@ import { getUnassignedPaymentLinksQuery } from '@/services/payments.service';
 import { assignPaymentToOrder } from '@/server/actions/payment.actions';
 import { createOrder, updateOrderRepresentative, findActiveOrderByPrescriptionHash, getOrderRef, getOrderSubcollectionRef } from '@/services/orders.service';
 import { createOrderDocumentRequest, updateDocumentRequestStatus } from '@/services/documents.service';
+import { notifyOrderCreated } from '@/server/actions/order-notifications';
 import { updateOrderStatus } from '@/services/orders.service';
 import { getDoc, getDocs } from 'firebase/firestore';
 import { BASE_LABELS } from '@/lib/order-status-helpers';
@@ -24,6 +25,7 @@ import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
+import { OrderSummaryCard } from './order-summary-card';
 import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
@@ -473,11 +475,21 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             prescriptionHash: step1.prescriptionHash,
             prescriptionDate: step1.prescriptionDate,
             allowedPaymentMethods: step1.allowedPaymentMethods,
+            clientId: step1.clientId || undefined,
           },
           user.uid,
         );
 
         console.log('[wizard] Order created:', orderId);
+
+        // Fire-and-forget email notification (non-fatal)
+        notifyOrderCreated({
+          orderId,
+          customerName: step1.clientName,
+          amount: amount,
+          currency: 'BRL',
+          repName: state.selectedRepresentanteName || undefined,
+        }).catch((e) => console.warn('[wizard] notifyOrderCreated failed:', e));
 
         // Create document requests (non-fatal)
         try {
@@ -771,7 +783,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             paymentUrl={state.paymentUrl}
             gpOrderId={state.gpOrderId}
             onPaymentGenerated={(paymentUrl, gpOrderId, invoiceNumber) =>
-              setState((prev) => ({ ...prev, paymentUrl, gpOrderId, invoiceNumber }))
+              setState((prev) => ({ ...prev, paymentUrl, gpOrderId, invoiceNumber: invoiceNumber ?? '' }))
             }
             frete={state.frete}
             allowedPaymentMethods={state.step1.allowedPaymentMethods}
