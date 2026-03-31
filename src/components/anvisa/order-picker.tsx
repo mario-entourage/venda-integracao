@@ -154,7 +154,7 @@ export function OrderPicker({ preselectedOrderId, onOrderSelected, onSkip }: Ord
         )}
 
         <div className="flex justify-center pt-2">
-          <Button variant="ghost" size="sm" onClick={onSkip}>
+          <Button variant="outline" size="sm" onClick={onSkip}>
             Criar sem pedido
           </Button>
         </div>
