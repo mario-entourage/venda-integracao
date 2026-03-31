@@ -90,7 +90,9 @@ export default function UsuariosPage() {
   );
 
   const { data: users, isLoading } = useCollection<User>(usersQuery);
-  const { data: preregistrations } = useCollection<Preregistration>(!isAdminLoading && isAdmin ? preregQuery : null);
+  const { data: preregistrations } = useCollection<Preregistration>(
+    !isAdminLoading && isAdmin ? preregQuery : null,
+  );
 
   // Merge: show pre-registrations first (as pending rows), then actual users
   const allRows: UserRow[] = [
