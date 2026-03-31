@@ -74,7 +74,7 @@ type UserRow = (User & { id: string; pending?: false }) | {
 };
 
 export default function UsuariosPage() {
-  const { isAdmin, isAdminLoading } = useUser();
+  const { user, isAdmin, isAdminLoading } = useUser();
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
@@ -107,7 +107,7 @@ export default function UsuariosPage() {
 
   const handleGroupChange = async (userId: string, newGroup: string) => {
     try {
-      await updateUser(db, userId, { groupId: newGroup });
+      await updateUser(db, userId, { groupId: newGroup }, user!.uid);
 
       // Sync roles_admin collection: create doc for admin, delete for non-admin
       const rolesRef = doc(db, 'roles_admin', userId);
@@ -128,7 +128,7 @@ export default function UsuariosPage() {
 
   const handleStatusChange = async (userId: string, newStatus: string) => {
     try {
-      await updateUser(db, userId, { active: newStatus === 'true' });
+      await updateUser(db, userId, { active: newStatus === 'true' }, user!.uid);
       toast({ title: 'Status atualizado com sucesso.' });
     } catch (err) {
       console.error(err);
@@ -138,7 +138,7 @@ export default function UsuariosPage() {
 
   const handleRepToggle = async (userId: string, isRep: boolean) => {
     try {
-      await updateUser(db, userId, { isRepresentante: isRep });
+      await updateUser(db, userId, { isRepresentante: isRep }, user!.uid);
       toast({ title: isRep ? 'Marcado como representante.' : 'Representante removido.' });
     } catch (err) {
       console.error(err);

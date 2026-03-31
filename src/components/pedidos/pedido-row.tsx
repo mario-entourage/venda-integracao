@@ -226,7 +226,7 @@ export function PedidoRow({
       await updateOrder(firestore, order.id, {
         [field]: 'signed',
         updatedById: user.uid,
-      });
+      }, user.uid);
       toast({
         title: field === 'zapsignStatus' ? 'Procuracao marcada.' : 'Comprovante marcado.',
       });

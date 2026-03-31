@@ -364,7 +364,7 @@ function NotificationPreferencesCard({
     try {
       await updateUser(db, userId, {
         notificationPreferences: { ...current, [key]: !current[key] },
-      });
+      }, userId);
     } catch {
       toast({ title: 'Erro ao salvar preferência.', variant: 'destructive' });
     }

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirebase, useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirebase, useFirestore, useMemoFirebase, useUser } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { getUserRef, updateUser } from '@/services/users.service';
 import { PageHeader } from '@/components/shared/page-header';
@@ -29,6 +29,7 @@ export default function RepresentanteDetailPage() {
   const router = useRouter();
   const { toast } = useToast();
   const { isAdmin } = useFirebase();
+  const { user: currentUser } = useUser();
 
   const [removing, setRemoving] = useState(false);
 
@@ -67,7 +68,7 @@ export default function RepresentanteDetailPage() {
   const handleRemoveRep = async () => {
     setRemoving(true);
     try {
-      await updateUser(db, id, { isRepresentante: false });
+      await updateUser(db, id, { isRepresentante: false }, currentUser!.uid);
       toast({ title: 'Representante removido.' });
       router.push('/representantes');
     } catch (err) {

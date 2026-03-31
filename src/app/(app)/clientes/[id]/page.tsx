@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Timestamp } from 'firebase/firestore';
-import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirestore, useMemoFirebase, useUser } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { getClientRef, updateClient, softDeleteClient } from '@/services/clients.service';
 import { CustomerForm } from '@/components/forms/customer-form';
@@ -29,6 +29,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function ClienteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -86,7 +87,7 @@ export default function ClienteDetailPage() {
         phone: data.phone || '',
         birthDate: data.birthDate ? Timestamp.fromDate(data.birthDate) : undefined,
         address: data.address ?? undefined,
-      });
+      }, user!.uid);
       toast({ title: 'Cliente atualizado com sucesso.' });
       setEditing(false);
     } catch (err) {
@@ -100,7 +101,7 @@ export default function ClienteDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteClient(db, id);
+      await softDeleteClient(db, id, user!.uid);
       toast({ title: 'Cliente desativado.' });
       router.push('/clientes');
     } catch (err) {

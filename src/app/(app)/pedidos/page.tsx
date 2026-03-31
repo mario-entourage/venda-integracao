@@ -155,7 +155,7 @@ export default function PedidosPage() {
         await updateOrder(firestore, order.id, {
           softDeleted: true,
           updatedById: user.uid,
-        });
+        }, user.uid);
         setSelectedIds((prev) => {
           const next = new Set(prev);
           next.delete(order.id);

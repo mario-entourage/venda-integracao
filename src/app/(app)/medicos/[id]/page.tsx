@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirestore, useMemoFirebase, useUser } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { getDoctorRef, updateDoctor, softDeleteDoctor } from '@/services/doctors.service';
@@ -31,6 +31,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function MedicoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -101,7 +102,7 @@ export default function MedicoDetailPage() {
         phone: data.phone || '',
         mobilePhone: data.mobilePhone || '',
         repUserId: data.repUserId || '',
-      });
+      }, user!.uid);
       toast({ title: 'Medico atualizado com sucesso.' });
       setEditing(false);
     } catch (err) {
@@ -115,7 +116,7 @@ export default function MedicoDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteDoctor(db, id);
+      await softDeleteDoctor(db, id, user!.uid);
       toast({ title: 'Medico desativado.' });
       router.push('/medicos');
     } catch (err) {

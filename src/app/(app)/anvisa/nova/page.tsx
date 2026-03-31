@@ -901,9 +901,9 @@ export default function NewRequestPage() {
           />
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
-          <Link href={ANVISA_ROUTES.dashboard} passHref>
-            <Button variant="outline" disabled={isLoading}>Cancelar</Button>
-          </Link>
+          <Button variant="outline" disabled={isLoading} asChild>
+            <Link href={ANVISA_ROUTES.dashboard}>Cancelar</Link>
+          </Button>
           <Button
             onClick={() => handleProcessDocuments('EM_AUTOMACAO')}
             disabled={!canSubmit}

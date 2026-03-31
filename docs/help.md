@@ -48,6 +48,10 @@ VENDAS (menu: Vendas | rota: /remessas)
     - Selecionar ou cadastrar Paciente (cliente).
     - Selecionar ou cadastrar Medico prescritor.
     - Upload da receita medica com extracao automatica por IA.
+      Apos o upload, o sistema preenche automaticamente os
+      campos de Cliente, Medico e Produto com os dados
+      extraidos da receita. O operador pode revisar e
+      corrigir qualquer campo antes de prosseguir.
       Ao arrastar um arquivo sobre a pagina, a area de Receita
       fica verde ("Solte a receita aqui!") e a area de Produtos
       fica vermelha com icone de proibicao e "Nao solte aqui".
@@ -120,11 +124,38 @@ VENDAS (menu: Vendas | rota: /remessas)
 
 ENVIO (menu: Envio | rota: /envio)
   Gerenciamento de envios e rastreamento de entregas.
-  - Integracao com TriStar para criacao de remessas.
+  - Metodos: TriStar Express, Correios (Sedex/PAC), Motoboy.
+
+  TriStar Express (envio internacional de Miami):
+  - Dialog de criacao de remessa com campos do destinatario
+    (nome, CPF, endereco, telefone, email).
+  - Suporte a MULTIPLOS ITENS por remessa: adicione linhas
+    com "+ Adicionar item". Cada item tem tipo, descricao,
+    quantidade e preco unitario.
+  - Tipos de item: Produtos (10), Livros (20), Medicamento
+    (30), CBD (40), THC (41), Outro (90).
+  - Para itens CBD (tipo 40): campos adicionais de numero
+    de autorizacao ANVISA e nome comercial do produto.
+  - Codigos aduaneiros (HS codes) sao inseridos
+    automaticamente pelo servidor por tipo de item —
+    nao e necessario preencher manualmente.
+  - Seguro: toggle para incluir seguro com valor declarado.
+  - Dados do remetente (Entourage Lab Miami, incluindo
+    CNPJ e nome fantasia) sao inseridos automaticamente
+    pelo servidor — nao e necessario preencher.
+  - Apos criar a remessa: exibe codigo de rastreamento,
+    ID da remessa, e botao para baixar etiqueta (PDF).
   - Gera etiquetas de envio (PDF).
   - Rastreamento de encomendas.
   - Status de envio atualizado automaticamente.
-  - Metodos: TriStar, Correios (Sedex/PAC), Motoboy.
+
+  Correios (envio nacional):
+  - Entrada manual: codigo de rastreio, transportadora
+    (Sedex/PAC), data de envio.
+
+  Motoboy (entrega local):
+  - Entrada manual: nome do entregador, telefone, previsao
+    de entrega.
 
 CONTROLE (menu: Controle | rota: /controle)
   Lista de pedidos com filtros robustos e visao detalhada.
@@ -139,16 +170,27 @@ CONTROLE (menu: Controle | rota: /controle)
   - Todas as informacoes: cliente, medico, produtos,
     documentos, pagamento, envio.
   - Seletor de representante (dropdown para alterar rep).
+    Se a alteracao falhar, uma mensagem de erro e exibida
+    e o valor anterior e restaurado automaticamente.
   - Upload de documentos com seletor de tipo (Receita,
     Identidade, Comprovante, Laudo, NF, ANVISA, Geral).
-  - Sincronizar pagamento com GlobalPay.
-  - Marcar como pago manualmente.
-  - Marcar comprovante de vinculo como assinado.
+    Se a alteracao de tipo falhar, o valor anterior e
+    restaurado automaticamente com mensagem de erro.
+  - Sincronizar pagamento com GlobalPay. Erros de
+    conexao exibem mensagem descritiva com instrucao
+    de recarregar e tentar novamente.
+  - Marcar como pago manualmente. Erros exibem mensagem
+    especifica sobre o que falhou.
+  - Marcar comprovante de vinculo como assinado. Erros
+    exibem mensagem especifica sobre o que falhou.
   - Iniciar ANVISA (habilitado quando pagamento confirmado
     e ZapSign assinado, se aplicavel).
   - Upload de Autorizacao ANVISA (marca como CONCLUIDO).
   - Upload de documentos restantes com status individual.
-  - Cancelar venda ou continuar wizard.
+  - Cancelar venda: solicita confirmacao. Se o cancelamento
+    falhar, o dialogo de confirmacao e fechado e uma
+    mensagem de erro e exibida.
+  - Continuar wizard a partir do pedido existente.
   - CSV bulk import (admin): mapeamento de colunas,
     validacao, deteccao de duplicatas via batchImportId.
 
@@ -359,6 +401,10 @@ AUTENTICACAO
   - Sessao mantida automaticamente.
   - Niveis: Admin (acesso total), User (operacoes padrao),
     View Only (somente leitura).
+  - Erros de autenticacao exibem um codigo unico no formato
+    AUTH-YYYYMMDDHHMMSS-modulo (ex: AUTH-20260325143012-
+    api-ai-extract-prescription). Copie e envie ao
+    administrador para diagnostico rapido.
 
 PERMISSOES
   Funcionalidade              Admin  User  View Only
@@ -493,6 +539,25 @@ DADOS ENVIADOS PARA A EXTENSAO
 SOLUCAO DE PROBLEMAS
 ----------------------------------------------------------
 
+  Mensagem com "Codigo: AUTH-XXXXXX-...":
+  - Indica falha de autenticacao ao acessar uma funcao
+    do sistema (ex: upload de receita, envio de remessa).
+  - Primeiro, recarregue a pagina (F5) e tente novamente.
+    Sessoes expiradas sao reativadas automaticamente apos
+    o recarregamento.
+  - Se o erro persistir, copie o codigo exibido e envie
+    para o administrador. O codigo identifica exatamente
+    qual operacao falhou e quando, permitindo diagnostico
+    rapido.
+  - Exemplo de codigo: AUTH-20260325143012-api-ai-extract-prescription
+
+  Pagina de pagamento mostra "Erro ao carregar":
+  - Indica problema de conexao ao buscar os dados, NAO
+    ausencia do registro.
+  - Clique em "Recarregar pagina" exibido na tela.
+  - Se o erro persistir, verifique sua conexao com a
+    internet e tente novamente.
+
   "Extensao nao respondeu" (apos 2 segundos):
   - Verifique se a extensao esta instalada e ativada.
   - Recarregue a pagina do Entourage Lab (F5).
@@ -543,7 +608,7 @@ PROTOCOLO DE COMUNICACAO (TECNICO)
 ==========================================================
 ENTOURAGE LAB - REQUISITOS DE NEGOCIO
 ==========================================================
-Atualizado em: 10/03/2026
+Atualizado em: 25/03/2026
 Reflete o estado atual do aplicativo e banco de dados.
 
 ----------------------------------------------------------

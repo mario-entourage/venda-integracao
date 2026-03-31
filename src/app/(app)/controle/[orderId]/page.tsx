@@ -23,7 +23,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
+import { useToast } from '@/hooks/use-toast';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
@@ -87,6 +88,8 @@ export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
   const { firestore, user } = useFirebase();
+  const authFetch = useAuthFetch();
+  const { toast } = useToast();
 
   // Real-time order subscription
   const orderRef = useMemoFirebase(
@@ -175,9 +178,8 @@ export default function OrderDetailPage() {
     try {
       // AI classification
       const base64 = await fileToBase64(file);
-      const res = await fetchWithTimeout('/api/ai/classify-document', {
+      const res = await authFetch('/api/ai/classify-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000, // AI classification can be slow
       });
@@ -187,8 +189,15 @@ export default function OrderDetailPage() {
           docType = data.documentType;
         }
       }
-    } catch {
-      // Classification failed — default to 'general'
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+      toast({
+        title: 'Tipo não reconhecido',
+        description: isTimeout
+          ? 'A classificação demorou muito. Selecione o tipo manualmente.'
+          : 'Não foi possível classificar o documento. Selecione o tipo manualmente.',
+      });
+      // Either way, fall back to 'general'
     } finally {
       setClassifyingFiles((prev) => {
         const next = new Set(prev);
@@ -219,11 +228,18 @@ export default function OrderDetailPage() {
   const handleTypeOverride = async (idx: number, newType: string) => {
     const doc = uploadedDocs[idx];
     if (!firestore || !doc) return;
+    const prevType = doc.type;
     setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: newType } : d)));
     try {
       await updateDocumentRecord(firestore, doc.docRecordId, { type: newType });
     } catch (err) {
       console.error('[OrderDetailPage] type override error:', err);
+      setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: prevType } : d)));
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar tipo',
+        description: 'Não foi possível salvar o tipo do documento. Tente novamente.',
+      });
     }
   };
 
@@ -235,9 +251,8 @@ export default function OrderDetailPage() {
     setIsSyncing(true);
     setSyncMsg(null);
     try {
-      const res = await fetchWithTimeout('/api/payments/sync', {
+      const res = await authFetch('/api/payments/sync', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId }),
       });
       if (!res.ok) throw new Error(`Sync failed: HTTP ${res.status}`);
@@ -248,7 +263,7 @@ export default function OrderDetailPage() {
           : `${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`,
       );
     } catch {
-      setSyncMsg('Erro ao sincronizar. Tente novamente.');
+      setSyncMsg('Não foi possível sincronizar o pagamento. Verifique sua conexão e tente novamente.');
     } finally {
       setIsSyncing(false);
     }
@@ -268,7 +283,7 @@ export default function OrderDetailPage() {
       await updateOrderRepresentative(firestore, orderId, {
         name: isNone ? 'Venda Direta' : name,
         userId: isNone ? '' : userId,
-      });
+      }, user!.uid);
       setRepresentative((prev) =>
         prev
           ? { ...prev, name: isNone ? 'Venda Direta' : name, userId: isNone ? '' : userId }
@@ -276,6 +291,11 @@ export default function OrderDetailPage() {
       );
     } catch (err) {
       console.error('[OrderDetailPage] rep update error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar representante',
+        description: 'Não foi possível alterar o representante. Tente novamente.',
+      });
     } finally {
       setRepSaving(false);
     }
@@ -293,7 +313,7 @@ export default function OrderDetailPage() {
       await updateOrderStatus(firestore, orderId, 'paid', user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark paid error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível marcar como pago. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -307,10 +327,10 @@ export default function OrderDetailPage() {
       await updateOrder(firestore, orderId, {
         [field]: 'signed',
         updatedById: user.uid,
-      });
+      }, user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark signed error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível atualizar o status de assinatura. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -328,6 +348,13 @@ export default function OrderDetailPage() {
       router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
+      setConfirmCancel(false);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao cancelar pedido',
+        description: 'Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.',
+      });
+    } finally {
       setIsCancelling(false);
     }
   };
