@@ -43,14 +43,7 @@ export function AppHeader() {
     <header className="flex h-14 items-center gap-2 border-b px-4">
       <SidebarTrigger />
       <Separator orientation="vertical" className="h-6" />
-      <div className="flex-1 flex justify-center">
-        <h1
-          className="text-[30px] font-semibold uppercase tracking-[4px] text-[#00637C]"
-          style={{ fontFamily: "'Oswald', sans-serif", fontStretch: 'condensed' }}
-        >
-          Vendas
-        </h1>
-      </div>
+      <div className="flex-1" />
 
       {!isAuditMode && <NotificationBell />}
 

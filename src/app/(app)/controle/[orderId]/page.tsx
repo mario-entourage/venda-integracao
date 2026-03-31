@@ -27,7 +27,7 @@ import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
-import { createDocumentRecord, updateDocumentRecord } from '@/services/documents.service';
+import { createDocumentRecord, updateDocumentRecord, getDocumentRecordsByOrderId } from '@/services/documents.service';
 import { OrderStatus } from '@/types';
 import type { Order, OrderCustomer, OrderDoctor, OrderRepresentative } from '@/types';
 import type { User } from '@/types';
@@ -156,6 +156,19 @@ export default function OrderDetailPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [classifyingFiles, setClassifyingFiles] = useState<Set<string>>(new Set());
 
+  // Pre-load existing document filenames to prevent duplicate uploads
+  useEffect(() => {
+    if (!firestore || !orderId) return;
+    getDocumentRecordsByOrderId(firestore, orderId).then((existing) => {
+      setUploadedDocs(existing.map((d) => ({
+        name: String((d.metadata as Record<string, unknown>)?.fileName ?? d.key),
+        url: String((d.metadata as Record<string, unknown>)?.url ?? ''),
+        type: d.type,
+        docRecordId: d.id,
+      })));
+    }).catch(() => { /* non-fatal */ });
+  }, [firestore, orderId]);
+
   /** Convert a File to base64 for AI classification. */
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -171,6 +184,16 @@ export default function OrderDetailPage() {
   /** Called when a file finishes uploading. Classifies via AI, then creates document record. */
   const handleFileReady = async (file: File, result: { path: string; url: string; name: string }) => {
     if (!firestore) return;
+
+    // Reject duplicate filenames
+    if (uploadedDocs.some((d) => d.name === result.name)) {
+      toast({
+        variant: 'destructive',
+        title: 'Documento já enviado',
+        description: `"${result.name}" já foi carregado para este pedido.`,
+      });
+      return;
+    }
 
     let docType = 'general';
     setClassifyingFiles((prev) => new Set(prev).add(file.name));
