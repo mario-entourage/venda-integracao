@@ -3,7 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
-import { Download, ChevronRight, ChevronDown } from 'lucide-react';
+import { Download, ChevronRight, ChevronDown, Search } from 'lucide-react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getDocumentsRef } from '@/services/documents.service';
@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/select';
 import { TablePagination } from '@/components/shared/table-pagination';
 import { exportToCsv } from '@/lib/export-csv';
+import { getPatientName, matchesSearch, getPrescriptionExpiry, markArchivedDocs } from '@/lib/document-helpers';
+import type { ExpiryStatus } from '@/lib/document-helpers';
 import type { DocumentRecord } from '@/types';
 import type { User } from '@/types';
 
@@ -81,26 +83,46 @@ export default function DocumentosPage() {
   const [dateFrom, setDateFrom] = useState(defaultFrom);
   const [dateTo, setDateTo] = useState(defaultTo);
   const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Firestore query
+  // Debounce search input (300ms)
+  React.useEffect(() => {
+    const timer = setTimeout(() => setSearchTerm(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Firestore query — when searching, drop date constraints to find all docs
   const docsQ = useMemoFirebase(
     () => {
       if (!firestore || !user) return null;
-      const fromTs = Timestamp.fromDate(new Date(dateFrom + 'T00:00:00'));
-      const toTs = Timestamp.fromDate(new Date(dateTo + 'T23:59:59.999'));
-      const constraints = [
-        where('createdAt', '>=', fromTs),
-        where('createdAt', '<=', toTs),
-        orderBy('createdAt', 'desc'),
-        limit(500),
-      ];
-      if (isAdmin) return query(getDocumentsRef(firestore), ...constraints);
-      return query(getDocumentsRef(firestore), where('userId', '==', user.uid), ...constraints);
+
+      const constraints = [];
+      if (!isAdmin) {
+        constraints.push(where('userId', '==', user.uid));
+      }
+
+      if (searchTerm) {
+        // Searching: fetch all docs (up to 500), no date filter
+        constraints.push(orderBy('createdAt', 'desc'), limit(500));
+      } else {
+        // Normal: date-filtered
+        const fromTs = Timestamp.fromDate(new Date(dateFrom + 'T00:00:00'));
+        const toTs = Timestamp.fromDate(new Date(dateTo + 'T23:59:59.999'));
+        constraints.push(
+          where('createdAt', '>=', fromTs),
+          where('createdAt', '<=', toTs),
+          orderBy('createdAt', 'desc'),
+          limit(500),
+        );
+      }
+
+      return query(getDocumentsRef(firestore), ...constraints);
     },
-    [firestore, user, isAdmin, dateFrom, dateTo],
+    [firestore, user, isAdmin, dateFrom, dateTo, searchTerm],
   );
 
   const { data: rawDocs, isLoading } = useCollection<DocumentRecord>(docsQ);
@@ -120,17 +142,21 @@ export default function DocumentosPage() {
     return m;
   }, [allUsers]);
 
-  // Apply type filter, then group by patient
+  // Apply type filter + search filter, group by patient, mark archived + expiry
   const groups: PatientGroup[] = useMemo(() => {
     let filtered = rawDocs ?? [];
     if (typeFilter !== 'all') {
       filtered = filtered.filter((d) => d.type === typeFilter);
     }
+    // Client-side search filter
+    if (searchTerm) {
+      filtered = filtered.filter((d) => matchesSearch(d, searchTerm));
+    }
 
-    // Group by patient name (holder or metadata.fullName)
+    // Group by patient name
     const map = new Map<string, (DocumentRecord & { id: string })[]>();
     for (const d of filtered) {
-      const name = d.holder || (d.metadata?.fullName as string) || '(sem paciente)';
+      const name = getPatientName(d);
       const arr = map.get(name) ?? [];
       arr.push(d as DocumentRecord & { id: string });
       map.set(name, arr);
@@ -139,18 +165,26 @@ export default function DocumentosPage() {
     // Build groups, sort docs within each group by date desc
     const result: PatientGroup[] = [];
     for (const [patientName, docs] of map) {
-      docs.sort((a, b) => tsSeconds(b.createdAt) - tsSeconds(a.createdAt));
+      // Mark archived prescriptions within each patient's docs
+      const withArchive = markArchivedDocs(docs as (DocumentRecord & { id: string; prescriptionDate?: string })[]);
+
+      // Sort: active docs first (by date desc), then archived (by date desc)
+      withArchive.sort((a, b) => {
+        if (a.archived !== b.archived) return a.archived ? 1 : -1;
+        return tsSeconds(b.createdAt) - tsSeconds(a.createdAt);
+      });
+
       result.push({
         patientName,
-        docs,
-        latestTs: tsSeconds(docs[0]?.createdAt),
+        docs: withArchive,
+        latestTs: tsSeconds(withArchive[0]?.createdAt),
       });
     }
 
     // Sort groups by most recent document date desc
     result.sort((a, b) => b.latestTs - a.latestTs);
     return result;
-  }, [rawDocs, typeFilter]);
+  }, [rawDocs, typeFilter, searchTerm]);
 
   const totalDocs = useMemo(() => groups.reduce((s, g) => s + g.docs.length, 0), [groups]);
 
@@ -162,7 +196,7 @@ export default function DocumentosPage() {
 
   // Reset page when filters change
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [typeFilter, dateFrom, dateTo]);
+  useMemo(() => setCurrentPage(0), [typeFilter, dateFrom, dateTo, searchTerm]);
 
   const toggleExpand = (name: string) => {
     setExpanded((prev) => {
@@ -184,7 +218,7 @@ export default function DocumentosPage() {
   const handleExportCsv = () => {
     const allDocs = groups.flatMap((g) => g.docs);
     exportToCsv(allDocs, [
-      { key: 'holder', header: 'Paciente', render: (d) => d.holder || (d.metadata?.fullName as string) || '' },
+      { key: 'holder', header: 'Paciente', render: (d) => getPatientName(d, '') },
       { key: 'type', header: 'Tipo', render: (d) => docTypeConfig(d.type).label },
       { key: 'orderId', header: 'Pedido', render: (d) => d.orderId ? String(d.orderId).slice(0, 8).toUpperCase() : '' },
       { key: 'doctorName', header: 'Médico', render: (d) => (d.metadata?.doctorName as string) || '' },
@@ -208,6 +242,19 @@ export default function DocumentosPage() {
       <Card>
         <CardContent className="pt-6">
           <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Buscar</Label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por paciente..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="w-[240px] pl-9"
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Data — De</Label>
               <Input
@@ -243,6 +290,12 @@ export default function DocumentosPage() {
               </Select>
             </div>
           </div>
+          {searchTerm && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              <Search className="inline h-3 w-3 mr-1" />
+              Buscando em todos os registros
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -305,6 +358,10 @@ export default function DocumentosPage() {
                     const isSingle = group.docs.length === 1;
                     const singleDoc = isSingle ? group.docs[0] : null;
                     const singleCfg = singleDoc ? docTypeConfig(singleDoc.type) : null;
+                    const singleExpiry: ExpiryStatus | null =
+                      singleDoc?.type === 'prescription'
+                        ? getPrescriptionExpiry((singleDoc as typeof singleDoc & { prescriptionDate?: string }).prescriptionDate)
+                        : null;
 
                     return (
                       <React.Fragment key={group.patientName}>
@@ -325,9 +382,21 @@ export default function DocumentosPage() {
                           </td>
                           <td className="py-3">
                             {isSingle && singleCfg ? (
-                              <Badge variant="outline" className={singleCfg.className}>
-                                {singleCfg.label}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge variant="outline" className={singleCfg.className}>
+                                  {singleCfg.label}
+                                </Badge>
+                                {singleExpiry === 'expiring' && (
+                                  <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50 text-[10px]">
+                                    Vencendo
+                                  </Badge>
+                                )}
+                                {singleExpiry === 'expired' && (
+                                  <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50 text-[10px]">
+                                    Vencida
+                                  </Badge>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">
                                 {group.docs.length} documentos
@@ -385,19 +454,43 @@ export default function DocumentosPage() {
                           const cfg = docTypeConfig(doc.type);
                           const doctorName = (doc.metadata?.doctorName as string) || '';
                           const uploaderName = doc.userId ? (userMap.get(doc.userId) ?? doc.userId.slice(0, 8)) : '—';
+                          const isArchived = (doc as typeof doc & { archived?: boolean }).archived;
+                          const expiry: ExpiryStatus | null =
+                            doc.type === 'prescription'
+                              ? getPrescriptionExpiry((doc as typeof doc & { prescriptionDate?: string }).prescriptionDate)
+                              : null;
                           return (
                             <tr
                               key={doc.id}
-                              className="border-b last:border-0 bg-muted/20 hover:bg-muted/40 cursor-pointer transition-colors"
+                              className={`border-b last:border-0 hover:bg-muted/40 cursor-pointer transition-colors ${
+                                isArchived ? 'bg-muted/10 opacity-60' : 'bg-muted/20'
+                              }`}
                               onClick={() => router.push(`/documentos/${doc.id}`)}
                             >
                               <td className="py-2.5 pl-12 text-muted-foreground text-xs">
                                 {(doc.metadata?.fileName as string) || doc.key || '—'}
                               </td>
                               <td className="py-2.5">
-                                <Badge variant="outline" className={cfg.className}>
-                                  {cfg.label}
-                                </Badge>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className={cfg.className}>
+                                    {cfg.label}
+                                  </Badge>
+                                  {isArchived && (
+                                    <Badge variant="outline" className="border-slate-300 text-slate-500 bg-slate-50 text-[10px]">
+                                      Arquivado
+                                    </Badge>
+                                  )}
+                                  {expiry === 'expiring' && (
+                                    <Badge variant="outline" className="border-amber-300 text-amber-700 bg-amber-50 text-[10px]">
+                                      Vencendo
+                                    </Badge>
+                                  )}
+                                  {expiry === 'expired' && (
+                                    <Badge variant="outline" className="border-red-300 text-red-700 bg-red-50 text-[10px]">
+                                      Vencida
+                                    </Badge>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-2.5">
                                 {doc.orderId ? (
