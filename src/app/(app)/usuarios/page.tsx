@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { query, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { query, orderBy, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { getUsersRef, updateUser, getPreregistrationsRef } from '@/services/users.service';
@@ -148,6 +148,18 @@ export default function UsuariosPage() {
     }
   };
 
+  const handleOrderNotifToggle = async (userId: string, current: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        'notificationPreferences.emailOnOrderCreated': !current,
+      });
+      toast({ title: !current ? 'Notificação de vendas ativada.' : 'Notificação de vendas desativada.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao atualizar notificação.', variant: 'destructive' });
+    }
+  };
+
   const adminColumns: ColumnDef<UserRow>[] = [
     {
       key: 'email',
@@ -219,6 +231,23 @@ export default function UsuariosPage() {
           />
         </div>
       ),
+    },
+    {
+      key: 'notificationPreferences',
+      header: 'Notif. Vendas',
+      render: (item) => {
+        if (item.pending) return <span className="text-muted-foreground text-xs">—</span>;
+        const u = item as User & { id: string };
+        const checked = !!u.notificationPreferences?.emailOnOrderCreated;
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Switch
+              checked={checked}
+              onCheckedChange={() => handleOrderNotifToggle(item.id, checked)}
+            />
+          </div>
+        );
+      },
     },
     {
       key: 'lastLogin',
