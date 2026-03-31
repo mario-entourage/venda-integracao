@@ -25,7 +25,6 @@ import { savePrescription } from '@/services/prescriptions.service';
 import { StepWizard } from '@/components/shared/step-wizard';
 import { StepIdentificacao, type Step1State } from './step-identificacao';
 import { StepPagamento } from './step-pagamento';
-import { OrderSummaryCard } from './order-summary-card';
 import { StepDocumentosZapSign } from './step-documentos-zapsign';
 import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
