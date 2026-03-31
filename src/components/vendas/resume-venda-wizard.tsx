@@ -175,7 +175,7 @@ export function ResumeVendaWizard({ orderId, onComplete }: ResumeVendaWizardProp
             onPaymentGenerated={(url, gpId, invoice) => {
               setPaymentUrl(url);
               setGpOrderId(gpId);
-              setInvoiceNumber(invoice);
+              setInvoiceNumber(invoice ?? '');
             }}
             allowedPaymentMethods={{ creditCard: true, debitCard: true, boleto: true, pix: true }}
             frete={0}

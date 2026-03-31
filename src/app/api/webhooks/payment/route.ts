@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/firebase/admin';
 import { Resend } from 'resend';
+import { notifyPaymentConfirmed } from '@/server/actions/order-notifications';
 
 /**
  * GlobalPay payment webhook — fires when a payment link is paid or fails.
@@ -162,6 +163,26 @@ export async function POST(request: NextRequest) {
 
     // ── Notify rep about payment received ──────────────────────────────────
     await notifyRepPaymentReceived(orderId, orderData, amount, currency);
+
+    // ── Notify subscribed users about confirmed payment ────────────────────
+    try {
+      const customerSnap = await adminDb
+        .collection('orders')
+        .doc(orderId)
+        .collection('customer')
+        .limit(1)
+        .get();
+      const customerName = customerSnap.empty ? '' : String(customerSnap.docs[0].data().name ?? '');
+      notifyPaymentConfirmed({
+        orderId,
+        invoice: String(orderData.invoice ?? ''),
+        customerName,
+        amount,
+        currency,
+      }).catch((e) => console.warn('[webhook/payment] notifyPaymentConfirmed failed:', e));
+    } catch (e) {
+      console.warn('[webhook/payment] Failed to fetch customer for notification:', e);
+    }
   }
 
   return NextResponse.json({ received: true, processed: isApproved });

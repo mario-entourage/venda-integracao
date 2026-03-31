@@ -74,6 +74,8 @@ export interface CreateOrderData {
     boleto: boolean;
     pix: boolean;
   };
+  /** FK → clients collection. */
+  clientId?: string;
 }
 
 /**
@@ -129,6 +131,7 @@ export async function createOrder(
     prescriptionHash: orderData.prescriptionHash || '',
     prescriptionDate: orderData.prescriptionDate || '',
     ...(orderData.allowedPaymentMethods && { allowedPaymentMethods: orderData.allowedPaymentMethods }),
+    ...(orderData.clientId && { clientId: orderData.clientId }),
     createdById,
     updatedById: createdById,
     createdAt: serverTimestamp(),

@@ -35,6 +35,7 @@ export async function createDocumentRecord(
     metadata?: Record<string, unknown>;
     userId?: string;
     orderId?: string;
+    clientId?: string;
   },
 ): Promise<string> {
   const ref = await addDoc(getDocumentsRef(db), {
@@ -45,6 +46,7 @@ export async function createDocumentRecord(
     metadata: data.metadata || {},
     userId: data.userId || '',
     orderId: data.orderId || '',
+    ...(data.clientId && { clientId: data.clientId }),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -145,6 +147,18 @@ export async function getOrderDocumentRequests(
   const requestsRef = collection(db, 'orders', orderId, 'documentRequests');
   const snap = await getDocs(requestsRef);
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+
+/**
+ * Fetch all documents linked to a specific order.
+ */
+export async function getDocumentRecordsByOrderId(
+  db: Firestore,
+  orderId: string,
+): Promise<(DocumentRecord & { id: string })[]> {
+  const q = query(getDocumentsRef(db), where('orderId', '==', orderId));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as DocumentRecord & { id: string });
 }
 
 /**
