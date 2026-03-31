@@ -340,6 +340,7 @@ export default function PerfilPage() {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_PREFS: NotificationPreferences = {
+  emailOnOrderCreated: false,
   emailOnPaymentLinkCreated: true,
   emailOnPaymentReceived: true,
   inAppOnPaymentLinkCreated: true,
@@ -375,6 +376,16 @@ function NotificationPreferencesCard({
         <CardTitle>Preferências de Notificação</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Nova venda registrada (email)</p>
+            <p className="text-xs text-muted-foreground">Receber email quando uma nova venda for criada</p>
+          </div>
+          <Switch
+            checked={current.emailOnOrderCreated}
+            onCheckedChange={() => toggle('emailOnOrderCreated')}
+          />
+        </div>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">Link de pagamento criado (in-app)</p>

@@ -26,7 +26,7 @@ interface StepPagamentoProps {
   clientEmail: string;
   paymentUrl: string;
   gpOrderId: string;
-  onPaymentGenerated: (paymentUrl: string, gpOrderId: string, invoiceNumber: string) => void;
+  onPaymentGenerated: (paymentUrl: string, gpOrderId: string, invoiceNumber?: string) => void;
   /** Frete cost (BRL) — set in Step 0, read-only here */
   frete: number;
   /** Allowed payment methods from Step 0 (for display) */
