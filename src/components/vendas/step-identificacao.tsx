@@ -529,17 +529,28 @@ export function StepIdentificacao({
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={clientOptions}
-            value={state.clientId}
-            onChange={(id) => {
-              const client = clients.find((c) => c.id === id);
-              if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
-            }}
-            placeholder="Buscar paciente…"
-            searchPlaceholder="Nome ou CPF…"
-            emptyMessage="Nenhum paciente encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={clientOptions}
+                value={state.clientId}
+                onChange={(id) => {
+                  const client = clients.find((c) => c.id === id);
+                  if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
+                }}
+                placeholder="Buscar paciente…"
+                searchPlaceholder="Nome ou CPF…"
+                emptyMessage="Nenhum paciente encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo paciente"
+              onClick={() => setShowAddClient(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
 
         {/* Doctor */}
@@ -565,24 +576,35 @@ export function StepIdentificacao({
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={doctorOptions}
-            value={state.doctorId}
-            onChange={(id) => {
-              const doctor = doctors.find((d) => d.id === id);
-              if (doctor) {
-                onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
-                // Auto-select the doctor's assigned rep (if any and no rep currently selected)
-                if (doctor.repUserId && !selectedRepresentanteId) {
-                  const rep = repUsers.find((r) => r.id === doctor.repUserId);
-                  if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
-                }
-              }
-            }}
-            placeholder="Buscar médico…"
-            searchPlaceholder="Nome ou CRM…"
-            emptyMessage="Nenhum médico encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={doctorOptions}
+                value={state.doctorId}
+                onChange={(id) => {
+                  const doctor = doctors.find((d) => d.id === id);
+                  if (doctor) {
+                    onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+                    // Auto-select the doctor's assigned rep (if any and no rep currently selected)
+                    if (doctor.repUserId && !selectedRepresentanteId) {
+                      const rep = repUsers.find((r) => r.id === doctor.repUserId);
+                      if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+                    }
+                  }
+                }}
+                placeholder="Buscar médico…"
+                searchPlaceholder="Nome ou CRM…"
+                emptyMessage="Nenhum médico encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo médico"
+              onClick={() => setShowAddDoctor(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
 
