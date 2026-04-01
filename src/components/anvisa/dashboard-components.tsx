@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal, File, Plus, Trash2, Loader2, Search } from "lucide-react";
@@ -33,13 +33,15 @@ import { exportToCsv } from "@/lib/export-csv";
 
 
 const TAB_STATUSES: Record<string, AnvisaRequestStatus[]> = {
-  // active = in-flight (being processed); draft = pending (not yet picked up)
-  active:   ['EM_AJUSTE', 'EM_AUTOMACAO', 'ERRO'],
-  draft:    ['PENDENTE'],
+  // active = in-flight (submitted and being processed)
+  active:   ['PENDENTE', 'EM_AJUSTE', 'EM_AUTOMACAO', 'ERRO'],
+  // draft = created but not yet submitted
+  draft:    ['RASCUNHO'],
   archived: ['CONCLUIDO'],
 };
 
 const statusMap: Record<AnvisaRequestStatus, { label: string; className: string }> = {
+  RASCUNHO: { label: "Rascunho", className: "bg-gray-100 text-gray-700 border-gray-300" },
   PENDENTE: { label: "Pendente", className: "bg-yellow-100 text-yellow-800 border-yellow-300" },
   EM_AJUSTE: { label: "Em Ajuste", className: "bg-blue-100 text-blue-800 border-blue-300" },
   EM_AUTOMACAO: { label: "Em Automação", className: "bg-purple-100 text-purple-800 border-purple-300" },
@@ -65,7 +67,8 @@ export function RequestTable() {
   // For batch selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSingleDeleting, setIsSingleDeleting] = useState(false);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
 
   // Admin sees all non-deleted requests; regular users see only their own
   const requestsQuery = useMemoFirebase(() => {
@@ -73,7 +76,7 @@ export function RequestTable() {
     if (isAdmin) {
       return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('softDeleted', '==', false));
     }
-    return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('ownerEmail', '==', user.email));
+    return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('ownerEmail', '==', user.email), where('softDeleted', '==', false));
   }, [user, firestore, isAdmin]);
 
   const { data: requests, isLoading } = useCollection<PatientRequest>(requestsQuery);
@@ -97,7 +100,7 @@ export function RequestTable() {
 
   // Reset page when search or tab changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [search, activeTab]);
+  useEffect(() => setCurrentPage(0), [search, activeTab]);
 
   const handleExportCsv = useCallback(() => {
     exportToCsv(filteredRequests, [
@@ -112,7 +115,7 @@ export function RequestTable() {
 
   const handleSoftDelete = useCallback(async (request: PatientRequest) => {
     if (!firestore) return;
-    setIsDeleting(true);
+    setIsSingleDeleting(true);
     try {
       const requestRef = doc(firestore, ANVISA_COLLECTIONS.requests, request.id);
       await updateDoc(requestRef, { softDeleted: true, updatedAt: new Date().toISOString() });
@@ -121,13 +124,13 @@ export function RequestTable() {
       console.error("Error soft-deleting request:", error);
       toast({ variant: "destructive", title: "Erro", description: "Nao foi possivel excluir a solicitacao." });
     } finally {
-      setIsDeleting(false);
+      setIsSingleDeleting(false);
     }
   }, [firestore, toast]);
 
   const handleBatchDelete = useCallback(async () => {
     if (!firestore || selectedIds.size === 0) return;
-    setIsDeleting(true);
+    setIsBatchDeleting(true);
     try {
       const batch = writeBatch(firestore);
       const now = new Date().toISOString();
@@ -142,7 +145,7 @@ export function RequestTable() {
       console.error("Error batch-deleting requests:", error);
       toast({ variant: "destructive", title: "Erro", description: "Nao foi possivel excluir as solicitacoes." });
     } finally {
-      setIsDeleting(false);
+      setIsBatchDeleting(false);
       setShowBatchDeleteDialog(false);
     }
   }, [firestore, selectedIds, toast]);
@@ -209,7 +212,7 @@ export function RequestTable() {
               variant="destructive"
               className="h-8 gap-1"
               onClick={() => setShowBatchDeleteDialog(true)}
-              disabled={isDeleting}
+              disabled={isBatchDeleting}
             >
               <Trash2 className="h-3.5 w-3.5" />
               <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
@@ -377,7 +380,7 @@ export function RequestTable() {
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={confirmSingleDelete}
           >
-            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSingleDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Excluir
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -395,13 +398,13 @@ export function RequestTable() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={isBatchDeleting}>Cancelar</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={handleBatchDelete}
-            disabled={isDeleting}
+            disabled={isBatchDeleting}
           >
-            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isBatchDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Excluir {selectedIds.size} solicitacao(oes)
           </AlertDialogAction>
         </AlertDialogFooter>

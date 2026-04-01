@@ -565,7 +565,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
             updatedAt: new Date().toISOString()
         };
 
-        if (request.status === 'PENDENTE') {
+        if (request.status === 'RASCUNHO' || request.status === 'PENDENTE') {
             requestUpdatePayload.status = 'EM_AJUSTE';
         }
 

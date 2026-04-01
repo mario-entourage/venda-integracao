@@ -9,6 +9,7 @@
 // ─── Request status workflow ────────────────────────────────────────────────
 
 export type AnvisaRequestStatus =
+  | 'RASCUNHO'
   | 'PENDENTE'
   | 'EM_AJUSTE'
   | 'EM_AUTOMACAO'
