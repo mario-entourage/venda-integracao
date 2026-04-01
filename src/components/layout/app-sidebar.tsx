@@ -49,7 +49,6 @@ const paymentNavItems = [
 
 const anvisaNavItems = [
   { href: '/anvisa', icon: Shield, label: 'Solicitacoes' },
-  { href: '/anvisa/nova', icon: Upload, label: 'Nova Solicitacao' },
   { href: '/anvisa/perfil', icon: User, label: 'Modelo Solicitante' },
   { href: '/anvisa/extensao', icon: Chrome, label: 'Extensao' },
 ];

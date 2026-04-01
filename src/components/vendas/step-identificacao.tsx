@@ -516,10 +516,16 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.clientName}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddClient(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddClient(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ clientId: '', clientName: '', clientDocument: '', clientPhone: '', clientIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -546,10 +552,16 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.doctorName || '–'}{state.doctorCrm ? ` (${state.doctorCrm})` : ''}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddDoctor(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddDoctor(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ doctorId: '', doctorName: '', doctorCrm: '', doctorIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
