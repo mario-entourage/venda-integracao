@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getDocs } from 'firebase/firestore';
+import { getDocs, onSnapshot } from 'firebase/firestore';
+import { ref as storageRef, deleteObject } from 'firebase/storage';
 import { useFirebase, useMemoFirebase, useDoc, useCollection } from '@/firebase';
 import {
   getOrderRef,
@@ -87,7 +88,7 @@ const fmtDate = (ts: unknown) => {
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
-  const { firestore, user } = useFirebase();
+  const { firestore, storage, user } = useFirebase();
   const authFetch = useAuthFetch();
   const { toast } = useToast();
 
@@ -115,40 +116,23 @@ export default function OrderDetailPage() {
   useEffect(() => {
     if (!firestore || !orderId) return;
     setSubLoading(true);
-    Promise.all([
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'customer')),
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'doctor')),
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'representative')),
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'products')),
-    ])
-      .then(([customerSnap, doctorSnap, repSnap, productsSnap]) => {
-        setCustomer(
-          customerSnap.docs[0]
-            ? ({ id: customerSnap.docs[0].id, ...customerSnap.docs[0].data() } as unknown as OrderCustomer)
-            : null,
-        );
-        setDoctor(
-          doctorSnap.docs[0]
-            ? ({ id: doctorSnap.docs[0].id, ...doctorSnap.docs[0].data() } as unknown as OrderDoctor)
-            : null,
-        );
-        setRepresentative(
-          repSnap.docs[0]
-            ? ({ id: repSnap.docs[0].id, ...repSnap.docs[0].data() } as unknown as OrderRepresentative)
-            : null,
-        );
-        setProducts(
-          productsSnap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Omit<StoredProduct, 'id'>),
-          })),
-        );
-        setSubLoading(false);
-      })
-      .catch((err) => {
-        console.error('[OrderDetailPage] subcollection load error:', err);
-        setSubLoading(false);
-      });
+    let initialLoad = true;
+
+    const unsubCustomer = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'customer'), (snap) => {
+      setCustomer(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderCustomer) : null);
+      if (initialLoad) { initialLoad = false; setSubLoading(false); }
+    });
+    const unsubDoctor = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'doctor'), (snap) => {
+      setDoctor(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderDoctor) : null);
+    });
+    const unsubRep = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'representative'), (snap) => {
+      setRepresentative(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderRepresentative) : null);
+    });
+    const unsubProducts = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'products'), (snap) => {
+      setProducts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<StoredProduct, 'id'>) })));
+    });
+
+    return () => { unsubCustomer(); unsubDoctor(); unsubRep(); unsubProducts(); };
   }, [firestore, orderId]);
 
   // ── document uploads ─────────────────────────────────────────────────────────
@@ -181,6 +165,8 @@ export default function OrderDetailPage() {
       reader.readAsDataURL(file);
     });
 
+  const MAX_CLASSIFY_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   /** Called when a file finishes uploading. Classifies via AI, then creates document record. */
   const handleFileReady = async (file: File, result: { path: string; url: string; name: string }) => {
     if (!firestore) return;
@@ -199,17 +185,22 @@ export default function OrderDetailPage() {
     setClassifyingFiles((prev) => new Set(prev).add(file.name));
 
     try {
-      // AI classification
-      const base64 = await fileToBase64(file);
-      const res = await authFetch('/api/ai/classify-document', {
-        method: 'POST',
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
-        timeout: 60_000, // AI classification can be slow
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.documentType && data.documentType !== 'unknown') {
-          docType = data.documentType;
+      // Skip AI classification for oversized files
+      if (file.size > MAX_CLASSIFY_FILE_SIZE) {
+        toast({ title: 'Arquivo grande', description: 'Arquivo excede 10MB — selecione o tipo manualmente.' });
+      } else {
+        // AI classification
+        const base64 = await fileToBase64(file);
+        const res = await authFetch('/api/ai/classify-document', {
+          method: 'POST',
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+          timeout: 60_000, // AI classification can be slow
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.documentType && data.documentType !== 'unknown') {
+            docType = data.documentType;
+          }
         }
       }
     } catch (err) {
@@ -244,6 +235,14 @@ export default function OrderDetailPage() {
     } catch (err) {
       console.error('[OrderDetailPage] doc record error:', err);
       setUploadError('Arquivo enviado mas erro ao salvar registro.');
+      // Clean up the orphaned storage file
+      if (storage) {
+        try {
+          await deleteObject(storageRef(storage, result.path));
+        } catch (cleanupErr) {
+          console.error('[OrderDetailPage] storage cleanup failed:', cleanupErr);
+        }
+      }
     }
   };
 
@@ -368,17 +367,18 @@ export default function OrderDetailPage() {
     setIsCancelling(true);
     try {
       await updateOrderStatus(firestore, orderId, 'cancelled', user.uid);
+      // Navigate after success — skip setState since component will unmount
       router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
+      // Only update state if we're still on this page (didn't navigate)
       setConfirmCancel(false);
+      setIsCancelling(false);
       toast({
         variant: 'destructive',
         title: 'Erro ao cancelar pedido',
         description: 'Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.',
       });
-    } finally {
-      setIsCancelling(false);
     }
   };
 
@@ -502,7 +502,7 @@ export default function OrderDetailPage() {
                 <Select
                   value={representative?.userId || '__none__'}
                   onValueChange={handleRepChange}
-                  disabled={repSaving || isCancelledOrder}
+                  disabled={repSaving || isCancelledOrder || !repUsers}
                 >
                   <SelectTrigger className="w-full max-w-xs">
                     <SelectValue placeholder="Selecionar representante" />

@@ -644,7 +644,7 @@ export default function NewRequestPage() {
   // Submit
   // --------------------------------
 
-  const handleProcessDocuments = async (initialStatus: AnvisaRequestStatus = 'PENDENTE') => {
+  const handleProcessDocuments = async (initialStatus: AnvisaRequestStatus = 'RASCUNHO') => {
     // Build type -> files map from classified files (supports multiple files per type)
     const typeFilesMap = new Map<AnvisaDocumentType, File[]>();
     for (const entry of classifiedFiles) {

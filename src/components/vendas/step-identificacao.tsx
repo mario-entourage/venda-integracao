@@ -353,7 +353,13 @@ export function StepIdentificacao({
   };
 
   // ── AI extraction ─────────────────────────────────────────────────────────
+  const MAX_EXTRACTION_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const runExtraction = useCallback(async (file: File) => {
+    if (file.size > MAX_EXTRACTION_FILE_SIZE) {
+      setExtractionMsg('Arquivo muito grande (máx. 10MB). Reduza o tamanho e tente novamente.');
+      return;
+    }
     setIsExtracting(true); setExtractionMsg(null);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -367,9 +373,11 @@ export function StepIdentificacao({
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
-      if (!res.ok) { setExtractionMsg('Falha na extração. Tente novamente.'); return; }
       const data: PrescriptionExtraction = await res.json();
-      if (data._error) { setExtractionMsg(data._error); return; }
+      if (!res.ok || data._error) {
+        setExtractionMsg(data._error || 'Falha na extração. Preencha os campos manualmente.');
+        return;
+      }
 
       const updates: Partial<Step1State> = {};
 

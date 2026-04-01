@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/firebase/admin';
+import { requireAdmin } from '../_require-admin';
 
 /**
  * POST /api/admin/backfill-client-ids
@@ -13,7 +14,9 @@ import { adminDb } from '@/firebase/admin';
  *
  * Returns: { checked, updated, skipped_no_order, skipped_no_client, errors }
  */
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
+  const auth = await requireAdmin(request);
+  if (auth instanceof Response) return auth;
   let checked = 0;
   let updated = 0;
   let skipped_no_order = 0;
