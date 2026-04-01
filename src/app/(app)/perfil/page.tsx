@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { BRAZILIAN_STATES } from '@/lib/constants';
 import type { User, UserProfile, NotificationPreferences } from '@/types';
 
@@ -31,6 +32,8 @@ export default function PerfilPage() {
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useUnsavedChanges(editing);
 
   const [editFullName, setEditFullName] = useState('');
   const [editPhone, setEditPhone] = useState('');

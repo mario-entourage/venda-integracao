@@ -1,6 +1,8 @@
 'use client';
 
-import { type Control } from 'react-hook-form';
+import { useState, useCallback } from 'react';
+import { type Control, useFormContext } from 'react-hook-form';
+import { Loader2 } from 'lucide-react';
 import { MaskedInput } from '@/components/shared/masked-input';
 import {
   FormField,
@@ -27,6 +29,32 @@ interface AddressFormProps {
 
 export function AddressForm({ control, namePrefix = 'address' }: AddressFormProps) {
   const fieldName = (name: string) => `${namePrefix}.${name}`;
+  const form = useFormContext();
+  const [cepLoading, setCepLoading] = useState(false);
+
+  const handleCepBlur = useCallback(async (rawValue: string) => {
+    const digits = rawValue.replace(/\D/g, '');
+    if (digits.length !== 8) return;
+
+    setCepLoading(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.erro) return;
+
+      if (data.logradouro) form.setValue(fieldName('street'), data.logradouro);
+      if (data.bairro) form.setValue(fieldName('neighborhood'), data.bairro);
+      if (data.localidade) form.setValue(fieldName('city'), data.localidade);
+      if (data.uf) form.setValue(fieldName('state'), data.uf);
+    } catch {
+      // Graceful degradation — allow manual entry
+    } finally {
+      setCepLoading(false);
+    }
+  }, [form, fieldName]);
 
   return (
     <div className="space-y-4">
@@ -39,14 +67,22 @@ export function AddressForm({ control, namePrefix = 'address' }: AddressFormProp
             <FormItem>
               <FormLabel>CEP</FormLabel>
               <FormControl>
-                <MaskedInput
-                  ref={field.ref}
-                  mask="99999-999"
-                  value={field.value ?? ''}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  placeholder="00000-000"
-                />
+                <div className="relative">
+                  <MaskedInput
+                    ref={field.ref}
+                    mask="99999-999"
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    onBlur={(e) => {
+                      field.onBlur();
+                      handleCepBlur(e.target.value);
+                    }}
+                    placeholder="00000-000"
+                  />
+                  {cepLoading && (
+                    <Loader2 className="absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
+                </div>
               </FormControl>
               <FormMessage />
             </FormItem>

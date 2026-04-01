@@ -19,6 +19,7 @@ export default function NovoMedicoPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (data: DoctorFormValues) => {
+    if (isLoading) return;
     setIsLoading(true);
     try {
       await createDoctor(db, data, user!.uid);

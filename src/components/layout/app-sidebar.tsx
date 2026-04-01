@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck, HelpCircle, Chrome, Eye,
+  Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign,
 } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
 import { BrandLogo } from '@/components/shared/brand-logo';
@@ -32,7 +32,7 @@ const vendasNavItems = [
 const cadastrosNavItems = [
   { href: '/clientes', icon: Users, label: 'Clientes' },
   { href: '/representantes', icon: UserCheck, label: 'Representantes' },
-  { href: '/medicos', icon: Stethoscope, label: 'Medicos' },
+  { href: '/medicos', icon: Stethoscope, label: 'Médicos' },
 ];
 
 const productNavItems = [
@@ -45,12 +45,13 @@ const documentNavItems = [
 
 const paymentNavItems = [
   { href: '/pagamentos', icon: CreditCard, label: 'Pagamentos' },
+  { href: '/comissoes', icon: DollarSign, label: 'Comissões' },
 ];
 
 const anvisaNavItems = [
-  { href: '/anvisa', icon: Shield, label: 'Solicitacoes' },
+  { href: '/anvisa', icon: Shield, label: 'Solicitações' },
   { href: '/anvisa/perfil', icon: User, label: 'Modelo Solicitante' },
-  { href: '/anvisa/extensao', icon: Chrome, label: 'Extensao' },
+  { href: '/anvisa/extensao', icon: Chrome, label: 'Extensão' },
 ];
 
 const adminNavItems = [
@@ -137,7 +138,7 @@ export function AppSidebar() {
         <NavGroup label="Financeiro" items={filterItems(paymentNavItems)} pathname={pathname} />
         <NavGroup label="ANVISA" items={filterItems(anvisaNavItems)} pathname={pathname} />
 
-        <NavGroup label="Administracao" items={filterItems(adminNavItems)} pathname={pathname} />
+        <NavGroup label="Administração" items={filterItems(adminNavItems)} pathname={pathname} />
         <NavGroup label="Suporte" items={filterItems(helpNavItems)} pathname={pathname} />
       </SidebarContent>
 

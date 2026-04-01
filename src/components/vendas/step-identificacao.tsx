@@ -136,6 +136,10 @@ interface StepIdentificacaoProps {
   /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
   frete: number;
   onFreteChange: (value: number) => void;
+  /** Retry PTAX fetch */
+  onRetryExchangeRate?: () => void;
+  /** Set exchange rate manually */
+  onManualExchangeRate?: (rate: number) => void;
   /** Admin-only: unassigned standalone payments available to link */
   isAdmin: boolean;
   unassignedPayments: PaymentLink[];
@@ -148,6 +152,7 @@ interface StepIdentificacaoProps {
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
+  onRetryExchangeRate, onManualExchangeRate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
   frete, onFreteChange,
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
@@ -794,8 +799,50 @@ export function StepIdentificacao({
           </div>
         )}
         {exchangeRateError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {exchangeRateError}
+          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+            <p>{exchangeRateError}</p>
+            <div className="flex flex-wrap items-end gap-3">
+              {onRetryExchangeRate && (
+                <button
+                  type="button"
+                  onClick={onRetryExchangeRate}
+                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  Tentar novamente
+                </button>
+              )}
+              {onManualExchangeRate && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium">Manual:</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="5.1234"
+                    className="w-24 rounded border border-red-300 bg-white px-2 py-1 text-xs"
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val > 0) onManualExchangeRate(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = parseFloat((e.target as HTMLInputElement).value);
+                        if (val > 0) onManualExchangeRate(val);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              <a
+                href="https://www.bcb.gov.br/conversao"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-red-600 underline hover:text-red-800"
+              >
+                Consultar BCB
+              </a>
+            </div>
           </div>
         )}
         {exchangeRate > 0 && !exchangeRateLoading && (
