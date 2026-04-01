@@ -1,7 +1,7 @@
 'use client';
 
 import { type Control } from 'react-hook-form';
-import ReactInputMask from 'react-input-mask';
+import { MaskedInput } from '@/components/shared/masked-input';
 import {
   FormField,
   FormItem,
@@ -39,16 +39,14 @@ export function AddressForm({ control, namePrefix = 'address' }: AddressFormProp
             <FormItem>
               <FormLabel>CEP</FormLabel>
               <FormControl>
-                <ReactInputMask
+                <MaskedInput
+                  ref={field.ref}
                   mask="99999-999"
                   value={field.value ?? ''}
                   onChange={field.onChange}
                   onBlur={field.onBlur}
-                >
-                  {(inputProps: React.ComponentProps<'input'>) => (
-                    <Input {...inputProps} ref={field.ref} placeholder="00000-000" />
-                  )}
-                </ReactInputMask>
+                  placeholder="00000-000"
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

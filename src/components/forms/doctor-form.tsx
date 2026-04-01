@@ -2,7 +2,7 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import ReactInputMask from 'react-input-mask';
+import { MaskedInput } from '@/components/shared/masked-input';
 import { doctorSchema, type DoctorFormValues } from '@/types/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -89,20 +89,26 @@ export function DoctorForm({
       <div className="grid grid-cols-2 gap-4">
         <FormField control={form.control} name="phone" render={({ field }) => (
           <FormItem><FormLabel>Telefone Fixo</FormLabel><FormControl>
-            <ReactInputMask mask="(99) 9999-9999" value={field.value ?? ''} onChange={field.onChange} onBlur={field.onBlur}>
-              {(inputProps: React.ComponentProps<'input'>) => (
-                <Input {...inputProps} ref={field.ref} placeholder="(00) 0000-0000" />
-              )}
-            </ReactInputMask>
+            <MaskedInput
+              ref={field.ref}
+              mask="(99) 9999-9999"
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              placeholder="(00) 0000-0000"
+            />
           </FormControl><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="mobilePhone" render={({ field }) => (
           <FormItem><FormLabel>Celular</FormLabel><FormControl>
-            <ReactInputMask mask="(99) 99999-9999" value={field.value ?? ''} onChange={field.onChange} onBlur={field.onBlur}>
-              {(inputProps: React.ComponentProps<'input'>) => (
-                <Input {...inputProps} ref={field.ref} placeholder="(00) 00000-0000" />
-              )}
-            </ReactInputMask>
+            <MaskedInput
+              ref={field.ref}
+              mask="(99) 99999-9999"
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              placeholder="(00) 00000-0000"
+            />
           </FormControl><FormMessage /></FormItem>
         )} />
       </div>
