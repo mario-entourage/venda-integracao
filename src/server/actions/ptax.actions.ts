@@ -1,5 +1,6 @@
 'use server';
 
+import { getFirestore } from 'firebase-admin/firestore';
 import { fetchPtaxRate, PtaxError } from '@/server/integrations/bcb-ptax';
 
 /**
@@ -40,6 +41,44 @@ export async function getPtaxRate(): Promise<{
       queryDate: '',
       error: message,
     };
+  }
+}
+
+/**
+ * Fallback: find a PTAX rate from a same-day order when BCB is unavailable.
+ * Returns the rate if found, or null if no same-day order has one.
+ */
+export async function getSameDayPtaxFallback(): Promise<{
+  midRate: number;
+  queryDate: string;
+} | null> {
+  try {
+    const db = getFirestore();
+    const today = new Date();
+    const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+
+    const snap = await db
+      .collection('orders')
+      .where('createdAt', '>=', startOfDay)
+      .where('createdAt', '<=', endOfDay)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      if (data.exchangeRate && data.exchangeRate > 0 && data.exchangeRateDate) {
+        return {
+          midRate: data.exchangeRate,
+          queryDate: data.exchangeRateDate,
+        };
+      }
+    }
+    return null;
+  } catch (err) {
+    console.error('[getSameDayPtaxFallback] Error:', err);
+    return null;
   }
 }
 

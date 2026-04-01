@@ -44,6 +44,7 @@ export default function NovoRepresentantePage() {
 
   const handlePromoteExisting = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!selectedUserId) {
       toast({ title: 'Selecione um usuário.', variant: 'destructive' });
       return;
@@ -63,6 +64,7 @@ export default function NovoRepresentantePage() {
 
   const handlePreregister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!newEmail.trim()) {
       toast({ title: 'Email é obrigatório.', variant: 'destructive' });
       return;

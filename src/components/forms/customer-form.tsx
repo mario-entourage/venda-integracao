@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { MaskedInput } from '@/components/shared/masked-input';
 import { customerSchema, type CustomerFormValues } from '@/types/forms';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,8 @@ export function CustomerForm({
     resolver: zodResolver(customerSchema),
     defaultValues: defaultValues || {},
   });
+
+  useUnsavedChanges(form.formState.isDirty);
 
   return (
     <Form {...form}>

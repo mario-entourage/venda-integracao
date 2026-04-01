@@ -619,9 +619,18 @@ export default function ControlePage() {
               </Button>
             </div>
           ) : rows.length === 0 ? (
-            <p className="p-6 text-center text-muted-foreground">
-              Nenhum pedido encontrado no período selecionado.
-            </p>
+            <div className="flex flex-col items-center gap-3 p-6 text-center">
+              <p className="text-muted-foreground">
+                Nenhum pedido encontrado no período selecionado.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setDateFrom(startOfMonth); setDateTo(todayStr); }}
+                className="text-xs text-primary underline hover:text-primary/80"
+              >
+                Limpar filtros
+              </button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table className="text-xs">
