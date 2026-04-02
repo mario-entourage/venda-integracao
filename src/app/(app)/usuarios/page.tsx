@@ -150,7 +150,6 @@ export default function UsuariosPage() {
 
   const handleOrderNotifToggle = async (userId: string, current: boolean) => {
     try {
-      // Use dot-notation to avoid overwriting other notification preferences
       await updateDoc(doc(db, 'users', userId), {
         'notificationPreferences.emailOnOrderCreated': !current,
       });
@@ -238,8 +237,8 @@ export default function UsuariosPage() {
       header: 'Notif. Vendas',
       render: (item) => {
         if (item.pending) return <span className="text-muted-foreground text-xs">—</span>;
-        const user = item as User & { id: string };
-        const checked = !!user.notificationPreferences?.emailOnOrderCreated;
+        const u = item as User & { id: string };
+        const checked = !!u.notificationPreferences?.emailOnOrderCreated;
         return (
           <div onClick={(e) => e.stopPropagation()}>
             <Switch

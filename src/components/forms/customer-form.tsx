@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import ReactInputMask from 'react-input-mask';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
+import { MaskedInput } from '@/components/shared/masked-input';
 import { customerSchema, type CustomerFormValues } from '@/types/forms';
 import { Button } from '@/components/ui/button';
 import {
@@ -45,6 +46,8 @@ export function CustomerForm({
     defaultValues: defaultValues || {},
   });
 
+  useUnsavedChanges(form.formState.isDirty);
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -66,16 +69,14 @@ export function CustomerForm({
                   <FormItem>
                     <FormLabel>CPF/CNPJ</FormLabel>
                     <FormControl>
-                      <ReactInputMask
+                      <MaskedInput
+                        ref={field.ref}
                         mask={mask}
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
-                      >
-                        {(inputProps: React.ComponentProps<'input'>) => (
-                          <Input {...inputProps} ref={field.ref} placeholder={placeholder} />
-                        )}
-                      </ReactInputMask>
+                        placeholder={placeholder}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -159,16 +160,14 @@ export function CustomerForm({
                   <FormItem>
                     <FormLabel>Celular</FormLabel>
                     <FormControl>
-                      <ReactInputMask
+                      <MaskedInput
+                        ref={field.ref}
                         mask="(99) 99999-9999"
                         value={field.value ?? ''}
                         onChange={field.onChange}
                         onBlur={field.onBlur}
-                      >
-                        {(inputProps: React.ComponentProps<'input'>) => (
-                          <Input {...inputProps} ref={field.ref} placeholder="(00) 00000-0000" />
-                        )}
-                      </ReactInputMask>
+                        placeholder="(00) 00000-0000"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

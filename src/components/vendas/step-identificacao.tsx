@@ -136,6 +136,10 @@ interface StepIdentificacaoProps {
   /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
   frete: number;
   onFreteChange: (value: number) => void;
+  /** Retry PTAX fetch */
+  onRetryExchangeRate?: () => void;
+  /** Set exchange rate manually */
+  onManualExchangeRate?: (rate: number) => void;
   /** Admin-only: unassigned standalone payments available to link */
   isAdmin: boolean;
   unassignedPayments: PaymentLink[];
@@ -148,6 +152,7 @@ interface StepIdentificacaoProps {
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
+  onRetryExchangeRate, onManualExchangeRate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
   frete, onFreteChange,
   isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
@@ -353,7 +358,13 @@ export function StepIdentificacao({
   };
 
   // ── AI extraction ─────────────────────────────────────────────────────────
+  const MAX_EXTRACTION_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const runExtraction = useCallback(async (file: File) => {
+    if (file.size > MAX_EXTRACTION_FILE_SIZE) {
+      setExtractionMsg('Arquivo muito grande (máx. 10MB). Reduza o tamanho e tente novamente.');
+      return;
+    }
     setIsExtracting(true); setExtractionMsg(null);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -367,9 +378,11 @@ export function StepIdentificacao({
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
         timeout: 60_000,
       });
-      if (!res.ok) { setExtractionMsg('Falha na extração. Tente novamente.'); return; }
       const data: PrescriptionExtraction = await res.json();
-      if (data._error) { setExtractionMsg(data._error); return; }
+      if (!res.ok || data._error) {
+        setExtractionMsg(data._error || 'Falha na extração. Preencha os campos manualmente.');
+        return;
+      }
 
       const updates: Partial<Step1State> = {};
 
@@ -516,24 +529,41 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.clientName}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddClient(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddClient(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ clientId: '', clientName: '', clientDocument: '', clientPhone: '', clientIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={clientOptions}
-            value={state.clientId}
-            onChange={(id) => {
-              const client = clients.find((c) => c.id === id);
-              if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
-            }}
-            placeholder="Buscar paciente…"
-            searchPlaceholder="Nome ou CPF…"
-            emptyMessage="Nenhum paciente encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={clientOptions}
+                value={state.clientId}
+                onChange={(id) => {
+                  const client = clients.find((c) => c.id === id);
+                  if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
+                }}
+                placeholder="Buscar paciente…"
+                searchPlaceholder="Nome ou CPF…"
+                emptyMessage="Nenhum paciente encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo paciente"
+              onClick={() => setShowAddClient(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
 
         {/* Doctor */}
@@ -546,31 +576,48 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.doctorName || '–'}{state.doctorCrm ? ` (${state.doctorCrm})` : ''}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddDoctor(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddDoctor(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ doctorId: '', doctorName: '', doctorCrm: '', doctorIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={doctorOptions}
-            value={state.doctorId}
-            onChange={(id) => {
-              const doctor = doctors.find((d) => d.id === id);
-              if (doctor) {
-                onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
-                // Auto-select the doctor's assigned rep (if any and no rep currently selected)
-                if (doctor.repUserId && !selectedRepresentanteId) {
-                  const rep = repUsers.find((r) => r.id === doctor.repUserId);
-                  if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
-                }
-              }
-            }}
-            placeholder="Buscar médico…"
-            searchPlaceholder="Nome ou CRM…"
-            emptyMessage="Nenhum médico encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={doctorOptions}
+                value={state.doctorId}
+                onChange={(id) => {
+                  const doctor = doctors.find((d) => d.id === id);
+                  if (doctor) {
+                    onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+                    // Auto-select the doctor's assigned rep (if any and no rep currently selected)
+                    if (doctor.repUserId && !selectedRepresentanteId) {
+                      const rep = repUsers.find((r) => r.id === doctor.repUserId);
+                      if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+                    }
+                  }
+                }}
+                placeholder="Buscar médico…"
+                searchPlaceholder="Nome ou CRM…"
+                emptyMessage="Nenhum médico encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo médico"
+              onClick={() => setShowAddDoctor(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -752,8 +799,50 @@ export function StepIdentificacao({
           </div>
         )}
         {exchangeRateError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {exchangeRateError}
+          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+            <p>{exchangeRateError}</p>
+            <div className="flex flex-wrap items-end gap-3">
+              {onRetryExchangeRate && (
+                <button
+                  type="button"
+                  onClick={onRetryExchangeRate}
+                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  Tentar novamente
+                </button>
+              )}
+              {onManualExchangeRate && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium">Manual:</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="5.1234"
+                    className="w-24 rounded border border-red-300 bg-white px-2 py-1 text-xs"
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val > 0) onManualExchangeRate(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = parseFloat((e.target as HTMLInputElement).value);
+                        if (val > 0) onManualExchangeRate(val);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              <a
+                href="https://www.bcb.gov.br/conversao"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-red-600 underline hover:text-red-800"
+              >
+                Consultar BCB
+              </a>
+            </div>
           </div>
         )}
         {exchangeRate > 0 && !exchangeRateLoading && (

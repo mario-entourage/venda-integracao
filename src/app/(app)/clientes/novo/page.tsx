@@ -19,6 +19,7 @@ export default function NovoClientePage() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (data: CustomerFormValues) => {
+    if (isLoading) return;
     setIsLoading(true);
     try {
       await createClient(db, data, user!.uid);

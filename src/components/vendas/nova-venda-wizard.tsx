@@ -31,7 +31,7 @@ import { StepEnviarCliente } from './step-enviar-cliente';
 import { StepEnvio } from './step-envio';
 import { PostWizardDialog } from './post-wizard-dialog';
 import { ShippingChoiceDialog } from './shipping-choice-dialog';
-import { getPtaxRate } from '@/server/actions/ptax.actions';
+import { getPtaxRate, getSameDayPtaxFallback } from '@/server/actions/ptax.actions';
 import type { Client, Doctor, Product, User, Representante, PaymentLink, Order, OrderCustomer, OrderDoctor, OrderRepresentative, OrderProduct } from '@/types';
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -217,6 +217,19 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   // Shipping choice dialog: shown after post-wizard dialog (or directly after finalization)
   const [showShippingChoice, setShowShippingChoice] = useState(false);
 
+  // ── warn before unload when wizard has unsaved state ────────────────
+  useEffect(() => {
+    // Only warn if the wizard has meaningful in-progress data
+    const hasUnsavedState = state.step1.clientId || state.step1.products.length > 0 || state.orderId;
+    if (!hasUnsavedState) return;
+
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [state.step1.clientId, state.step1.products.length, state.orderId]);
+
   // ── persist wizard state to sessionStorage ──────────────────────────
   useEffect(() => {
     // Only persist once the order has been created (has an orderId)
@@ -232,28 +245,45 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
   }, []);
 
   // ── fetch PTAX exchange rate on mount ────────────────────────────────
-  useEffect(() => {
-    let cancelled = false;
-    getPtaxRate().then((result) => {
-      if (cancelled) return;
-      if (result.error || result.midRate === 0) {
-        setState((prev) => ({
-          ...prev,
-          exchangeRateLoading: false,
-          exchangeRateError: result.error || 'Cotação PTAX indisponível.',
-        }));
-      } else {
-        setState((prev) => ({
-          ...prev,
-          exchangeRate: result.midRate,
-          exchangeRateDate: result.queryDate,
-          exchangeRateLoading: false,
-          exchangeRateError: null,
-        }));
-      }
-    });
-    return () => { cancelled = true; };
+  const fetchExchangeRate = useCallback(async () => {
+    setState((prev) => ({ ...prev, exchangeRateLoading: true, exchangeRateError: null }));
+
+    const result = await getPtaxRate();
+    if (result.midRate > 0 && !result.error) {
+      setState((prev) => ({
+        ...prev,
+        exchangeRate: result.midRate,
+        exchangeRateDate: result.queryDate,
+        exchangeRateLoading: false,
+        exchangeRateError: null,
+      }));
+      return;
+    }
+
+    // BCB failed — try same-day fallback from existing orders
+    const fallback = await getSameDayPtaxFallback();
+    if (fallback) {
+      setState((prev) => ({
+        ...prev,
+        exchangeRate: fallback.midRate,
+        exchangeRateDate: fallback.queryDate,
+        exchangeRateLoading: false,
+        exchangeRateError: null,
+      }));
+      return;
+    }
+
+    // No fallback available — show error with manual entry option
+    setState((prev) => ({
+      ...prev,
+      exchangeRateLoading: false,
+      exchangeRateError: result.error || 'Cotação PTAX indisponível. Insira manualmente ou tente novamente.',
+    }));
   }, []);
+
+  useEffect(() => {
+    fetchExchangeRate();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── resume mode: load existing order data ──────────────────────────────
   const [resumeLoading, setResumeLoading] = useState(!!resumeOrderId);
@@ -738,6 +768,16 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             exchangeRateLoading={state.exchangeRateLoading}
             exchangeRateError={state.exchangeRateError}
             exchangeRateDate={state.exchangeRateDate}
+            onRetryExchangeRate={fetchExchangeRate}
+            onManualExchangeRate={(rate) => {
+              const today = new Date().toISOString().slice(0, 10);
+              setState((prev) => ({
+                ...prev,
+                exchangeRate: rate,
+                exchangeRateDate: today,
+                exchangeRateError: null,
+              }));
+            }}
             repUsers={repUsers ?? []}
             selectedRepresentanteId={state.selectedRepresentanteId}
             onRepresentanteChange={handleRepresentanteChange}

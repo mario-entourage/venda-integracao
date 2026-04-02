@@ -112,7 +112,7 @@ Retorne APENAS o JSON válido.`,
         products: [],
         _error: 'Extração falhou. Preencha os campos manualmente.',
       } satisfies PrescriptionExtraction,
-      { status: 200 },
+      { status: 422 },
     );
   }
 }

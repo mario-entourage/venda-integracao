@@ -486,8 +486,17 @@ export default function PagamentosPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8 text-muted-foreground">
-                      Nenhum link de pagamento encontrado.
+                    <TableCell colSpan={isAdmin ? 7 : 6} className="text-center py-8">
+                      <p className="text-muted-foreground">Nenhum link de pagamento encontrado.</p>
+                      {(statusFilter !== 'all' || search.trim()) && (
+                        <button
+                          type="button"
+                          onClick={() => { setStatusFilter('all'); setSearch(''); }}
+                          className="mt-2 text-xs text-primary underline hover:text-primary/80"
+                        >
+                          Limpar filtros
+                        </button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ) : (
