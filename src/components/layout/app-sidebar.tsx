@@ -9,6 +9,7 @@ import {
   Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign,
 } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
+import { useDashboardLang, translateSidebar } from '@/contexts/dashboard-lang-context';
 
 const josefinSans = Josefin_Sans({
   subsets: ['latin'],
@@ -78,16 +79,18 @@ function NavGroup({
   items,
   pathname,
   labelClassName,
+  lang,
 }: {
   label: string;
   items: typeof vendasNavItems;
   pathname: string;
   labelClassName?: string;
+  lang: 'pt' | 'en';
 }) {
   return (
     <SidebarGroup>
       <SidebarGroupLabel className={labelClassName}>
-        {label}
+        {translateSidebar(label, lang)}
       </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
@@ -103,7 +106,7 @@ function NavGroup({
               >
                 <Link href={item.href}>
                   <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <span>{translateSidebar(item.label, lang)}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -125,6 +128,8 @@ const AUDIT_HIDDEN_ROUTES = new Set([
 export function AppSidebar() {
   const pathname = usePathname();
   const { isAuditMode } = useAuditMode();
+  const langCtx = useDashboardLang();
+  const lang = langCtx?.lang ?? 'pt';
 
   const filterItems = (items: typeof vendasNavItems) =>
     isAuditMode
@@ -149,48 +154,56 @@ export function AppSidebar() {
           labelClassName="sr-only"
           items={filterItems(vendasNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Cadastros"
           items={filterItems(cadastrosNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Produtos & Estoque"
           items={filterItems(productNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Documentos"
           items={filterItems(documentNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Financeiro"
           items={filterItems(paymentNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="ANVISA"
           items={filterItems(anvisaNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Administração"
           items={filterItems(adminNavItems)}
           pathname={pathname}
+          lang={lang}
         />
 
         <NavGroup
           label="Suporte"
           items={filterItems(helpNavItems)}
           pathname={pathname}
+          lang={lang}
         />
       </SidebarContent>
 

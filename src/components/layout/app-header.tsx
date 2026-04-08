@@ -2,8 +2,11 @@
 
 import { useUser, useAuth } from '@/firebase/provider';
 import { useAuditMode } from '@/contexts/audit-mode-context';
+import { useDashboardLang } from '@/contexts/dashboard-lang-context';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +25,7 @@ export function AppHeader() {
   const { user } = useUser();
   const auth = useAuth();
   const { isAuditMode, auditSession, deactivateAuditMode } = useAuditMode();
+  const dashboardLang = useDashboardLang();
 
   const initials = user?.displayName
     ? user.displayName
@@ -54,6 +58,37 @@ export function AppHeader() {
       {/* Right: notification bell + user menu */}
       <div className="relative z-10 ml-auto flex items-center gap-2 text-white">
         {!isAuditMode && <NotificationBell />}
+
+        {dashboardLang && (
+          <div className="flex items-center rounded-md border border-white/20">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-6 rounded-r-none px-2 text-[10px]',
+                dashboardLang.lang === 'pt'
+                  ? 'bg-white/20 text-white font-bold'
+                  : 'text-white/60',
+              )}
+              onClick={() => dashboardLang.setLang('pt')}
+            >
+              PT
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                'h-6 rounded-l-none px-2 text-[10px]',
+                dashboardLang.lang === 'en'
+                  ? 'bg-white/20 text-white font-bold'
+                  : 'text-white/60',
+              )}
+              onClick={() => dashboardLang.setLang('en')}
+            >
+              EN
+            </Button>
+          </div>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
