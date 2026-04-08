@@ -195,7 +195,7 @@ export function RequestTable() {
 
   return (
     <>
-    <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setCurrentPage(0); }}>
+    <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setCurrentPage(0); }} className="min-w-0">
       <div className="flex items-center">
         <TabsList>
           <TabsTrigger value="all">Todas</TabsTrigger>
@@ -255,7 +255,7 @@ export function RequestTable() {
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>

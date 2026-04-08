@@ -81,6 +81,50 @@
         { "fieldPath": "recipientUserId", "order": "ASCENDING" },
         { "fieldPath": "createdAt",       "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "audit_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creatingUserId", "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "createdAt",      "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "doctors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "repUserId", "order": "ASCENDING" },
+        { "fieldPath": "active",    "order": "ASCENDING" },
+        { "fieldPath": "fullName",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orderId",   "order": "ASCENDING" },
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientUserId", "order": "ASCENDING" },
+        { "fieldPath": "read",            "order": "ASCENDING" },
+        { "fieldPath": "createdAt",       "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stockProducts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "stockId",   "order": "ASCENDING" },
+        { "fieldPath": "productId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
