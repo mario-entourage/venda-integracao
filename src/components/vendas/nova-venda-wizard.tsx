@@ -752,7 +752,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         onStepChange={handleStepChange}
         onComplete={handleComplete}
         canAdvance={canAdvance}
-        canGoBack={!isSubmitting}
+        canGoBack={!isSubmitting && (state.orderId === '' || !!resumeOrderId)}
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
         exitUrl="/pedidos"
       >
@@ -805,6 +805,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             doctorCrm={state.step1.doctorCrm}
             products={state.step1.products}
             orderAmount={state.orderAmount}
+            frete={state.frete}
             representanteName={state.selectedRepresentanteName}
           />
         )}

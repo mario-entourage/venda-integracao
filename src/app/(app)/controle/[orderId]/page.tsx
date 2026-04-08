@@ -371,14 +371,14 @@ export default function OrderDetailPage() {
       router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
-      // Only update state if we're still on this page (didn't navigate)
       setConfirmCancel(false);
-      setIsCancelling(false);
       toast({
         variant: 'destructive',
         title: 'Erro ao cancelar pedido',
         description: 'Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.',
       });
+    } finally {
+      setIsCancelling(false);
     }
   };
 
