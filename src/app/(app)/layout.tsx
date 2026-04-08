@@ -19,7 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <AppHeader />
             <AuditModeBanner />
             <AuditModeLayout>
-              <main className="flex-1 p-4 lg:p-6">{children}</main>
+              <main className="flex-1 min-w-0 overflow-x-hidden p-4 lg:p-6">{children}</main>
             </AuditModeLayout>
           </SidebarInset>
         </SidebarProvider>

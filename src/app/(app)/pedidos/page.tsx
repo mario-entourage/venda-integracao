@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Trash2, Loader2 } from 'lucide-react';
 import { writeBatch } from 'firebase/firestore';
@@ -9,9 +9,11 @@ import { useCollection } from '@/firebase';
 import {
   getOrdersQuery,
   getOrderRef,
+  getOrderSubcollectionDocs,
   updateOrder,
   updateOrderStatus,
 } from '@/services/orders.service';
+import type { OrderCustomer } from '@/types/order';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -88,6 +90,30 @@ export default function PedidosPage() {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
+  // ── customer name cache for alphabetical sorting ──────────────────────
+  const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!firestore || !orders || orders.length === 0) return;
+    let cancelled = false;
+
+    async function fetchNames() {
+      const map: Record<string, string> = {};
+      await Promise.all(
+        orders!.map(async (o) => {
+          try {
+            const customers = await getOrderSubcollectionDocs<OrderCustomer>(firestore!, o.id, 'customer');
+            if (customers[0]?.name) map[o.id] = customers[0].name;
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!cancelled) setCustomerNames(map);
+    }
+
+    fetchNames();
+    return () => { cancelled = true; };
+  }, [firestore, orders]);
+
   const filteredOrders = useMemo(() => {
     let result = (orders ?? []).filter(
       (o) =>
@@ -108,7 +134,7 @@ export default function PedidosPage() {
     switch (sortOption) {
       case 'alpha-asc':
         return list.sort((a, b) =>
-          (a.invoice ?? '').localeCompare(b.invoice ?? '', 'pt-BR'),
+          (customerNames[a.id] ?? '').localeCompare(customerNames[b.id] ?? '', 'pt-BR', { sensitivity: 'base' }),
         );
       case 'price-desc':
         return list.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
@@ -117,7 +143,7 @@ export default function PedidosPage() {
       default:
         return list;
     }
-  }, [filteredOrders, sortOption]);
+  }, [filteredOrders, sortOption, customerNames]);
 
   const paginatedOrders = useMemo(() => {
     const start = currentPage * pageSize;
