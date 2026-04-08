@@ -65,8 +65,9 @@ export default function PedidosPage() {
   const { firestore, user, isAdmin } = useFirebase();
   const { toast } = useToast();
 
-  // ── filter & local hide state ──────────────────────────────────────────
+  // ── filter & sort & local hide state ───────────────────────────────────
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOption, setSortOption] = useState('default');
   const [shippedIds, setShippedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
@@ -102,14 +103,30 @@ export default function PedidosPage() {
     return result;
   }, [orders, statusFilter, shippedIds]);
 
+  const sortedOrders = useMemo(() => {
+    const list = [...filteredOrders];
+    switch (sortOption) {
+      case 'alpha-asc':
+        return list.sort((a, b) =>
+          (a.invoice ?? '').localeCompare(b.invoice ?? '', 'pt-BR'),
+        );
+      case 'price-desc':
+        return list.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+      case 'price-asc':
+        return list.sort((a, b) => (a.amount ?? 0) - (b.amount ?? 0));
+      default:
+        return list;
+    }
+  }, [filteredOrders, sortOption]);
+
   const paginatedOrders = useMemo(() => {
     const start = currentPage * pageSize;
-    return filteredOrders.slice(start, start + pageSize);
-  }, [filteredOrders, currentPage, pageSize]);
+    return sortedOrders.slice(start, start + pageSize);
+  }, [sortedOrders, currentPage, pageSize]);
 
-  // Reset page when filter changes
+  // Reset page when filter or sort changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [statusFilter]);
+  useMemo(() => setCurrentPage(0), [statusFilter, sortOption]);
 
   const handleExportCsv = () => {
     exportToCsv(filteredOrders, [
@@ -306,6 +323,17 @@ export default function PedidosPage() {
                     {opt.label}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={sortOption} onValueChange={setSortOption}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Ordenar por</SelectItem>
+                <SelectItem value="alpha-asc">Alfabética (A → Z)</SelectItem>
+                <SelectItem value="price-desc">Preço (Maior → Menor)</SelectItem>
+                <SelectItem value="price-asc">Preço (Menor → Maior)</SelectItem>
               </SelectContent>
             </Select>
           </div>
