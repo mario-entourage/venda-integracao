@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
 
       try {
         const txData = await getGlobalPayTransaction(gpOrderId);
+        console.log(`[payments/sync] gpOrderId="${gpOrderId}" response:`, JSON.stringify(txData));
         const rawStatus = String(
           txData.status ?? txData.statusType ?? txData.statustype ?? '',
         ).toLowerCase().trim();

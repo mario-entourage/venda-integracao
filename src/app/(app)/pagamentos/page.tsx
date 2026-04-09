@@ -140,6 +140,7 @@ export default function PagamentosPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
+        timeout: 120_000, // 2 min — sync checks each link against GlobalPay sequentially
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
@@ -147,6 +148,8 @@ export default function PagamentosPage() {
       setLastSync({ time, approved: data.approved, checked: data.checked });
       if (data.approved > 0) {
         toast({ title: `${data.approved} pagamento(s) confirmado(s) e pedido(s) atualizado(s).` });
+      } else if (data.errors > 0) {
+        toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), ${data.errors} erro(s).`, variant: 'destructive' });
       } else {
         toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), nenhuma mudança.` });
       }
