@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2, Loader2 } from 'lucide-react';
+import { Trash2, Loader2, Search } from 'lucide-react';
 import { writeBatch } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
@@ -16,6 +16,7 @@ import {
 import type { OrderCustomer } from '@/types/order';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -70,6 +71,7 @@ export default function PedidosPage() {
   // ── filter & sort & local hide state ───────────────────────────────────
   const [statusFilter, setStatusFilter] = useState('all');
   const [sortOption, setSortOption] = useState('default');
+  const [searchQuery, setSearchQuery] = useState('');
   const [shippedIds, setShippedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
@@ -129,8 +131,19 @@ export default function PedidosPage() {
     return result;
   }, [orders, statusFilter, shippedIds]);
 
+  const searchedOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return filteredOrders;
+    return filteredOrders.filter((o) => {
+      const idMatch = o.id.toLowerCase().includes(q);
+      const invoiceMatch = (o.invoice ?? '').toLowerCase().includes(q);
+      const nameMatch = (customerNames[o.id] ?? '').toLowerCase().includes(q);
+      return idMatch || invoiceMatch || nameMatch;
+    });
+  }, [filteredOrders, searchQuery, customerNames]);
+
   const sortedOrders = useMemo(() => {
-    const list = [...filteredOrders];
+    const list = [...searchedOrders];
     switch (sortOption) {
       case 'alpha-asc':
         return list.sort((a, b) =>
@@ -143,7 +156,7 @@ export default function PedidosPage() {
       default:
         return list;
     }
-  }, [filteredOrders, sortOption, customerNames]);
+  }, [searchedOrders, sortOption, customerNames]);
 
   const paginatedOrders = useMemo(() => {
     const start = currentPage * pageSize;
@@ -152,7 +165,7 @@ export default function PedidosPage() {
 
   // Reset page when filter or sort changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [statusFilter, sortOption]);
+  useMemo(() => setCurrentPage(0), [statusFilter, sortOption, searchQuery]);
 
   const handleExportCsv = () => {
     exportToCsv(filteredOrders, [
@@ -362,6 +375,15 @@ export default function PedidosPage() {
                 <SelectItem value="price-asc">Preço (Menor → Maior)</SelectItem>
               </SelectContent>
             </Select>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar pedido..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-[200px] pl-8 h-9"
+              />
+            </div>
           </div>
         </div>
 
