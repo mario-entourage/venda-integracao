@@ -12,6 +12,7 @@ import { getClientRef } from '@/services/clients.service';
 import { getOrderRef, updateOrder } from '@/services/orders.service';
 import { generateProcuracao, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
 import { updateClient } from '@/services/clients.service';
+import { cn } from '@/lib/utils';
 import type { Client, Order } from '@/types';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -83,6 +84,7 @@ export function StepDocumentosZapSign({
   // ── CPF inline edit ────────────────────────────────────────────────
   const [cpfValue, setCpfValue] = useState('');
   const [cpfSaving, setCpfSaving] = useState(false);
+  const [humanVerified, setHumanVerified] = useState(false);
   const cpfInitialized = useRef(false);
 
   React.useEffect(() => {
@@ -255,25 +257,16 @@ export function StepDocumentosZapSign({
 
             {needsProcuracao && (
               <div className="space-y-3">
+                {/* CPF field */}
                 {clientMissingCpf && (
                   <div className="space-y-1.5">
                     <Label className="text-xs">CPF do Paciente</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="000.000.000-00"
-                        value={cpfValue}
-                        onChange={(e) => setCpfValue(formatCpf(e.target.value))}
-                        className="w-48"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleCpfSave}
-                        disabled={cpfSaving || cpfValue.replace(/\D/g, '').length !== 11}
-                      >
-                        {cpfSaving ? 'Salvando...' : 'Salvar CPF'}
-                      </Button>
-                    </div>
+                    <Input
+                      placeholder="000.000.000-00"
+                      value={cpfValue}
+                      onChange={(e) => setCpfValue(formatCpf(e.target.value))}
+                      className="w-56"
+                    />
                   </div>
                 )}
 
@@ -284,13 +277,52 @@ export function StepDocumentosZapSign({
                 )}
 
                 {!orderData?.zapsignDocId ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
+                    {/* Human verification checkbox */}
+                    <label
+                      className="flex items-center gap-3 rounded-lg px-4 py-3 cursor-pointer select-none"
+                      style={{ backgroundColor: '#abdeda' }}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors',
+                          humanVerified
+                            ? 'border-teal-700 bg-teal-700 text-white'
+                            : 'border-teal-600 bg-white',
+                        )}
+                      >
+                        {humanVerified && (
+                          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={humanVerified}
+                        onChange={(e) => setHumanVerified(e.target.checked)}
+                      />
+                      <span className="text-sm font-medium text-teal-900">Sou humano</span>
+                    </label>
+
+                    {/* Generate button */}
                     <Button
-                      onClick={handleGenerateProcuracao}
-                      disabled={!canGenerateProcuracao || procuracaoLoading}
+                      onClick={async () => {
+                        if (clientMissingCpf && cpfValue.replace(/\D/g, '').length === 11) {
+                          await handleCpfSave();
+                        }
+                        handleGenerateProcuracao();
+                      }}
+                      disabled={
+                        !canGenerateProcuracao ||
+                        procuracaoLoading ||
+                        !humanVerified ||
+                        (clientMissingCpf && cpfValue.replace(/\D/g, '').length !== 11)
+                      }
                       size="sm"
                     >
-                      {procuracaoLoading ? 'Gerando...' : 'Gerar Procuração'}
+                      {procuracaoLoading ? 'Gerando...' : cpfSaving ? 'Salvando CPF...' : 'Gerar Procuração'}
                     </Button>
                     {procuracaoError && (
                       <p className="text-sm text-red-500">{procuracaoError}</p>

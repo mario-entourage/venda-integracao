@@ -100,6 +100,10 @@ const INITIAL_STEP1: Step1State = {
   prescriptionFileName: '',
   prescriptionHash: '',
   prescriptionDate: '',
+  patientDocFile: null,
+  patientDocFileName: '',
+  addressDocFile: null,
+  addressDocFileName: '',
   products: [],
   anvisaOption: 'regular',
   allowedPaymentMethods: { creditCard: true, debitCard: true, boleto: true, pix: true },
@@ -454,6 +458,17 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             prescriptionPath = await uploadPrescription(step1.prescriptionFile);
           } catch (uploadErr) {
             console.warn('Prescription upload failed (continuing):', uploadErr);
+          }
+        }
+
+        // Upload additional documents (non-fatal)
+        for (const docFile of [step1.patientDocFile, step1.addressDocFile]) {
+          if (docFile && storage) {
+            try {
+              await uploadPrescription(docFile);
+            } catch (uploadErr) {
+              console.warn('Document upload failed (continuing):', uploadErr);
+            }
           }
         }
 
