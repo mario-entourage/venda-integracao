@@ -27,6 +27,19 @@ import type { PatientRequest, PacienteDocument, ComprovanteResidenciaDocument, P
 import { ANVISA_ROUTES, ANVISA_API_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
 
+// ─── Phone formatting ───────────────────────────────────────────────────────
+
+/** Formats digits into (XX) XXXXX-XXXX (mobile) or (XX) XXXX-XXXX (landline). */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length === 0) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
 // ─── CEP-to-state derivation ────────────────────────────────────────────────
 // CEP range → UF mapping (first 1-2 digits determine the state)
 function stateFromCep(cep: string | undefined | null): string {
@@ -706,7 +719,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="patientPhone" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.patientPhone)}`}>
                                 <FormLabel>Celular</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 99999-9999"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 00000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="patientPhone" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('patientPhone', v)} />
@@ -792,7 +805,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="doctorPhone" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.doctorPhone)}`}>
                                 <FormLabel>Telefone Fixo do Prescritor</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 3333-3333"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 0000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="doctorPhone" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('doctorPhone', v)} />
@@ -803,7 +816,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="doctorMobile" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.doctorMobile)}`}>
                                 <FormLabel>Celular do Prescritor</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 99999-9999"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 00000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="doctorMobile" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('doctorMobile', v)} />
