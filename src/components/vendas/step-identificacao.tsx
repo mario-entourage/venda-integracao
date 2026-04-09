@@ -106,6 +106,12 @@ export interface Step1State {
   prescriptionHash: string;
   /** Date printed on the prescription (YYYY-MM-DD), extracted by AI or null if not found. */
   prescriptionDate: string;
+  /** Documento do paciente (identity doc) */
+  patientDocFile: File | null;
+  patientDocFileName: string;
+  /** Comprovante de residência */
+  addressDocFile: File | null;
+  addressDocFileName: string;
   products: ProductLine[];
   anvisaOption: string;
   allowedPaymentMethods: {
@@ -250,6 +256,23 @@ export function StepIdentificacao({
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  // Dropzones for additional documents
+  const patientDocDropzone = useDropzone({
+    onDrop: (files) => {
+      if (files[0]) onChange({ patientDocFile: files[0], patientDocFileName: files[0].name });
+    },
+    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
+    maxFiles: 1,
+  });
+
+  const addressDocDropzone = useDropzone({
+    onDrop: (files) => {
+      if (files[0]) onChange({ addressDocFile: files[0], addressDocFileName: files[0].name });
+    },
+    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
+    maxFiles: 1,
+  });
 
   const clientOptions = clients.map((c) => ({
     value: c.id, label: c.fullName, sublabel: c.document ? `CPF: ${c.document}` : undefined,
@@ -626,7 +649,10 @@ export function StepIdentificacao({
         </div>
       </div>
 
-      {/* ── Prescription upload & viewer ──────────────────────────── */}
+      {/* ── Documents: Prescription + Patient ID + Proof of Address ── */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+
+      {/* Column 1: Receita Médica */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-sm font-semibold">Receita Médica</Label>
@@ -741,6 +767,88 @@ export function StepIdentificacao({
           );
         })()}
       </div>
+
+      {/* Column 2: Documento do Paciente */}
+      <div className="space-y-2">
+        <Label className="text-sm font-semibold">Documento do Paciente</Label>
+        {state.patientDocFile ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
+            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.patientDocFileName}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 text-xs"
+              onClick={() => onChange({ patientDocFile: null, patientDocFileName: '' })}
+            >
+              Trocar arquivo
+            </Button>
+          </div>
+        ) : (
+          <div
+            {...patientDocDropzone.getRootProps()}
+            className={cn(
+              'flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
+              patientDocDropzone.isDragActive
+                ? 'border-primary bg-primary/5'
+                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+            )}
+          >
+            <input {...patientDocDropzone.getInputProps()} />
+            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <p className="text-sm font-semibold">Arraste ou clique</p>
+            <p className="mt-1 text-xs text-muted-foreground">RG ou CNH · PDF, JPG, PNG</p>
+          </div>
+        )}
+      </div>
+
+      {/* Column 3: Comprovante de Residência */}
+      <div className="space-y-2">
+        <Label className="text-sm font-semibold">Comprovante de Residência</Label>
+        {state.addressDocFile ? (
+          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
+            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.addressDocFileName}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-2 text-xs"
+              onClick={() => onChange({ addressDocFile: null, addressDocFileName: '' })}
+            >
+              Trocar arquivo
+            </Button>
+          </div>
+        ) : (
+          <div
+            {...addressDocDropzone.getRootProps()}
+            className={cn(
+              'flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
+              addressDocDropzone.isDragActive
+                ? 'border-primary bg-primary/5'
+                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+            )}
+          >
+            <input {...addressDocDropzone.getInputProps()} />
+            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
+            <p className="text-sm font-semibold">Arraste ou clique</p>
+            <p className="mt-1 text-xs text-muted-foreground">Conta de luz, água, etc. · PDF, JPG, PNG</p>
+          </div>
+        )}
+      </div>
+
+      </div>{/* end 3-column grid */}
 
       {/* ── Products ──────────────────────────────────────────────── */}
       <div
