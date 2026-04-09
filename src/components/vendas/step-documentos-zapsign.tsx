@@ -11,7 +11,19 @@ import { useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { getClientRef } from '@/services/clients.service';
 import { getOrderRef, updateOrder } from '@/services/orders.service';
 import { generateProcuracao, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
+import { updateClient } from '@/services/clients.service';
 import type { Client, Order } from '@/types';
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/** Formats digits into XXX.XXX.XXX-XX */
+function formatCpf(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -68,12 +80,37 @@ export function StepDocumentosZapSign({
   const [cvLoading, setCvLoading] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
 
+  // ── CPF inline edit ────────────────────────────────────────────────
+  const [cpfValue, setCpfValue] = useState('');
+  const [cpfSaving, setCpfSaving] = useState(false);
+  const cpfInitialized = useRef(false);
+
+  React.useEffect(() => {
+    if (clientData?.document && !cpfInitialized.current) {
+      setCpfValue(formatCpf(clientData.document));
+      cpfInitialized.current = true;
+    }
+  }, [clientData?.document]);
+
+  const handleCpfSave = async () => {
+    if (!firestore || !clientId || !user) return;
+    const digits = cpfValue.replace(/\D/g, '');
+    if (digits.length !== 11) return;
+    setCpfSaving(true);
+    try {
+      await updateClient(firestore, clientId, { document: formatCpf(digits) }, user.uid);
+    } finally {
+      setCpfSaving(false);
+    }
+  };
+
   // ── prevent double-triggering ──────────────────────────────────────────
   const hasTriggeredProcuracao = useRef(false);
   const hasTriggeredCv = useRef(false);
 
   // ── helpers ────────────────────────────────────────────────────────────
-  const clientMissingData = !clientData?.address || !clientData?.document;
+  const clientMissingCpf = !clientData?.document;
+  const clientMissingData = !clientData?.address || clientMissingCpf;
 
   const canGenerateProcuracao =
     needsProcuracao &&
@@ -218,9 +255,31 @@ export function StepDocumentosZapSign({
 
             {needsProcuracao && (
               <div className="space-y-3">
-                {clientMissingData && (
+                {clientMissingCpf && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">CPF do Paciente</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        placeholder="000.000.000-00"
+                        value={cpfValue}
+                        onChange={(e) => setCpfValue(formatCpf(e.target.value))}
+                        className="w-48"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleCpfSave}
+                        disabled={cpfSaving || cpfValue.replace(/\D/g, '').length !== 11}
+                      >
+                        {cpfSaving ? 'Salvando...' : 'Salvar CPF'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {clientMissingData && !clientMissingCpf && (
                   <p className="text-sm text-amber-600">
-                    ⚠ Cliente sem endereço ou CPF cadastrado. Atualize o cadastro para gerar a procuração.
+                    ⚠ Cliente sem endereço cadastrado. Atualize o cadastro para gerar a procuração.
                   </p>
                 )}
 
