@@ -146,10 +146,19 @@ export async function POST(request: NextRequest) {
       errors,
       updatedOrders,
     });
-  } catch (err) {
-    console.error('[payments/sync] Fatal error:', err);
+  } catch (err: unknown) {
+    // Log the FULL error object — gRPC errors hide details in nested properties
+    console.error('[payments/sync] Fatal error — full object:', JSON.stringify(err, Object.getOwnPropertyNames(err as object)));
+    console.error('[payments/sync] Fatal error — stack:', (err as Error).stack);
+    const errObj = err as { message?: string; code?: number; details?: string; metadata?: unknown };
+    const details = [
+      errObj.message,
+      errObj.details,
+      errObj.metadata ? JSON.stringify(errObj.metadata) : null,
+      String(err),
+    ].filter(Boolean).join(' | ');
     return NextResponse.json(
-      { ok: false, error: 'Sync failed', details: String(err) },
+      { ok: false, error: 'Sync failed', details },
       { status: 500 },
     );
   }
