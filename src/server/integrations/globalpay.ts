@@ -303,51 +303,79 @@ export async function createGlobalPayLink(
 /**
  * Query a transaction status from GlobalPay.
  * GET {baseUrl}/paymentapi/order/{gpOrderId}
+ *
+ * Includes auto-retry on 401 (expired token) — mirrors createGlobalPayLink.
  */
 export async function getGlobalPayTransaction(
   gpOrderId: string,
 ): Promise<Record<string, unknown>> {
   const baseUrl = getBaseUrl();
-  const { token } = await getToken();
 
-  const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}`, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { token } = await getToken();
 
-  const json = await res.json();
+    const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
 
-  if (json.statusCode !== 1) {
-    throw new GlobalPayError(
-      `Query failed: ${json.msg || res.statusText}`,
-      json.statusCode ?? res.status,
-      json.statusType || 'query_error',
-    );
+    const json = await res.json();
+
+    // Auth error — clear cache and retry once
+    if ((json.cod === '401' || json.statusCode === 401) && attempt === 0) {
+      tokenCache = null;
+      continue;
+    }
+
+    if (json.statusCode !== 1) {
+      throw new GlobalPayError(
+        `Query failed: ${json.msg || res.statusText}`,
+        json.statusCode ?? res.status,
+        json.statusType || 'query_error',
+      );
+    }
+
+    return json.data || json;
   }
 
-  return json.data || json;
+  throw new GlobalPayError('Token refresh failed after retry.', 401, 'token_error');
 }
 
 /**
  * Cancel / deactivate a transaction on GlobalPay.
  * POST {baseUrl}/paymentapi/order/{gpOrderId}/cancel
+ *
+ * Includes auto-retry on 401 (expired token).
  */
 export async function cancelGlobalPayTransaction(gpOrderId: string): Promise<void> {
   const baseUrl = getBaseUrl();
-  const { token } = await getToken();
 
-  const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}/cancel`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { token } = await getToken();
 
-  const json = await res.json();
+    const res = await fetch(`${baseUrl}/paymentapi/order/${gpOrderId}/cancel`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
 
-  if (json.statusCode !== 1) {
-    throw new GlobalPayError(
-      `Cancellation failed: ${json.msg || res.statusText}`,
-      json.statusCode ?? res.status,
-      json.statusType || 'cancel_error',
-    );
+    const json = await res.json();
+
+    // Auth error — clear cache and retry once
+    if ((json.cod === '401' || json.statusCode === 401) && attempt === 0) {
+      tokenCache = null;
+      continue;
+    }
+
+    if (json.statusCode !== 1) {
+      throw new GlobalPayError(
+        `Cancellation failed: ${json.msg || res.statusText}`,
+        json.statusCode ?? res.status,
+        json.statusType || 'cancel_error',
+      );
+    }
+
+    return;
   }
+
+  throw new GlobalPayError('Token refresh failed after retry.', 401, 'token_error');
 }

@@ -276,16 +276,23 @@ export default function OrderDetailPage() {
       const res = await authFetch('/api/payments/sync', {
         method: 'POST',
         body: JSON.stringify({ orderId }),
+        timeout: 120_000, // 2 min — GlobalPay API can be slow
       });
-      if (!res.ok) throw new Error(`Sync failed: HTTP ${res.status}`);
-      const data = await res.json() as { checked?: number; approved?: number; errors?: number };
-      setSyncMsg(
-        data.approved
-          ? `✓ Pagamento confirmado!`
-          : `${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`,
-      );
-    } catch {
-      setSyncMsg('Não foi possível sincronizar o pagamento. Verifique sua conexão e tente novamente.');
+      const data = await res.json() as { ok?: boolean; checked?: number; approved?: number; errors?: number; error?: string; details?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      }
+      if (data.approved) {
+        setSyncMsg(`✓ Pagamento confirmado!`);
+      } else if (data.errors) {
+        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s), ${data.errors} erro(s) ao consultar GlobalPay.`);
+      } else {
+        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[controle/sync] Error:', msg);
+      setSyncMsg(`Não foi possível sincronizar o pagamento: ${msg}`);
     } finally {
       setIsSyncing(false);
     }
