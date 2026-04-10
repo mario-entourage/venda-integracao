@@ -18,17 +18,24 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-sm rounded-2xl bg-white px-8 py-10 shadow-md space-y-6">
+      
       {/* Logo */}
       <div className="flex flex-col items-center gap-3">
-        <Image src="/logo.png" alt="Entourage Phytolab" width={240} height={80} style={{ height: 'auto' }} priority />
-        <span style={{ fontFamily: 'Meddon, cursive' }} className="text-4xl text-muted-foreground">
-          Vendas
-        </span>
+        <Image
+          src="/logo.png"
+          alt="Entourage Phytolab"
+          width={240}
+          height={80}
+          style={{ height: 'auto' }}
+          priority
+        />
       </div>
 
       {/* Subtitle */}
       <div className="text-center">
-        <p className="text-sm text-muted-foreground">Acesso restrito para @entouragelab.com</p>
+        <p className="text-sm text-muted-foreground">
+          Acesso restrito para @entouragelab.com
+        </p>
       </div>
 
       {/* Sign in */}
@@ -36,7 +43,9 @@ export default function LoginPage() {
 
       {/* Error */}
       {userError && (
-        <p className="text-center text-sm text-red-500">{userError.message}</p>
+        <p className="text-center text-sm text-red-500">
+          {userError.message}
+        </p>
       )}
 
       {/* Disclaimer */}

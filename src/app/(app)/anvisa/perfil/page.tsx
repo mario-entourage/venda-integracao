@@ -18,6 +18,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+/** Formats digits into (XX) XXXXX-XXXX (mobile) or (XX) XXXX-XXXX (landline). */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length === 0) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
 const BRAZILIAN_STATES = [
   'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
   'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
@@ -379,7 +390,7 @@ export default function AnvisaPerfilPage() {
                   <FormItem>
                     <FormLabel>Celular *</FormLabel>
                     <FormControl>
-                      <Input placeholder="(31) 99999-9999" {...field} disabled={isSaving} />
+                      <Input placeholder="(00) 00000-0000" {...field} disabled={isSaving} onChange={(e) => field.onChange(formatPhone(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -393,7 +404,7 @@ export default function AnvisaPerfilPage() {
                   <FormItem>
                     <FormLabel>Telefone Fixo</FormLabel>
                     <FormControl>
-                      <Input placeholder="(31) 3333-3333" {...field} disabled={isSaving} />
+                      <Input placeholder="(00) 0000-0000" {...field} disabled={isSaving} onChange={(e) => field.onChange(formatPhone(e.target.value))} />
                     </FormControl>
                     <FormDescription>Opcional</FormDescription>
                     <FormMessage />

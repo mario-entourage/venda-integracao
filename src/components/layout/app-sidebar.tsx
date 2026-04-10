@@ -2,13 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { Josefin_Sans } from 'next/font/google';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
   Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign,
 } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
-import { BrandLogo } from '@/components/shared/brand-logo';
+import { useDashboardLang, translateSidebar } from '@/contexts/dashboard-lang-context';
+
+const josefinSans = Josefin_Sans({
+  subsets: ['latin'],
+  weight: '700',
+});
 import {
   Sidebar,
   SidebarContent,
@@ -68,18 +74,39 @@ const userNavItems = [
   { href: '/perfil', icon: User, label: 'Perfil' },
 ];
 
-function NavGroup({ label, items, pathname, labelClassName }: { label: string; items: typeof vendasNavItems; pathname: string; labelClassName?: string }) {
+function NavGroup({
+  label,
+  items,
+  pathname,
+  labelClassName,
+  lang,
+}: {
+  label: string;
+  items: typeof vendasNavItems;
+  pathname: string;
+  labelClassName?: string;
+  lang: 'pt' | 'en';
+}) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className={labelClassName}>{label}</SidebarGroupLabel>
+      <SidebarGroupLabel className={labelClassName}>
+        {translateSidebar(label, lang)}
+      </SidebarGroupLabel>
       <SidebarGroupContent>
         <SidebarMenu>
           {items.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
+              <SidebarMenuButton
+                asChild
+                isActive={
+                  pathname === item.href ||
+                  (item.href !== '/dashboard' &&
+                    pathname.startsWith(item.href))
+                }
+              >
                 <Link href={item.href}>
                   <item.icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <span>{translateSidebar(item.label, lang)}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -90,63 +117,104 @@ function NavGroup({ label, items, pathname, labelClassName }: { label: string; i
   );
 }
 
-/** Routes hidden from the sidebar in audit mode (creation/mutation pages) */
-const AUDIT_HIDDEN_ROUTES = new Set(['/remessas', '/anvisa/nova', '/importar', '/auditoria']);
+/** Routes hidden from the sidebar in audit mode */
+const AUDIT_HIDDEN_ROUTES = new Set([
+  '/remessas',
+  '/anvisa/nova',
+  '/importar',
+  '/auditoria',
+]);
 
 export function AppSidebar() {
   const pathname = usePathname();
   const { isAuditMode } = useAuditMode();
+  const langCtx = useDashboardLang();
+  const lang = langCtx?.lang ?? 'pt';
 
-  /** Filter out creation pages when in audit mode */
   const filterItems = (items: typeof vendasNavItems) =>
-    isAuditMode ? items.filter((i) => !AUDIT_HIDDEN_ROUTES.has(i.href)) : items;
+    isAuditMode
+      ? items.filter((i) => !AUDIT_HIDDEN_ROUTES.has(i.href))
+      : items;
 
   return (
     <Sidebar>
       <SidebarHeader className="border-b border-sidebar-border px-4 py-3">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <BrandLogo variant="light" className="text-sidebar-primary-foreground" />
+        <Link href="/dashboard" className="flex items-center justify-center">
+          <h1
+            className={`${josefinSans.className} text-xl font-bold uppercase tracking-[0.3em] text-[#2EE6D6]`}
+          >
+            VENDAS
+          </h1>
         </Link>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="h-10">
-            <span style={{ fontFamily: 'Meddon, cursive', textTransform: 'none', marginLeft: '0.75em' }} className="text-lg leading-none">
-              Vendas
-            </span>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {filterItems(vendasNavItems).map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton asChild isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}>
-                    <Link href={item.href}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.label}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup
+          label="Vendas"
+          labelClassName="sr-only"
+          items={filterItems(vendasNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
 
-        <NavGroup label="Cadastros" items={filterItems(cadastrosNavItems)} pathname={pathname} />
-        <NavGroup label="Produtos & Estoque" items={filterItems(productNavItems)} pathname={pathname} />
-        <NavGroup label="Documentos" items={filterItems(documentNavItems)} pathname={pathname} />
-        <NavGroup label="Financeiro" items={filterItems(paymentNavItems)} pathname={pathname} />
-        <NavGroup label="ANVISA" items={filterItems(anvisaNavItems)} pathname={pathname} />
+        <NavGroup
+          label="Cadastros"
+          items={filterItems(cadastrosNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
 
-        <NavGroup label="Administração" items={filterItems(adminNavItems)} pathname={pathname} />
-        <NavGroup label="Suporte" items={filterItems(helpNavItems)} pathname={pathname} />
+        <NavGroup
+          label="Produtos & Estoque"
+          items={filterItems(productNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
+
+        <NavGroup
+          label="Documentos"
+          items={filterItems(documentNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
+
+        <NavGroup
+          label="Financeiro"
+          items={filterItems(paymentNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
+
+        <NavGroup
+          label="ANVISA"
+          items={filterItems(anvisaNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
+
+        <NavGroup
+          label="Administração"
+          items={filterItems(adminNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
+
+        <NavGroup
+          label="Suporte"
+          items={filterItems(helpNavItems)}
+          pathname={pathname}
+          lang={lang}
+        />
       </SidebarContent>
 
       <SidebarFooter className="border-t">
         <SidebarMenu>
           {userNavItems.map((item) => (
             <SidebarMenuItem key={item.href}>
-              <SidebarMenuButton asChild isActive={pathname.startsWith(item.href)}>
+              <SidebarMenuButton
+                asChild
+                isActive={pathname.startsWith(item.href)}
+              >
                 <Link href={item.href}>
                   <item.icon className="h-4 w-4" />
                   <span>{item.label}</span>

@@ -1,19 +1,22 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Trash2, Loader2 } from 'lucide-react';
+import { Trash2, Loader2, Search } from 'lucide-react';
 import { writeBatch } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import {
   getOrdersQuery,
   getOrderRef,
+  getOrderSubcollectionDocs,
   updateOrder,
   updateOrderStatus,
 } from '@/services/orders.service';
+import type { OrderCustomer } from '@/types/order';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -65,8 +68,10 @@ export default function PedidosPage() {
   const { firestore, user, isAdmin } = useFirebase();
   const { toast } = useToast();
 
-  // ── filter & local hide state ──────────────────────────────────────────
+  // ── filter & sort & local hide state ───────────────────────────────────
   const [statusFilter, setStatusFilter] = useState('all');
+  const [sortOption, setSortOption] = useState('default');
+  const [searchQuery, setSearchQuery] = useState('');
   const [shippedIds, setShippedIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(0);
   const [pageSize, setPageSize] = useState(30);
@@ -87,6 +92,30 @@ export default function PedidosPage() {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
+  // ── customer name cache for alphabetical sorting ──────────────────────
+  const [customerNames, setCustomerNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!firestore || !orders || orders.length === 0) return;
+    let cancelled = false;
+
+    async function fetchNames() {
+      const map: Record<string, string> = {};
+      await Promise.all(
+        orders!.map(async (o) => {
+          try {
+            const customers = await getOrderSubcollectionDocs<OrderCustomer>(firestore!, o.id, 'customer');
+            if (customers[0]?.name) map[o.id] = customers[0].name;
+          } catch { /* ignore */ }
+        }),
+      );
+      if (!cancelled) setCustomerNames(map);
+    }
+
+    fetchNames();
+    return () => { cancelled = true; };
+  }, [firestore, orders]);
+
   const filteredOrders = useMemo(() => {
     let result = (orders ?? []).filter(
       (o) =>
@@ -102,14 +131,41 @@ export default function PedidosPage() {
     return result;
   }, [orders, statusFilter, shippedIds]);
 
+  const searchedOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return filteredOrders;
+    return filteredOrders.filter((o) => {
+      const idMatch = o.id.toLowerCase().includes(q);
+      const invoiceMatch = (o.invoice ?? '').toLowerCase().includes(q);
+      const nameMatch = (customerNames[o.id] ?? '').toLowerCase().includes(q);
+      return idMatch || invoiceMatch || nameMatch;
+    });
+  }, [filteredOrders, searchQuery, customerNames]);
+
+  const sortedOrders = useMemo(() => {
+    const list = [...searchedOrders];
+    switch (sortOption) {
+      case 'alpha-asc':
+        return list.sort((a, b) =>
+          (customerNames[a.id] ?? '').localeCompare(customerNames[b.id] ?? '', 'pt-BR', { sensitivity: 'base' }),
+        );
+      case 'price-desc':
+        return list.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0));
+      case 'price-asc':
+        return list.sort((a, b) => (a.amount ?? 0) - (b.amount ?? 0));
+      default:
+        return list;
+    }
+  }, [searchedOrders, sortOption, customerNames]);
+
   const paginatedOrders = useMemo(() => {
     const start = currentPage * pageSize;
-    return filteredOrders.slice(start, start + pageSize);
-  }, [filteredOrders, currentPage, pageSize]);
+    return sortedOrders.slice(start, start + pageSize);
+  }, [sortedOrders, currentPage, pageSize]);
 
-  // Reset page when filter changes
+  // Reset page when filter or sort changes
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useMemo(() => setCurrentPage(0), [statusFilter]);
+  useMemo(() => setCurrentPage(0), [statusFilter, sortOption, searchQuery]);
 
   const handleExportCsv = () => {
     exportToCsv(filteredOrders, [
@@ -308,6 +364,26 @@ export default function PedidosPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={sortOption} onValueChange={setSortOption}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Ordenar por" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">Ordenar por</SelectItem>
+                <SelectItem value="alpha-asc">Alfabética (A → Z)</SelectItem>
+                <SelectItem value="price-desc">Preço (Maior → Menor)</SelectItem>
+                <SelectItem value="price-asc">Preço (Menor → Maior)</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Buscar pedido..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-[200px] pl-8 h-9"
+              />
+            </div>
           </div>
         </div>
 

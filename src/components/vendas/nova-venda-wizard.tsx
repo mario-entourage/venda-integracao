@@ -100,6 +100,10 @@ const INITIAL_STEP1: Step1State = {
   prescriptionFileName: '',
   prescriptionHash: '',
   prescriptionDate: '',
+  patientDocFile: null,
+  patientDocFileName: '',
+  addressDocFile: null,
+  addressDocFileName: '',
   products: [],
   anvisaOption: 'regular',
   allowedPaymentMethods: { creditCard: true, debitCard: true, boleto: true, pix: true },
@@ -457,6 +461,17 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
           }
         }
 
+        // Upload additional documents (non-fatal)
+        for (const docFile of [step1.patientDocFile, step1.addressDocFile]) {
+          if (docFile && storage) {
+            try {
+              await uploadPrescription(docFile);
+            } catch (uploadErr) {
+              console.warn('Document upload failed (continuing):', uploadErr);
+            }
+          }
+        }
+
         // Calculate amount
         const amount = step1.products.reduce(
           (sum, p) => sum + p.negotiatedPrice * p.quantity,
@@ -752,7 +767,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
         onStepChange={handleStepChange}
         onComplete={handleComplete}
         canAdvance={canAdvance}
-        canGoBack={!isSubmitting}
+        canGoBack={!isSubmitting && (currentStep <= 1 ? (state.orderId === '' || !!resumeOrderId) : true)}
         completeLabel={isSubmitting ? 'Finalizando…' : 'Finalizar Venda'}
         exitUrl="/pedidos"
       >
@@ -805,6 +820,7 @@ export function NovaVendaWizard({ onComplete, resumeOrderId }: NovaVendaWizardPr
             doctorCrm={state.step1.doctorCrm}
             products={state.step1.products}
             orderAmount={state.orderAmount}
+            frete={state.frete}
             representanteName={state.selectedRepresentanteName}
           />
         )}

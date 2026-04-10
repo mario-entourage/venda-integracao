@@ -109,3 +109,26 @@ body {
     text-transform: uppercase;
   }
 }
+
+/* ── Sidebar scrollbar ── */
+[data-sidebar="content"] {
+  scrollbar-color: #abdeda #155579; /* Firefox: thumb track */
+  scrollbar-width: auto;
+}
+
+[data-sidebar="content"]::-webkit-scrollbar {
+  width: 8px;
+}
+
+[data-sidebar="content"]::-webkit-scrollbar-track {
+  background: #155579;
+}
+
+[data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: #abdeda;
+  border-radius: 9999px;
+}
+
+[data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+  background: #2ee6d6;
+}
