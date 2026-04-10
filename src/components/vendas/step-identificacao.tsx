@@ -445,7 +445,12 @@ export function StepIdentificacao({
         timeout: 60_000,
       });
       const data: PrescriptionExtraction = await res.json();
-      if (!res.ok || data._error) {
+
+      // Check if ANY fields were extracted (partial extraction is still useful)
+      const hasAnyData = !!(data.patientName || data.patientDocument || data.doctorName || data.doctorCrm || data.prescriptionDate || data.products?.length);
+
+      // If complete failure with no data at all, show error and stop
+      if (!hasAnyData && (!res.ok || data._error)) {
         setExtractionMsg(data._error || 'Falha na extração. Preencha os campos manualmente.');
         return;
       }
@@ -519,11 +524,22 @@ export function StepIdentificacao({
       onChange(updates);
       const newItems = [updates.clientIsNew, updates.doctorIsNew].filter(Boolean).length
         + (updates.products ?? []).filter((l) => !l.productId && l.aiHintName).length;
-      setExtractionMsg(newItems > 0
-        ? `${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`
-        : 'Campos preenchidos automaticamente com sucesso!');
-    } catch {
-      setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+
+      if (data._error && hasAnyData) {
+        // Partial extraction — some fields filled, but warn the user
+        setExtractionMsg('Extração parcial — alguns campos foram preenchidos. Verifique e complete manualmente.');
+      } else if (newItems > 0) {
+        setExtractionMsg(`${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`);
+      } else {
+        setExtractionMsg('Campos preenchidos automaticamente com sucesso!');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (/Sessão expirada|expirada/i.test(msg)) {
+        setExtractionMsg('Sessão expirada. Recarregue a página e tente novamente.');
+      } else {
+        setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+      }
     } finally {
       setIsExtracting(false);
     }

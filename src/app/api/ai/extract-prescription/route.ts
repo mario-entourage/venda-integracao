@@ -33,6 +33,63 @@ const BodySchema = z.object({
   mimeType: z.string().optional().default('image/jpeg'),
 });
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+const EMPTY_RESULT: PrescriptionExtraction = {
+  patientName: null, patientDocument: null, doctorName: null,
+  doctorCrm: null, prescriptionDate: null, products: [],
+};
+
+/** Try to extract a JSON object from raw AI text (handles markdown fences, preamble, etc.) */
+function extractJson(rawText: string): Record<string, unknown> | null {
+  // Strategy 1: find outermost { … }
+  const jsonStart = rawText.indexOf('{');
+  const jsonEnd = rawText.lastIndexOf('}') + 1;
+  if (jsonStart !== -1 && jsonEnd > jsonStart) {
+    try { return JSON.parse(rawText.slice(jsonStart, jsonEnd)); } catch { /* try next */ }
+  }
+  // Strategy 2: strip markdown code fences
+  const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) {
+    try { return JSON.parse(fenced[1].trim()); } catch { /* try next */ }
+  }
+  // Strategy 3: the entire response is JSON
+  try { return JSON.parse(rawText.trim()); } catch { /* give up */ }
+  return null;
+}
+
+/** Coerce a loosely-typed AI response into PrescriptionExtraction, filling gaps with null */
+function coerceExtraction(raw: Record<string, unknown>): PrescriptionExtraction {
+  return {
+    patientName: typeof raw.patientName === 'string' ? raw.patientName : null,
+    patientDocument: typeof raw.patientDocument === 'string' ? raw.patientDocument : null,
+    doctorName: typeof raw.doctorName === 'string' ? raw.doctorName : null,
+    doctorCrm: typeof raw.doctorCrm === 'string' ? raw.doctorCrm : null,
+    prescriptionDate: typeof raw.prescriptionDate === 'string' ? raw.prescriptionDate : null,
+    products: Array.isArray(raw.products)
+      ? raw.products.map((p: Record<string, unknown>) => ({
+          name: typeof p?.name === 'string' ? p.name : '',
+          catalogSku: typeof p?.catalogSku === 'string' ? p.catalogSku : null,
+          concentration: typeof p?.concentration === 'string' ? p.concentration : null,
+          quantity: typeof p?.quantity === 'number' ? p.quantity : null,
+        }))
+      : [],
+  };
+}
+
+/** Determine if a transient error is worth retrying */
+function isRetryable(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const code = (error as Record<string, unknown>)?.code;
+  // Rate limits, timeouts, 503s, network errors
+  return /429|503|timeout|DEADLINE_EXCEEDED|UNAVAILABLE|ECONNRESET|fetch failed/i.test(msg)
+    || code === 429 || code === 503;
+}
+
+// ─── route handler ──────────────────────────────────────────────────────────
+
+const MAX_RETRIES = 2;
+
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request);
   if (auth instanceof Response) return auth;
@@ -40,20 +97,27 @@ export async function POST(request: NextRequest) {
   const body = await validateBody(request, BodySchema);
   if (body instanceof Response) return body;
 
-  try {
-    const { imageBase64, mimeType } = body;
+  const { imageBase64, mimeType } = body;
 
-    const { ai } = await import('@/ai/genkit');
+  // Stage 1: Call Gemini AI with retry
+  let rawText = '';
+  let lastError: unknown = null;
 
-    const response = await ai.generate({
-      prompt: [
-        {
-          media: {
-            url: `data:${mimeType};base64,${imageBase64}`,
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[Prescription] AI attempt ${attempt}/${MAX_RETRIES}, image size: ${Math.round(imageBase64.length / 1024)}KB`);
+
+      const { ai } = await import('@/ai/genkit');
+
+      const response = await ai.generate({
+        prompt: [
+          {
+            media: {
+              url: `data:${mimeType};base64,${imageBase64}`,
+            },
           },
-        },
-        {
-          text: `Esta é uma receita médica brasileira. Extraia os dados e retorne JSON puro (sem markdown, sem texto adicional).
+          {
+            text: `Esta é uma receita médica brasileira. Extraia os dados e retorne JSON puro (sem markdown, sem texto adicional).
 
 CATÁLOGO DE PRODUTOS CONHECIDOS:
 ${CATALOG_BLOCK}
@@ -81,38 +145,55 @@ Esquema de resposta:
   ]
 }
 Retorne APENAS o JSON válido.`,
-        },
-      ],
-    });
+          },
+        ],
+      });
 
-    // Robustly extract JSON from the response (handles markdown code blocks)
-    const rawText = response.text;
-    const jsonStart = rawText.indexOf('{');
-    const jsonEnd = rawText.lastIndexOf('}') + 1;
+      rawText = response.text;
+      lastError = null;
+      break; // success — exit retry loop
+    } catch (error) {
+      lastError = error;
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`[Prescription] AI attempt ${attempt} failed: ${errMsg}`);
 
-    if (jsonStart === -1 || jsonEnd === 0) {
-      throw new Error('No JSON found in AI response');
+      if (attempt < MAX_RETRIES && isRetryable(error)) {
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+        continue;
+      }
+      break; // non-retryable or last attempt
     }
+  }
 
-    const data: PrescriptionExtraction = JSON.parse(rawText.slice(jsonStart, jsonEnd));
-    return NextResponse.json(data);
-  } catch (error) {
-    // Log full error details to Cloud Run / App Hosting logs for diagnosis
-    const errMsg = error instanceof Error ? error.message : String(error);
-    const errCode = (error as Record<string, unknown>)?.code ?? 'unknown';
-    console.error('Prescription extraction error:', errMsg, '| code:', errCode, '| full:', error);
+  // Stage 1 failed entirely — return error with diagnosis hint
+  if (lastError || !rawText) {
+    const errMsg = lastError instanceof Error ? lastError.message : String(lastError ?? 'empty response');
+    const errCode = (lastError as Record<string, unknown>)?.code ?? 'unknown';
+    console.error('[Prescription] AI generation failed after retries:', errMsg, '| code:', errCode);
 
+    const hint = /429|rate/i.test(errMsg) ? 'Limite de requisições atingido. Tente novamente em alguns segundos.'
+      : /timeout|DEADLINE/i.test(errMsg) ? 'Tempo esgotado ao processar a receita. Tente com uma imagem menor.'
+      : 'Extração falhou. Preencha os campos manualmente.';
+
+    return NextResponse.json({ ...EMPTY_RESULT, _error: hint } satisfies PrescriptionExtraction, { status: 422 });
+  }
+
+  // Stage 2: Parse JSON from AI response
+  const parsed = extractJson(rawText);
+  if (!parsed) {
+    console.error('[Prescription] JSON parse failed. Raw response (first 500 chars):', rawText.slice(0, 500));
     return NextResponse.json(
-      {
-        patientName: null,
-        patientDocument: null,
-        doctorName: null,
-        doctorCrm: null,
-        prescriptionDate: null,
-        products: [],
-        _error: 'Extração falhou. Preencha os campos manualmente.',
-      } satisfies PrescriptionExtraction,
+      { ...EMPTY_RESULT, _error: 'IA retornou resposta inválida. Tente novamente ou preencha manualmente.' } satisfies PrescriptionExtraction,
       { status: 422 },
     );
   }
+
+  // Stage 3: Coerce into typed result (partial extraction is OK)
+  const data = coerceExtraction(parsed);
+
+  const filledFields = [data.patientName, data.patientDocument, data.doctorName, data.doctorCrm, data.prescriptionDate]
+    .filter(Boolean).length;
+  console.log(`[Prescription] Extracted ${filledFields} fields, ${data.products.length} products`);
+
+  return NextResponse.json(data);
 }
