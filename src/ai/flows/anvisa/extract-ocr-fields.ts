@@ -331,6 +331,12 @@ You may receive raw OCR text extracted by Google Cloud Vision. Use it as a SUPPL
 
 // ─── Main function ──────────────────────────────────────────────────────────
 
+const EMPTY_OUTPUT: ExtractOcrFieldsOutput = {
+  extractedFields: {},
+  fieldConfidence: {},
+  missingCriticalFields: [],
+};
+
 export async function extractOcrFields(input: ExtractOcrFieldsInput): Promise<ExtractOcrFieldsOutput> {
   const model =
     input.documentType === 'RECEITA_MEDICA'
@@ -353,12 +359,41 @@ export async function extractOcrFields(input: ExtractOcrFieldsInput): Promise<Ex
 
   promptParts.push({ text: textPrompt });
 
-  const { output } = await ai.generate({
-    model,
-    system: systemPrompt,
-    prompt: promptParts,
-    output: { schema: ExtractOcrFieldsOutputSchema },
-  });
+  // Retry up to 2 times for transient Gemini failures
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      console.log(`[OCR-Flow] Attempt ${attempt}/2 for ${input.documentType}, model: ${model}`);
 
-  return postProcessFields(output!);
+      const { output } = await ai.generate({
+        model,
+        system: systemPrompt,
+        prompt: promptParts,
+        output: { schema: ExtractOcrFieldsOutputSchema },
+      });
+
+      if (!output) {
+        console.warn(`[OCR-Flow] AI returned null output for ${input.documentType}`);
+        return EMPTY_OUTPUT;
+      }
+
+      const result = postProcessFields(output);
+      console.log(`[OCR-Flow] Extracted ${Object.keys(result.extractedFields).length} fields for ${input.documentType}`);
+      return result;
+    } catch (error) {
+      lastError = error;
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[OCR-Flow] Attempt ${attempt} failed for ${input.documentType}: ${msg}`);
+
+      if (attempt < 2 && /429|503|timeout|DEADLINE|UNAVAILABLE/i.test(msg)) {
+        await new Promise((r) => setTimeout(r, 3000));
+        continue;
+      }
+    }
+  }
+
+  // All retries failed — log and throw so the caller can handle it
+  const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+  console.error(`[OCR-Flow] All attempts failed for ${input.documentType}: ${errMsg}`);
+  throw lastError;
 }
