@@ -14,6 +14,7 @@ import type {
 import type { ExtractOcrFieldsInput, ExtractOcrFieldsOutput } from '@/ai/flows/anvisa/extract-ocr-fields';
 import { ANVISA_API_ROUTES } from '@/lib/anvisa-routes';
 import { ANVISA_COLLECTIONS, ANVISA_SUBCOLLECTIONS } from '@/lib/anvisa-paths';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 
 type DocumentWithType = {
   doc: PacienteDocument | ComprovanteResidenciaDocument | ProcuracaoDocument | ReceitaMedicaDocument;
@@ -64,6 +65,7 @@ function isOcrReady(document: DocumentBase): boolean {
 async function extractWithRetry(
   item: DocumentWithType,
   storage: FirebaseStorage,
+  fetchFn: (url: string, options?: RequestInit) => Promise<Response>,
   maxAttempts: number = 2,
 ): Promise<{ item: DocumentWithType; result: ExtractOcrFieldsOutput }> {
   let lastError: Error | null = null;
@@ -85,9 +87,8 @@ async function extractWithRetry(
         ocrText,
       };
 
-      const response = await fetch(ANVISA_API_ROUTES.extractOcrFields, {
+      const response = await fetchFn(ANVISA_API_ROUTES.extractOcrFields, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(extractInput),
       });
 
@@ -119,6 +120,7 @@ export function useOcrExtraction(
   firestore: Firestore | null,
   storage: FirebaseStorage | null,
 ) {
+  const authFetch = useAuthFetch();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const extractedDocIds = useRef<Set<string>>(new Set());
@@ -206,7 +208,7 @@ export function useOcrExtraction(
     (async () => {
       try {
         const results = await Promise.allSettled(
-          documentsToProcess.map((item) => extractWithRetry(item, storage)),
+          documentsToProcess.map((item) => extractWithRetry(item, storage, authFetch)),
         );
 
         const batch = writeBatch(firestore);

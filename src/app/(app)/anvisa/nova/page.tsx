@@ -11,6 +11,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 import { doc, collection, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
@@ -475,6 +476,7 @@ export default function NewRequestPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firestore, storage, user } = useFirebase();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
 
   // ── Order linking ─────────────────────────────────────────────────────
@@ -589,9 +591,8 @@ export default function NewRequestPage() {
       filesToClassify.map(async (file) => {
         try {
           const dataUrl = await fileToDataUrl(file);
-          const response = await fetch(ANVISA_API_ROUTES.classifyDocument, {
+          const response = await authFetch(ANVISA_API_ROUTES.classifyDocument, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileDataUrl: dataUrl,
               contentType: effectiveMimeType(file),
