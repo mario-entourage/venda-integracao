@@ -10,6 +10,7 @@ import { doc, writeBatch, updateDoc, getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase, errorEmitter } from "@/firebase";
 import { FirestorePermissionError } from "@/firebase/errors";
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 import { useToast } from "@/hooks/use-toast";
 import { getDownloadURL, ref } from "firebase/storage";
 import Image from 'next/image';
@@ -375,6 +376,7 @@ type OcrDataFormProps = DocumentProps & {
 
 function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResidenciaDoc, comprovanteResidenciaDocs = [], procuracaoDoc, procuracaoDocs = [], receitaMedicaDoc, receitaMedicaDocs = [], reusedData }: OcrDataFormProps) {
     const { firestore } = useFirebase();
+    const authFetch = useAuthFetch();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [suggestions, setSuggestions] = useState<Record<string, string>>({});
@@ -411,9 +413,8 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                     missingFields: missingFields,
                 };
 
-                const response = await fetch(ANVISA_API_ROUTES.suggestCorrections, {
+                const response = await authFetch(ANVISA_API_ROUTES.suggestCorrections, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(input),
                 });
                 if (!response.ok) {

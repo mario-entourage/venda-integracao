@@ -23,14 +23,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ExternalLink, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 import { OrderChecklist } from '@/components/controle/order-checklist';
 import { FileUpload } from '@/components/shared/file-upload';
 import { createDocumentRecord, updateDocumentRecord, getDocumentRecordsByOrderId } from '@/services/documents.service';
+import { getOrderPaymentLinksRef } from '@/services/payments.service';
 import { OrderStatus } from '@/types';
 import type { Order, OrderCustomer, OrderDoctor, OrderRepresentative } from '@/types';
+import type { PaymentLink } from '@/types/payment';
 import type { User } from '@/types';
 
 // ─── local types ──────────────────────────────────────────────────────────────
@@ -111,6 +114,7 @@ export default function OrderDetailPage() {
   const [doctor, setDoctor] = useState<OrderDoctor | null>(null);
   const [representative, setRepresentative] = useState<OrderRepresentative | null>(null);
   const [products, setProducts] = useState<StoredProduct[]>([]);
+  const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
   const [subLoading, setSubLoading] = useState(true);
 
   useEffect(() => {
@@ -131,8 +135,11 @@ export default function OrderDetailPage() {
     const unsubProducts = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'products'), (snap) => {
       setProducts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<StoredProduct, 'id'>) })));
     });
+    const unsubPaymentLinks = onSnapshot(getOrderPaymentLinksRef(firestore, orderId), (snap) => {
+      setPaymentLinks(snap.docs.map((d) => ({ id: d.id, ...d.data() } as unknown as PaymentLink)));
+    });
 
-    return () => { unsubCustomer(); unsubDoctor(); unsubRep(); unsubProducts(); };
+    return () => { unsubCustomer(); unsubDoctor(); unsubRep(); unsubProducts(); unsubPaymentLinks(); };
   }, [firestore, orderId]);
 
   // ── document uploads ─────────────────────────────────────────────────────────
@@ -697,6 +704,63 @@ export default function OrderDetailPage() {
                 <p className="text-sm text-muted-foreground">{syncMsg}</p>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Payment links ── */}
+      {paymentLinks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Links de Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {paymentLinks.map((pl) => (
+              <div
+                key={pl.id}
+                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+              >
+                <Badge
+                  variant={
+                    pl.status === 'paid'
+                      ? 'default'
+                      : pl.status === 'created'
+                        ? 'outline'
+                        : 'destructive'
+                  }
+                  className="shrink-0"
+                >
+                  {pl.status === 'paid' ? 'Pago' : pl.status === 'created' ? 'Pendente' : pl.status}
+                </Badge>
+                <span className="font-medium">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: pl.currency || 'BRL' }).format(pl.amount)}
+                </span>
+                {pl.paymentUrl && (
+                  <>
+                    <a
+                      href={pl.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir link
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(pl.paymentUrl!);
+                        toast({ title: 'Link copiado!' });
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
           </CardContent>
         </Card>
       )}

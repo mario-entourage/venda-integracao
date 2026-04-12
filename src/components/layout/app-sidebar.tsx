@@ -26,6 +26,7 @@ import {
   SidebarMenuButton,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from '@/components/ui/sidebar';
 
 const vendasNavItems = [
@@ -87,6 +88,8 @@ function NavGroup({
   labelClassName?: string;
   lang: 'pt' | 'en';
 }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
   return (
     <SidebarGroup>
       <SidebarGroupLabel className={labelClassName}>
@@ -104,7 +107,10 @@ function NavGroup({
                     pathname.startsWith(item.href))
                 }
               >
-                <Link href={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={() => isMobile && setOpenMobile(false)}
+                >
                   <item.icon className="h-4 w-4" />
                   <span>{translateSidebar(item.label, lang)}</span>
                 </Link>
