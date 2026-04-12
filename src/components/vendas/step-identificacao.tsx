@@ -122,6 +122,21 @@ export interface Step1State {
   };
 }
 
+// Document category for the unified upload zone
+type DocCategory = 'prescription' | 'patient_doc' | 'address_doc';
+
+const DOC_CATEGORY_LABELS: Record<DocCategory, string> = {
+  prescription: 'Receita Médica',
+  patient_doc: 'Documento do Paciente',
+  address_doc: 'Comprovante de Residência',
+};
+
+const DOC_CATEGORY_HINTS: Record<DocCategory, string> = {
+  prescription: 'Receita médica do paciente',
+  patient_doc: 'RG ou CNH',
+  address_doc: 'Conta de luz, água, etc.',
+};
+
 interface StepIdentificacaoProps {
   state: Step1State;
   onChange: (changes: Partial<Step1State>) => void;
@@ -257,22 +272,45 @@ export function StepIdentificacao({
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
 
-  // Dropzones for additional documents
-  const patientDocDropzone = useDropzone({
-    onDrop: (files) => {
-      if (files[0]) onChange({ patientDocFile: files[0], patientDocFileName: files[0].name });
-    },
-    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
-    maxFiles: 1,
-  });
+  // ── Unified document upload helpers ──────────────────────────────────────
+  const [classifyingCount, setClassifyingCount] = useState(0);
 
-  const addressDocDropzone = useDropzone({
-    onDrop: (files) => {
-      if (files[0]) onChange({ addressDocFile: files[0], addressDocFileName: files[0].name });
-    },
-    accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
-    maxFiles: 1,
-  });
+  const guessDocCategory = useCallback((filename: string): DocCategory | null => {
+    const name = filename.toLowerCase();
+    if (/receit|prescription|rx|prescri/.test(name)) return 'prescription';
+    if (/\brg\b|cnh|identidade|doc.*paciente|identity/.test(name)) return 'patient_doc';
+    if (/comprovante|resid[eê]ncia|endere[cç]o|conta.*(luz|[aá]gua|g[aá]s|telefone)/.test(name)) return 'address_doc';
+    return null;
+  }, []);
+
+  const classifyFileAI = useCallback(async (file: File): Promise<DocCategory | null> => {
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await authFetch('/api/ai/classify-and-extract-document', {
+        method: 'POST',
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 30_000,
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.confidence >= 0.6) {
+        const map: Record<string, DocCategory> = {
+          prescription: 'prescription',
+          identity: 'patient_doc',
+          proof_of_address: 'address_doc',
+        };
+        return map[data.documentType] ?? null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [authFetch]);
 
   const clientOptions = clients.map((c) => ({
     value: c.id, label: c.fullName, sublabel: c.document ? `CPF: ${c.document}` : undefined,
@@ -407,7 +445,12 @@ export function StepIdentificacao({
         timeout: 60_000,
       });
       const data: PrescriptionExtraction = await res.json();
-      if (!res.ok || data._error) {
+
+      // Check if ANY fields were extracted (partial extraction is still useful)
+      const hasAnyData = !!(data.patientName || data.patientDocument || data.doctorName || data.doctorCrm || data.prescriptionDate || data.products?.length);
+
+      // If complete failure with no data at all, show error and stop
+      if (!hasAnyData && (!res.ok || data._error)) {
         setExtractionMsg(data._error || 'Falha na extração. Preencha os campos manualmente.');
         return;
       }
@@ -481,29 +524,134 @@ export function StepIdentificacao({
       onChange(updates);
       const newItems = [updates.clientIsNew, updates.doctorIsNew].filter(Boolean).length
         + (updates.products ?? []).filter((l) => !l.productId && l.aiHintName).length;
-      setExtractionMsg(newItems > 0
-        ? `${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`
-        : 'Campos preenchidos automaticamente com sucesso!');
-    } catch {
-      setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+
+      if (data._error && hasAnyData) {
+        // Partial extraction — some fields filled, but warn the user
+        setExtractionMsg('Extração parcial — alguns campos foram preenchidos. Verifique e complete manualmente.');
+      } else if (newItems > 0) {
+        setExtractionMsg(`${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`);
+      } else {
+        setExtractionMsg('Campos preenchidos automaticamente com sucesso!');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (/Sessão expirada|expirada/i.test(msg)) {
+        setExtractionMsg('Sessão expirada. Recarregue a página e tente novamente.');
+      } else {
+        setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+      }
     } finally {
       setIsExtracting(false);
     }
   }, [user, clients, doctors, allProducts, onChange, exchangeRate]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (!acceptedFiles[0]) return;
-    const file = acceptedFiles[0];
-    onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
-    runExtraction(file);
-    // Compute SHA-256 hash in parallel (for duplicate prescription detection)
-    computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
+  // Assign a single file to a document slot
+  const assignFileToSlot = useCallback((category: DocCategory, file: File) => {
+    switch (category) {
+      case 'prescription':
+        onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
+        runExtraction(file);
+        computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
+        break;
+      case 'patient_doc':
+        onChange({ patientDocFile: file, patientDocFileName: file.name });
+        break;
+      case 'address_doc':
+        onChange({ addressDocFile: file, addressDocFileName: file.name });
+        break;
+    }
   }, [onChange, runExtraction]);
 
+  // Unified drop handler — classifies and assigns each dropped file
+  const onDropUnified = useCallback(async (acceptedFiles: File[]) => {
+    if (!acceptedFiles.length) return;
+
+    const occupied = new Set<DocCategory>();
+    if (state.prescriptionFile) occupied.add('prescription');
+    if (state.patientDocFile) occupied.add('patient_doc');
+    if (state.addressDocFile) occupied.add('address_doc');
+
+    const pending: Array<{ file: File; category: DocCategory | null }> = [];
+
+    // Pass 1: filename heuristics
+    for (const file of acceptedFiles) {
+      const guessed = guessDocCategory(file.name);
+      if (guessed && !occupied.has(guessed)) {
+        occupied.add(guessed);
+        pending.push({ file, category: guessed });
+      } else {
+        pending.push({ file, category: null });
+      }
+    }
+
+    // Assign heuristic-matched files immediately
+    for (const item of pending) {
+      if (item.category) assignFileToSlot(item.category, item.file);
+    }
+
+    // Pass 2: AI classification for unclassified files
+    const unclassified = pending.filter((p) => !p.category);
+    if (unclassified.length > 0) {
+      setClassifyingCount(unclassified.length);
+      for (const item of unclassified) {
+        const aiCategory = await classifyFileAI(item.file);
+        if (aiCategory && !occupied.has(aiCategory)) {
+          occupied.add(aiCategory);
+          item.category = aiCategory;
+        } else {
+          // Fallback: first empty slot
+          const allCats: DocCategory[] = ['prescription', 'patient_doc', 'address_doc'];
+          const emptySlot = allCats.find((c) => !occupied.has(c));
+          if (emptySlot) {
+            occupied.add(emptySlot);
+            item.category = emptySlot;
+          }
+        }
+        if (item.category) assignFileToSlot(item.category, item.file);
+        setClassifyingCount((c) => Math.max(0, c - 1));
+      }
+    }
+  }, [guessDocCategory, classifyFileAI, assignFileToSlot, state.prescriptionFile, state.patientDocFile, state.addressDocFile]);
+
+  // Reassign a file from one slot to another (manual type correction)
+  const reassignFile = useCallback((from: DocCategory, to: DocCategory) => {
+    if (from === to) return;
+    let file: File | null = null;
+    let name = '';
+    if (from === 'prescription') { file = state.prescriptionFile; name = state.prescriptionFileName; }
+    else if (from === 'patient_doc') { file = state.patientDocFile; name = state.patientDocFileName; }
+    else { file = state.addressDocFile; name = state.addressDocFileName; }
+    if (!file) return;
+
+    const clear: Partial<Step1State> = {};
+    if (from === 'prescription') { clear.prescriptionFile = null; clear.prescriptionFileName = ''; clear.prescriptionHash = ''; clear.prescriptionDate = ''; }
+    else if (from === 'patient_doc') { clear.patientDocFile = null; clear.patientDocFileName = ''; }
+    else { clear.addressDocFile = null; clear.addressDocFileName = ''; }
+    onChange(clear);
+    assignFileToSlot(to, file);
+  }, [state, onChange, assignFileToSlot]);
+
+  // Remove a file from its slot
+  const removeFile = useCallback((category: DocCategory) => {
+    switch (category) {
+      case 'prescription':
+        onChange({ prescriptionFile: null, prescriptionFileName: '', prescriptionHash: '', prescriptionDate: '' });
+        setExtractionMsg(null);
+        break;
+      case 'patient_doc':
+        onChange({ patientDocFile: null, patientDocFileName: '' });
+        break;
+      case 'address_doc':
+        onChange({ addressDocFile: null, addressDocFileName: '' });
+        break;
+    }
+  }, [onChange]);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+    onDrop: onDropUnified,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
-    maxFiles: 1, disabled: isExtracting,
+    multiple: true,
+    disabled: isExtracting || classifyingCount > 0,
   });
 
   const fmtBRL = (v: number) =>
@@ -649,76 +797,147 @@ export function StepIdentificacao({
         </div>
       </div>
 
-      {/* ── Documents: Prescription + Patient ID + Proof of Address ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-      {/* Column 1: Receita Médica */}
-      <div className="space-y-2">
+      {/* ── Documents: Unified Upload ─────────────────────────── */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-semibold">Receita Médica</Label>
-          {state.prescriptionFile && !isExtracting && (
-            <div {...getRootProps()} className="contents">
-              <input {...getInputProps()} />
-              <Button type="button" variant="outline" size="sm" className="text-xs gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                Trocar receita
-              </Button>
-            </div>
+          <Label className="text-sm font-semibold">Documentos</Label>
+          {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) && !isExtracting && classifyingCount === 0 && (
+            <span className="text-xs text-muted-foreground">
+              {[state.prescriptionFile, state.patientDocFile, state.addressDocFile].filter(Boolean).length}/3 enviados
+            </span>
           )}
         </div>
 
-        {isExtracting ? (
-          /* ── Extraction spinner ─── */
-          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-8 text-center pointer-events-none">
-            <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="text-sm font-medium text-primary">Analisando com IA…</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados da receita</p>
-          </div>
-        ) : previewUrl && state.prescriptionFile?.type?.startsWith('image/') ? (
-          /* ── Image viewer with zoom / pan / rotate ─── */
-          <ImageViewer
-            src={previewUrl}
-            alt={state.prescriptionFileName || 'Receita médica'}
-          />
-        ) : state.prescriptionFile ? (
-          /* ── PDF or non-image file fallback ─── */
-          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
-            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.prescriptionFileName}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
-          </div>
-        ) : (
-          /* ── Initial drop zone ─── */
-          <div
-            {...getRootProps()}
-            className={cn(
-              'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
-              isDragActive
-                ? 'border-green-500 bg-green-50 scale-[1.01] ring-2 ring-green-400'
-                : isDraggingOnPage
-                  ? 'border-green-400 bg-green-50/60 ring-2 ring-green-300 animate-pulse'
-                  : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
-            )}
-          >
-            <input {...getInputProps()} />
-            <svg className={cn('mb-3 h-10 w-10', isDraggingOnPage ? 'text-green-600' : 'text-muted-foreground')} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <p className={cn('text-sm font-semibold', isDraggingOnPage && 'text-green-700')}>
-              {isDraggingOnPage ? 'Solte a receita aqui!' : 'Arraste a receita aqui'}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">A IA preencherá os campos automaticamente · PDF, JPG, PNG (máx 5MB)</p>
+        {/* Unified drop zone — visible when at least one slot is empty */}
+        {(!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
+          classifyingCount > 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-8 text-center pointer-events-none">
+              <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              <p className="text-sm font-medium text-primary">Classificando documentos…</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{classifyingCount} arquivo(s) restante(s)</p>
+            </div>
+          ) : (
+            <div
+              {...getRootProps()}
+              className={cn(
+                'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
+                isDragActive
+                  ? 'border-green-500 bg-green-50 scale-[1.01] ring-2 ring-green-400'
+                  : isDraggingOnPage
+                    ? 'border-green-400 bg-green-50/60 ring-2 ring-green-300 animate-pulse'
+                    : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+              )}
+            >
+              <input {...getInputProps()} />
+              <svg className={cn('mb-3 h-10 w-10', isDraggingOnPage ? 'text-green-600' : 'text-muted-foreground')} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              <p className={cn('text-sm font-semibold', isDraggingOnPage && 'text-green-700')}>
+                {isDraggingOnPage ? 'Solte os documentos aqui!' : 'Arraste os documentos aqui'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Receita Médica, RG/CNH, Comprovante de Residência · PDF, JPG, PNG (máx 5MB)
+              </p>
+            </div>
+          )
+        )}
+
+        {/* Extraction spinner for prescription AI */}
+        {isExtracting && (
+          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-4 text-center">
+            <div className="mb-2 h-7 w-7 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="text-sm font-medium text-primary">Analisando receita com IA…</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados do paciente e médico</p>
           </div>
         )}
 
         {extractionMsg && (
-          <p className={cn('flex items-center gap-1.5 text-xs', extractionMsg.includes('sucesso') ? 'text-green-600' : 'text-amber-600')}>
-            {extractionMsg.includes('sucesso') ? '✓' : '⚠'} {extractionMsg}
+          <p className={cn('flex items-center gap-1.5 text-xs', extractionMsg.includes('sucesso') || extractionMsg.includes('preenchidos') ? 'text-green-600' : 'text-amber-600')}>
+            {extractionMsg.includes('sucesso') || extractionMsg.includes('preenchidos') ? '✓' : '⚠'} {extractionMsg}
           </p>
+        )}
+
+        {/* Uploaded documents list */}
+        {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) && (
+          <div className="rounded-xl border bg-card divide-y">
+            {([
+              { category: 'prescription' as DocCategory, file: state.prescriptionFile, name: state.prescriptionFileName },
+              { category: 'patient_doc' as DocCategory, file: state.patientDocFile, name: state.patientDocFileName },
+              { category: 'address_doc' as DocCategory, file: state.addressDocFile, name: state.addressDocFileName },
+            ]).filter((d) => d.file).map((doc) => (
+              <div key={doc.category} className="flex items-center gap-3 px-4 py-3">
+                <svg className="h-5 w-5 flex-shrink-0 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{doc.name}</p>
+                  <p className="text-xs text-muted-foreground">{DOC_CATEGORY_HINTS[doc.category]}</p>
+                </div>
+                <Select
+                  value={doc.category}
+                  onValueChange={(val) => reassignFile(doc.category, val as DocCategory)}
+                >
+                  <SelectTrigger className="w-[200px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['prescription', 'patient_doc', 'address_doc'] as DocCategory[]).map((cat) => (
+                      <SelectItem key={cat} value={cat} disabled={
+                        cat !== doc.category && (
+                          (cat === 'prescription' && !!state.prescriptionFile) ||
+                          (cat === 'patient_doc' && !!state.patientDocFile) ||
+                          (cat === 'address_doc' && !!state.addressDocFile)
+                        )
+                      }>
+                        {DOC_CATEGORY_LABELS[cat]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeFile(doc.category)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Missing document indicators */}
+        {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) &&
+         (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
+          <div className="flex flex-wrap gap-2">
+            {!state.prescriptionFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Receita Médica pendente
+              </span>
+            )}
+            {!state.patientDocFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Documento do Paciente pendente
+              </span>
+            )}
+            {!state.addressDocFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Comprovante de Residência pendente
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Prescription image preview */}
+        {previewUrl && state.prescriptionFile?.type?.startsWith('image/') && !isExtracting && (
+          <ImageViewer
+            src={previewUrl}
+            alt={state.prescriptionFileName || 'Receita médica'}
+          />
         )}
 
         {/* Prescription expiration notice (6-month validity) */}
@@ -768,93 +987,11 @@ export function StepIdentificacao({
         })()}
       </div>
 
-      {/* Column 2: Documento do Paciente */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Documento do Paciente</Label>
-        {state.patientDocFile ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
-            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.patientDocFileName}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 text-xs"
-              onClick={() => onChange({ patientDocFile: null, patientDocFileName: '' })}
-            >
-              Trocar arquivo
-            </Button>
-          </div>
-        ) : (
-          <div
-            {...patientDocDropzone.getRootProps()}
-            className={cn(
-              'flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
-              patientDocDropzone.isDragActive
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
-            )}
-          >
-            <input {...patientDocDropzone.getInputProps()} />
-            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <p className="text-sm font-semibold">Arraste ou clique</p>
-            <p className="mt-1 text-xs text-muted-foreground">RG ou CNH · PDF, JPG, PNG</p>
-          </div>
-        )}
-      </div>
-
-      {/* Column 3: Comprovante de Residência */}
-      <div className="space-y-2">
-        <Label className="text-sm font-semibold">Comprovante de Residência</Label>
-        {state.addressDocFile ? (
-          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
-            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.addressDocFileName}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2 text-xs"
-              onClick={() => onChange({ addressDocFile: null, addressDocFileName: '' })}
-            >
-              Trocar arquivo
-            </Button>
-          </div>
-        ) : (
-          <div
-            {...addressDocDropzone.getRootProps()}
-            className={cn(
-              'flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
-              addressDocDropzone.isDragActive
-                ? 'border-primary bg-primary/5'
-                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
-            )}
-          >
-            <input {...addressDocDropzone.getInputProps()} />
-            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <p className="text-sm font-semibold">Arraste ou clique</p>
-            <p className="mt-1 text-xs text-muted-foreground">Conta de luz, água, etc. · PDF, JPG, PNG</p>
-          </div>
-        )}
-      </div>
-
-      </div>{/* end 3-column grid */}
-
       {/* ── Products ──────────────────────────────────────────────── */}
       <div
         className="relative space-y-3"
         onDragEnter={(e) => {
-          if (isDraggingOnPage && !state.prescriptionFile && e.dataTransfer?.types?.includes('Files')) {
+          if (isDraggingOnPage && (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && e.dataTransfer?.types?.includes('Files')) {
             prohibitedDragCounter.current++;
             if (prohibitedDragCounter.current === 1) setIsDraggingOverProhibited(true);
           }
@@ -871,7 +1008,7 @@ export function StepIdentificacao({
         }}
       >
         {/* Red overlay when dragging a file — two-step warning */}
-        {isDraggingOnPage && !state.prescriptionFile && (
+        {isDraggingOnPage && (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
           <div className={cn(
             'absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl border-dashed pointer-events-none overflow-hidden transition-all',
             isDraggingOverProhibited
@@ -887,7 +1024,7 @@ export function StepIdentificacao({
                   <span className="text-5xl font-black text-red-500/80 tracking-widest select-none">NÃO!</span>
                   <span className="text-5xl font-black text-red-600/90 tracking-widest select-none">NÃO!</span>
                 </div>
-                <p className="mt-2 text-sm font-bold text-red-700">↑ Arraste para a área de Receita acima ↑</p>
+                <p className="mt-2 text-sm font-bold text-red-700">↑ Arraste para a área de Documentos acima ↑</p>
               </>
             ) : (
               <>
@@ -896,7 +1033,7 @@ export function StepIdentificacao({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
                 </svg>
                 <p className="text-lg font-bold text-red-600">Não solte aqui</p>
-                <p className="text-sm text-red-500">Arraste para a área de Receita acima</p>
+                <p className="text-sm text-red-500">Arraste para a área de Documentos acima</p>
               </>
             )}
           </div>

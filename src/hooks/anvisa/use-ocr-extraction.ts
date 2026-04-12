@@ -62,10 +62,12 @@ function isOcrReady(document: DocumentBase): boolean {
   return false;
 }
 
+type AuthFetchFn = (url: string, options?: RequestInit & { timeout?: number }) => Promise<Response>;
+
 async function extractWithRetry(
   item: DocumentWithType,
   storage: FirebaseStorage,
-  fetchFn: (url: string, options?: RequestInit) => Promise<Response>,
+  authFetch: AuthFetchFn,
   maxAttempts: number = 2,
 ): Promise<{ item: DocumentWithType; result: ExtractOcrFieldsOutput }> {
   let lastError: Error | null = null;
@@ -87,21 +89,27 @@ async function extractWithRetry(
         ocrText,
       };
 
-      const response = await fetchFn(ANVISA_API_ROUTES.extractOcrFields, {
+      console.log(`[OCR] Attempt ${attempt}/${maxAttempts} for ${DOC_TYPE_LABELS[item.type]} "${item.doc.fileName}"`);
+
+      const response = await authFetch(ANVISA_API_ROUTES.extractOcrFields, {
         method: 'POST',
         body: JSON.stringify(extractInput),
+        timeout: 60_000,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${response.statusText}${errorBody ? ` — ${errorBody.slice(0, 200)}` : ''}`);
       }
 
       const result: ExtractOcrFieldsOutput = await response.json();
+      console.log(`[OCR] Success for "${item.doc.fileName}": ${Object.keys(result.extractedFields).length} fields, ${result.missingCriticalFields.length} missing`);
       return { item, result };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[OCR] Attempt ${attempt} failed for "${item.doc.fileName}":`, lastError.message);
       if (attempt < maxAttempts) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
       }
     }
   }
@@ -275,7 +283,7 @@ export function useOcrExtraction(
         isRunning.current = false;
       }
     })();
-  }, [firestore, storage, requestId, docStateKey, allOcrReady]);
+  }, [firestore, storage, requestId, docStateKey, allOcrReady, authFetch]);
 
   return { isExtracting, extractionError, isWaitingForOcr };
 }
