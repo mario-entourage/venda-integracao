@@ -3,7 +3,6 @@ import type { ObjectMetadata } from 'firebase-functions/v1/storage';
 import * as admin from 'firebase-admin';
 import { logger } from 'firebase-functions/v1';
 import { ImageAnnotatorClient } from '@google-cloud/vision';
-import sharp from 'sharp';
 import { listUsers as listUsersFunction } from './users';
 import { COLLECTIONS, STORAGE_ROOT } from './config';
 
@@ -20,51 +19,9 @@ const docTypeMapping = {
     RECEITA_MEDICA: { subcollection: 'receitaMedicaDocuments' },
 };
 
-/**
- * Preprocesses an image to improve OCR accuracy.
- * - Auto-rotates based on EXIF data
- * - Converts to grayscale (removes noisy backgrounds)
- * - Normalizes contrast (critical for faded text)
- * - Applies light blur + sharpen (cleans up scan artifacts)
- * - Upscales 1.5x (helps with small text like CRM numbers)
- */
-async function preprocessImage(imageBuffer: Buffer): Promise<Buffer> {
-    try {
-        const metadata = await sharp(imageBuffer).metadata();
-        const width = metadata.width || 1000;
-        const height = metadata.height || 1000;
-
-        // Calculate upscale dimensions (1.5x, max 4000px to avoid memory issues)
-        const scaleFactor = 1.5;
-        const newWidth = Math.min(Math.round(width * scaleFactor), 4000);
-        const newHeight = Math.min(Math.round(height * scaleFactor), 4000);
-
-        const processed = await sharp(imageBuffer)
-            // Fix rotation based on EXIF orientation
-            .rotate()
-            // Convert to grayscale (removes colored backgrounds, stamps)
-            .grayscale()
-            // Normalize contrast (stretch histogram for better text visibility)
-            .normalize()
-            // Light blur to reduce noise, then sharpen for crisp edges
-            .blur(0.5)
-            .sharpen({ sigma: 1.5 })
-            // Upscale for better small text recognition
-            .resize(newWidth, newHeight, {
-                kernel: 'lanczos3',
-                withoutEnlargement: false,
-            })
-            // Output as high-quality JPEG
-            .jpeg({ quality: 95 })
-            .toBuffer();
-
-        logger.info(`Preprocessed image: ${width}x${height} → ${newWidth}x${newHeight}`);
-        return processed;
-    } catch (error) {
-        logger.warn('Image preprocessing failed, using original image', error);
-        return imageBuffer;
-    }
-}
+// NOTE: Image preprocessing with sharp was removed because the native binary
+// fails to compile in Cloud Build. Cloud Vision's documentTextDetection
+// handles raw images well without preprocessing.
 
 /**
  * Downloads a file from Firebase Storage and returns its buffer.
@@ -86,23 +43,17 @@ async function performOcr(bucketName: string, filePath: string, contentType: str
         const originalBuffer = await downloadFromStorage(bucketName, filePath);
         logger.info(`Downloaded file: ${filePath} (${originalBuffer.length} bytes)`);
 
-        let imageBuffer: Buffer;
-
-        // Only preprocess images, not PDFs (Vision API handles PDFs differently)
-        if (contentType.startsWith('image/')) {
-            imageBuffer = await preprocessImage(originalBuffer);
-        } else {
-            // For PDFs, use the original file via GCS URI
+        // For PDFs, use GCS URI; for images, send the raw buffer directly.
+        // Cloud Vision's documentTextDetection handles raw images well without preprocessing.
+        if (!contentType.startsWith('image/')) {
             const gcsUri = `gs://${bucketName}/${filePath}`;
             const [result] = await visionClient.documentTextDetection(gcsUri);
             const detection = result.fullTextAnnotation;
             return detection?.text || '';
         }
 
-        // Use documentTextDetection with preprocessed image buffer
-        // This method is optimized for dense text, forms, and structured documents
         const [result] = await visionClient.documentTextDetection({
-            image: { content: imageBuffer },
+            image: { content: originalBuffer },
         });
 
         const detection = result.fullTextAnnotation;
