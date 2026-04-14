@@ -12,6 +12,7 @@
 | **Soft deletes** | Records use `active` / `softDeleted` flags rather than physical deletion, preserving audit trails. |
 | **Timestamp bookkeeping** | Every document carries `createdAt` and `updatedAt` server timestamps for auditability. |
 | **Composite indexes for queries** | All list views that filter + sort use declared composite indexes, keeping query performance O(log n). |
+| **Mandatory audit logging** | Every write operation on business-critical collections (`orders`, `clients`, `doctors`, `users`, `preregistrations`) is logged to `audit_logs` with the performing user's UID, the action type, and a `changes` payload. The `performedById` parameter is required (not optional) — TypeScript enforces this at compile time, preventing accidental unaudited writes. |
 
 ---
 
@@ -24,7 +25,7 @@ The central collection. Each document represents one sales order. The document I
 | Field | Type | Description |
 |---|---|---|
 | `status` | `OrderStatus` enum | pending, processing, awaiting_documents, documents_complete, awaiting_payment, paid, shipped, delivered, cancelled |
-| `invoice` | string | Invoice / payment reference number |
+| `invoice` | string | Invoice number in ETGANS##### format (e.g. ETGAMB00042). Generated when a sales rep is assigned. |
 | `type` | `OrderType` enum | sale, return, exchange |
 | `currency` | string | BRL or USD |
 | `amount` | number | Total order value |
@@ -45,6 +46,7 @@ The central collection. Each document represents one sales order. The document I
 | `documentsComplete` | boolean | All required documents received |
 | `tristarShipmentId` | string? | TriStar shipment reference |
 | `prescriptionDocId` | string? | Firebase Storage path to prescription image |
+| `prescriptionHash` | string? | SHA-256 hex hash of the prescription file (for duplicate detection). Queried to prevent the same prescription from being used across multiple active orders. Admins can override the check. |
 | `softDeleted` | boolean? | Soft-delete flag |
 | `createdById` | string | Auth UID of creator |
 | `updatedById` | string? | Auth UID of last updater |
@@ -74,7 +76,7 @@ The central collection. Each document represents one sales order. The document I
 | `shipping` | 0–1 doc | Address, tracking, carrier info, TriStar fields |
 | `documentRequests` | N docs | Required document checklist: type, status, `receivedAt` |
 | `payments` | N docs | Payment records: provider, amount, status |
-| `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey` |
+| `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey`, denormalized `repName`, `invoice`, `clientName`, `doctorName` |
 
 **Indexes:** `(status ASC, createdAt DESC)`, `(createdById ASC, createdAt DESC)`
 
@@ -123,6 +125,7 @@ One-to-one with orders — shares the same document ID.
 | `mainSpecialty` | string? | Specialty |
 | `state`, `city` | string? | Registration location |
 | `email`, `phone`, `mobilePhone` | string? | Contact |
+| `repUserId` | string? | Optional FK → `representantes` — the sales rep assigned to this doctor for commission credit |
 | `active` | boolean | Soft-delete flag |
 | `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
 
@@ -179,12 +182,14 @@ Document ID = Firebase Auth UID.
 | Field | Type | Description |
 |---|---|---|
 | `email` | string | Google OAuth email |
+| `displayName` | string? | Display name (from Google OAuth / profile) |
 | `groupId` | string | Role: admin, user, view_only |
+| `isRepresentante` | boolean? | Whether this user is a sales rep |
 | `active` | boolean | Account active |
 | `lastLogin` | Timestamp | Last sign-in |
 | `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
 
-**Index:** `(active ASC, email ASC)`
+**Indexes:** `(active ASC, email ASC)`, `(isRepresentante ASC, active ASC, displayName ASC)`, `(groupId ASC, active ASC, createdAt DESC)`
 
 ---
 
@@ -231,10 +236,36 @@ Each request has subcollections: `pacienteDocuments`, `procuracaoDocuments`, `co
 
 ---
 
-### 12. Supporting collections
+### 12. `audit_logs/{logId}`
+
+Comprehensive audit trail. Every write operation (create, update, soft-delete) on business-critical collections is logged here by `writeAuditLog()`. The `performedById` parameter is **required** on all service-layer write functions — TypeScript enforces this at compile time.
+
+| Field | Type | Description |
+|---|---|---|
+| `action` | string | `create`, `update`, `soft_delete`, `update_status`, `update_representative` |
+| `collection` | string | Target collection name (`orders`, `clients`, `doctors`, `users`, `preregistrations`) |
+| `documentId` | string | ID of the affected document |
+| `performedById` | string | Firebase Auth UID of the user who performed the action |
+| `changes` | object | Key-value map of what was created or changed |
+| `timestamp` | Timestamp | Server-generated timestamp |
+
+**Audited collections and actions:**
+
+| Collection | Actions logged |
+|---|---|
+| `orders` | `create` (with key metadata), `update` (with changed fields), `update_status` (with new status), `update_representative` (with rep details) |
+| `clients` | `create` (with full data), `update` (with changed fields), `soft_delete` (with `{ active: false }`) |
+| `doctors` | `create`, `update`, `soft_delete` — same pattern as clients |
+| `users` | `create`, `update`, `soft_delete` — same pattern as clients |
+| `preregistrations` | `create` (with email and group) |
+
+---
+
+### 13. Supporting collections
 
 | Collection | Purpose |
 |---|---|
+| `counters/invoice` | Atomic counter for invoice number generation (`nextValue` field) |
 | `roles_admin/{userId}` | Dynamic admin role assignments |
 | `exchangeQuotes/{quoteId}` | Currency exchange quotes for payments |
 | `paymentMethods/{paymentMethodId}` | Payment method configurations and installment plans |
@@ -255,6 +286,9 @@ stockProducts ──1:N──> orders/products (via stockProductId)
 orders ──1:1──> prescriptions (SAME document ID = Receita ID)
 orders ──1:N──> payments, paymentLinks, documentRequests
 orders ──1:1──> customer, representative, doctor, shipping (subcollections)
+
+users ──1:N──> audit_logs (via performedById)
+orders/clients/doctors/users ──1:N──> audit_logs (via collection + documentId)
 ```
 
 ## Why this architecture is standard and tidy
@@ -273,4 +307,6 @@ orders ──1:1──> customer, representative, doctor, shipping (subcollectio
 
 7. **Clean namespace separation.** ANVISA collections are prefixed with `anvisa_` to avoid naming collisions with the sales module, making the schema self-documenting.
 
-8. **Consistent timestamp bookkeeping.** Every document tracks `createdAt`, `updatedAt`, and (where applicable) `createdById` / `updatedById`, providing a full audit trail without a separate logging system.
+8. **Consistent timestamp bookkeeping.** Every document tracks `createdAt`, `updatedAt`, and (where applicable) `createdById` / `updatedById`, providing baseline traceability.
+
+9. **Mandatory audit logging.** Beyond timestamps, every write operation on business-critical collections is logged to the `audit_logs` collection with full attribution (`performedById`), action type, and a `changes` payload documenting exactly what was modified. The `performedById` parameter is required at the TypeScript level — callers that omit it fail to compile. This prevents accidental unaudited writes and provides a comprehensive audit trail for regulatory compliance.

@@ -3,6 +3,7 @@
  * with VENDA's client/doctor database records.
  */
 
+import { Timestamp } from 'firebase/firestore';
 import type { Client, ClientAddress } from '@/types/client';
 import type { Doctor } from '@/types/doctor';
 import type { OcrData } from '@/types/anvisa';
@@ -104,9 +105,8 @@ export function clientToOcrData(client: Client): Partial<OcrData> {
   // Birth date: Firestore Timestamp → DD/MM/YYYY
   if (client.birthDate) {
     try {
-      const d = (client.birthDate as any).toDate
-        ? (client.birthDate as any).toDate()
-        : new Date(client.birthDate as any);
+      const bd = client.birthDate as unknown as { toDate?: () => Date };
+      const d = typeof bd.toDate === 'function' ? bd.toDate() : new Date(client.birthDate as unknown as string | number | Date);
       const dd = String(d.getDate()).padStart(2, '0');
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const yyyy = d.getFullYear();
@@ -156,11 +156,11 @@ export function ocrDataToNewClient(
   const { firstName, lastName } = splitFullName(ocr.patientName || '');
   const addr = parseAddress(ocr.patientAddress || '');
 
-  let birthDate: any = undefined;
+  let birthDate: Timestamp | undefined = undefined;
   if (ocr.patientDob) {
     const salesDate = anvisaDateToSalesDate(ocr.patientDob);
     if (salesDate) {
-      birthDate = new Date(salesDate + 'T00:00:00');
+      birthDate = Timestamp.fromDate(new Date(salesDate + 'T00:00:00'));
     }
   }
 

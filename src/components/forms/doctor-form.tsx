@@ -2,7 +2,8 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import ReactInputMask from 'react-input-mask';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
+import { MaskedInput } from '@/components/shared/masked-input';
 import { doctorSchema, type DoctorFormValues } from '@/types/forms';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,13 @@ import {
   Form, FormField, FormItem, FormLabel, FormControl, FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { getActiveRepUsersQuery } from '@/services/users.service';
+import type { User } from '@/types';
 
 interface DoctorFormProps {
   onSubmit: (data: DoctorFormValues) => void | Promise<void>;
@@ -26,10 +34,16 @@ export function DoctorForm({
   submitLabel = 'Salvar Medico',
   compact = false,
 }: DoctorFormProps) {
+  const db = useFirestore();
   const form = useForm<DoctorFormValues>({
     resolver: zodResolver(doctorSchema),
     defaultValues: defaultValues || {},
   });
+
+  useUnsavedChanges(form.formState.isDirty);
+
+  const repUsersQuery = useMemoFirebase(() => getActiveRepUsersQuery(db), [db]);
+  const { data: repUsers } = useCollection<User>(repUsersQuery);
 
   const fields = (
     <div className="space-y-4">
@@ -78,23 +92,52 @@ export function DoctorForm({
       <div className="grid grid-cols-2 gap-4">
         <FormField control={form.control} name="phone" render={({ field }) => (
           <FormItem><FormLabel>Telefone Fixo</FormLabel><FormControl>
-            <ReactInputMask mask="(99) 9999-9999" value={field.value ?? ''} onChange={field.onChange} onBlur={field.onBlur}>
-              {(inputProps: React.ComponentProps<'input'>) => (
-                <Input {...inputProps} ref={field.ref} placeholder="(00) 0000-0000" />
-              )}
-            </ReactInputMask>
+            <MaskedInput
+              ref={field.ref}
+              mask="(99) 9999-9999"
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              placeholder="(00) 0000-0000"
+            />
           </FormControl><FormMessage /></FormItem>
         )} />
         <FormField control={form.control} name="mobilePhone" render={({ field }) => (
           <FormItem><FormLabel>Celular</FormLabel><FormControl>
-            <ReactInputMask mask="(99) 99999-9999" value={field.value ?? ''} onChange={field.onChange} onBlur={field.onBlur}>
-              {(inputProps: React.ComponentProps<'input'>) => (
-                <Input {...inputProps} ref={field.ref} placeholder="(00) 00000-0000" />
-              )}
-            </ReactInputMask>
+            <MaskedInput
+              ref={field.ref}
+              mask="(99) 99999-9999"
+              value={field.value ?? ''}
+              onChange={field.onChange}
+              onBlur={field.onBlur}
+              placeholder="(00) 00000-0000"
+            />
           </FormControl><FormMessage /></FormItem>
         )} />
       </div>
+
+      {/* Rep association */}
+      <FormField control={form.control} name="repUserId" render={({ field }) => (
+        <FormItem>
+          <FormLabel>Representante Responsável <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+          <Select value={field.value ?? ''} onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}>
+            <FormControl>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um representante" />
+              </SelectTrigger>
+            </FormControl>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {(repUsers ?? []).map((rep) => (
+                <SelectItem key={rep.id} value={rep.id}>
+                  {rep.displayName || rep.email}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <FormMessage />
+        </FormItem>
+      )} />
     </div>
   );
 

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
+import { cn } from '@/lib/utils';
 import {
   collection, doc, writeBatch, serverTimestamp, Timestamp, getDocs, query, where,
 } from 'firebase/firestore';
@@ -54,21 +55,9 @@ export default function ImportarPage() {
   const [importTotal, setImportTotal] = useState(0);
   const [importDone, setImportDone] = useState(false);
   const [importedCount, setImportedCount] = useState(0);
+  const [isDragActive, setIsDragActive] = useState(false);
 
   const config = ENTITY_CONFIG[entityType];
-
-  // Admin gate
-  if (isAdminLoading) {
-    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
-  }
-  if (!isAdmin) {
-    return (
-      <div className="p-8 text-center">
-        <h1 className="text-2xl font-bold mb-2">Acesso restrito</h1>
-        <p className="text-muted-foreground">Apenas administradores podem importar dados via CSV.</p>
-      </div>
-    );
-  }
 
   // ── File handling ─────────────────────────────────────────────────────────
   const handleFileSelect = (file: File) => {
@@ -91,11 +80,29 @@ export default function ImportarPage() {
     });
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
+    setIsDragActive(false);
     const file = e.dataTransfer.files[0];
     if (file && (file.name.endsWith('.csv') || file.name.endsWith('.tsv'))) handleFileSelect(file);
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityType]);
+
+  // Admin gate
+  if (isAdminLoading) {
+    return <div className="p-8 text-center text-muted-foreground">Carregando...</div>;
+  }
+  if (!isAdmin) {
+    return (
+      <div className="p-8 text-center">
+        <h1 className="text-2xl font-bold mb-2">Acesso restrito</h1>
+        <p className="text-muted-foreground">Apenas administradores podem importar dados via CSV.</p>
+      </div>
+    );
+  }
+
+  const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); setIsDragActive(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragActive(false); };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -336,9 +343,16 @@ export default function ImportarPage() {
                 </CardHeader>
                 <CardContent>
                   <div
-                    className="border-2 border-dashed rounded-lg p-12 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                    className={cn(
+                      'border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer',
+                      isDragActive
+                        ? 'border-primary bg-primary/5 scale-[1.01]'
+                        : 'hover:border-primary/50',
+                    )}
                     onDrop={handleDrop}
                     onDragOver={(e) => e.preventDefault()}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <input

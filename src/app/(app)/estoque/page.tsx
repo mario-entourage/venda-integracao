@@ -2,7 +2,11 @@
 
 import { useState } from 'react';
 import { MoreHorizontal, RefreshCw } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { MoreHorizontal, RefreshCw } from 'lucide-react';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
   getActiveProductsQuery,
@@ -16,6 +20,7 @@ import { SHIPPING_API_ROUTES } from '@/lib/shipping-routes';
 import { DataTable, type ColumnDef } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ProductForm } from '@/components/forms/product-form';
+import { StockLocationView } from '@/components/estoque/stock-location-view';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +38,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import type { Product, Stock } from '@/types/product';
 import type { ProductFormValues } from '@/types/forms';
@@ -41,12 +47,13 @@ import type { TriStarStockItem } from '@/types/shipping';
 // ─── page component ───────────────────────────────────────────────────────────
 
 type ProductWithId = Product & { id: string };
-type StockWithId   = Stock   & { id: string };
+type StockWithId = Stock & { id: string };
 
 type DialogMode = 'create' | 'edit' | null;
 
 export default function EstoquePage() {
   const db = useFirestore();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
 
   // ── Firestore subscriptions ────────────────────────────────────────────────
@@ -57,6 +64,16 @@ export default function EstoquePage() {
   const stocksRef = useMemoFirebase(() => getStocksRef(db), [db]);
   const { data: stocks, isLoading: stocksLoading } = useCollection<Stock>(stocksRef);
 
+  // ── Derive known stock locations ───────────────────────────────────────────
+  const miamiStock = useMemo(
+    () => (stocks as StockWithId[] | undefined)?.find((s) => s.name.toLowerCase().includes('miami')),
+    [stocks],
+  );
+  const brasilStock = useMemo(
+    () => (stocks as StockWithId[] | undefined)?.find((s) => s.name.toLowerCase().includes('brasil')),
+    [stocks],
+  );
+
   // ── Product dialog state ───────────────────────────────────────────────────
   const [productDialog, setProductDialog] = useState<{
     mode: DialogMode;
@@ -66,9 +83,35 @@ export default function EstoquePage() {
 
   // ── Stock dialog state ─────────────────────────────────────────────────────
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
-  const [stockName, setStockName]           = useState('');
-  const [stockDesc, setStockDesc]           = useState('');
-  const [stockSaving, setStockSaving]       = useState(false);
+  const [stockName, setStockName] = useState('');
+  const [stockDesc, setStockDesc] = useState('');
+  const [stockSaving, setStockSaving] = useState(false);
+
+  // ── Creating known locations ───────────────────────────────────────────────
+  const [creatingLocation, setCreatingLocation] = useState(false);
+
+  const handleCreateKnownLocation = async (name: string) => {
+    if (!db) return;
+    setCreatingLocation(true);
+    try {
+      await createStock(db, { name, description: '' });
+      toast({ title: `Local "${name}" criado com sucesso.` });
+    } catch (err) {
+      console.error(err);
+      toast({ variant: 'destructive', title: 'Erro ao criar local de estoque.' });
+    } finally {
+      setCreatingLocation(false);
+    }
+  };
+
+  // ── Tristar sync state ────────────────────────────────────────────────────
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    matched: number;
+    unmatched: string[];
+    updated: number;
+  } | null>(null);
 
   // ── Tristar sync state ────────────────────────────────────────────────────
   const [syncing, setSyncing] = useState(false);
@@ -89,13 +132,13 @@ export default function EstoquePage() {
         toast({ title: 'Produto criado com sucesso.' });
       } else if (productDialog.mode === 'edit' && productDialog.product) {
         await updateProduct(db, productDialog.product.id, {
-          name:          data.name,
-          description:   data.description,
-          sku:           data.sku,
-          hsCode:        data.hsCode,
+          name: data.name,
+          description: data.description,
+          sku: data.sku,
+          hsCode: data.hsCode,
           concentration: data.concentration,
-          price:         data.price,
-          inventory:     data.inventory ?? 0,
+          price: data.price,
+          inventory: data.inventory ?? 0,
         });
         toast({ title: 'Produto atualizado com sucesso.' });
       }
@@ -145,6 +188,7 @@ export default function EstoquePage() {
     setSyncResult(null);
     try {
       const res = await fetch(SHIPPING_API_ROUTES.inventory);
+      const res = await authFetch(SHIPPING_API_ROUTES.inventory);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -209,6 +253,7 @@ export default function EstoquePage() {
       toast({
         title: 'Erro ao sincronizar estoque com a Tristar.',
         description: err instanceof Error ? err.message : undefined,
+        description: friendlyError(err),
         variant: 'destructive',
       });
     } finally {
@@ -219,8 +264,8 @@ export default function EstoquePage() {
   // ── columns ────────────────────────────────────────────────────────────────
 
   const productColumns: ColumnDef<ProductWithId>[] = [
-    { key: 'name',          header: 'Nome',          sortable: true },
-    { key: 'sku',           header: 'SKU',           sortable: true, className: 'w-32' },
+    { key: 'name', header: 'Nome', sortable: true },
+    { key: 'sku', header: 'SKU', sortable: true, className: 'w-32' },
     {
       key: 'concentration',
       header: 'Concentracao',
@@ -231,18 +276,12 @@ export default function EstoquePage() {
       header: 'Preco Lista',
       sortable: true,
       className: 'text-right w-32',
-      render: (p) => p.price > 0 ? p.price.toFixed(2) : <span className="text-muted-foreground italic text-xs">A definir</span>,
-    },
-    {
-      key: 'inventory',
-      header: 'Qtd. Estoque',
-      sortable: true,
-      className: 'text-right w-32',
-      render: (p) => (
-        <span className={(p.inventory ?? 0) === 0 ? 'text-destructive font-medium' : ''}>
-          {p.inventory ?? 0}
-        </span>
-      ),
+      render: (p) =>
+        p.price > 0 ? (
+          p.price.toFixed(2)
+        ) : (
+          <span className="text-muted-foreground italic text-xs">A definir</span>
+        ),
     },
     {
       key: 'actions',
@@ -280,8 +319,8 @@ export default function EstoquePage() {
   ];
 
   const stockColumns: ColumnDef<StockWithId>[] = [
-    { key: 'code',        header: 'Cod.',  sortable: true, className: 'w-16' },
-    { key: 'name',        header: 'Nome',  sortable: true },
+    { key: 'code', header: 'Cod.', sortable: true, className: 'w-16' },
+    { key: 'name', header: 'Nome', sortable: true },
     {
       key: 'description',
       header: 'Descricao',
@@ -295,14 +334,81 @@ export default function EstoquePage() {
     <div className="space-y-6">
       <PageHeader title="Produtos & Estoque" />
 
-      <Tabs defaultValue="produtos">
+      <Tabs defaultValue="miami">
         <TabsList>
-          <TabsTrigger value="produtos">Produtos</TabsTrigger>
-          <TabsTrigger value="estoques">Locais de Estoque</TabsTrigger>
+          <TabsTrigger value="miami">Miami (Tristar)</TabsTrigger>
+          <TabsTrigger value="brasil">Brasil</TabsTrigger>
+          <TabsTrigger value="catalogo">Catalogo</TabsTrigger>
+          <TabsTrigger value="locais">Locais de Estoque</TabsTrigger>
         </TabsList>
 
         {/* ── Produtos ──────────────────────────────────────────────────────── */}
         <TabsContent value="produtos" className="mt-4 space-y-4">
+        {/* ── Miami (Tristar) ────────────────────────────────────────────── */}
+        <TabsContent value="miami" className="mt-4">
+          {stocksLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : miamiStock ? (
+            <StockLocationView
+              stockId={miamiStock.id}
+              products={(products as ProductWithId[]) ?? []}
+              productsLoading={productsLoading}
+              showTristarSync
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-sm text-muted-foreground mb-4">
+                  O local &ldquo;Miami (Tristar)&rdquo; ainda nao foi criado.
+                </p>
+                <Button
+                  onClick={() => handleCreateKnownLocation('Miami (Tristar)')}
+                  disabled={creatingLocation}
+                >
+                  {creatingLocation ? 'Criando...' : 'Criar Local Miami (Tristar)'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Brasil ─────────────────────────────────────────────────────── */}
+        <TabsContent value="brasil" className="mt-4">
+          {stocksLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 rounded-lg bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : brasilStock ? (
+            <StockLocationView
+              stockId={brasilStock.id}
+              products={(products as ProductWithId[]) ?? []}
+              productsLoading={productsLoading}
+            />
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-sm text-muted-foreground mb-4">
+                  O local &ldquo;Brasil (Local)&rdquo; ainda nao foi criado.
+                </p>
+                <Button
+                  onClick={() => handleCreateKnownLocation('Brasil (Local)')}
+                  disabled={creatingLocation}
+                >
+                  {creatingLocation ? 'Criando...' : 'Criar Local Brasil (Local)'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ── Catalogo (products CRUD) ───────────────────────────────────── */}
+        <TabsContent value="catalogo" className="mt-4 space-y-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Button
@@ -361,11 +467,12 @@ export default function EstoquePage() {
             loading={productsLoading}
             searchPlaceholder="Buscar produto por nome ou SKU..."
             emptyMessage="Nenhum produto ativo cadastrado."
+            exportFilename="produtos"
           />
         </TabsContent>
 
-        {/* ── Locais de Estoque ─────────────────────────────────────────────── */}
-        <TabsContent value="estoques" className="mt-4 space-y-4">
+        {/* ── Locais de Estoque ──────────────────────────────────────────── */}
+        <TabsContent value="locais" className="mt-4 space-y-4">
           <div className="flex justify-end">
             <Button onClick={() => setStockDialogOpen(true)}>
               + Novo Local de Estoque
@@ -378,6 +485,7 @@ export default function EstoquePage() {
             loading={stocksLoading}
             searchPlaceholder="Buscar local de estoque..."
             emptyMessage="Nenhum local de estoque cadastrado."
+            exportFilename="locais-estoque"
           />
         </TabsContent>
       </Tabs>
@@ -402,13 +510,13 @@ export default function EstoquePage() {
               defaultValues={
                 productDialog.mode === 'edit' && productDialog.product
                   ? {
-                      name:          productDialog.product.name,
-                      description:   productDialog.product.description,
-                      sku:           productDialog.product.sku,
-                      hsCode:        productDialog.product.hsCode,
+                      name: productDialog.product.name,
+                      description: productDialog.product.description,
+                      sku: productDialog.product.sku,
+                      hsCode: productDialog.product.hsCode,
                       concentration: productDialog.product.concentration,
-                      price:         productDialog.product.price,
-                      inventory:     productDialog.product.inventory ?? 0,
+                      price: productDialog.product.price,
+                      inventory: productDialog.product.inventory ?? 0,
                     }
                   : undefined
               }

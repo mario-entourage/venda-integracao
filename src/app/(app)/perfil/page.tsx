@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes';
 import { BRAZILIAN_STATES } from '@/lib/constants';
 import type { User, UserProfile, NotificationPreferences } from '@/types';
 
@@ -31,6 +32,8 @@ export default function PerfilPage() {
 
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useUnsavedChanges(editing);
 
   const [editFullName, setEditFullName] = useState('');
   const [editPhone, setEditPhone] = useState('');
@@ -340,6 +343,7 @@ export default function PerfilPage() {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_PREFS: NotificationPreferences = {
+  emailOnOrderCreated: false,
   emailOnPaymentLinkCreated: true,
   emailOnPaymentReceived: true,
   inAppOnPaymentLinkCreated: true,
@@ -363,7 +367,7 @@ function NotificationPreferencesCard({
     try {
       await updateUser(db, userId, {
         notificationPreferences: { ...current, [key]: !current[key] },
-      });
+      }, userId);
     } catch {
       toast({ title: 'Erro ao salvar preferência.', variant: 'destructive' });
     }
@@ -375,6 +379,16 @@ function NotificationPreferencesCard({
         <CardTitle>Preferências de Notificação</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium">Nova venda registrada (email)</p>
+            <p className="text-xs text-muted-foreground">Receber email quando uma nova venda for criada</p>
+          </div>
+          <Switch
+            checked={current.emailOnOrderCreated}
+            onCheckedChange={() => toggle('emailOnOrderCreated')}
+          />
+        </div>
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium">Link de pagamento criado (in-app)</p>

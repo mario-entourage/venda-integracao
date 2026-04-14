@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { initializeApp, getApps, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { PRODUCTS_CATALOG } from '@/data/products-catalog';
+import { requireAdmin } from '../_require-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,10 +76,16 @@ async function seedProducts() {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth_result = await requireAdmin(request);
+  if (auth_result instanceof Response) return auth_result;
+  console.log(`[seed-products] Triggered by ${auth_result.email}`);
   return seedProducts();
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth_result = await requireAdmin(request);
+  if (auth_result instanceof Response) return auth_result;
+  console.log(`[seed-products] Triggered by ${auth_result.email}`);
   return seedProducts();
 }

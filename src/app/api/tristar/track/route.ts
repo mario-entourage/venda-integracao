@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAuth } from '../../_require-auth';
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAuth(request);
+  if (auth instanceof Response) return auth;
+
   const apiUrl = process.env.TRISTAR_API_URL;
   const apiKey = process.env.TRISTAR_API_KEY;
 

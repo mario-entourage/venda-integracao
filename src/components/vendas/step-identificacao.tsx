@@ -17,7 +17,11 @@ import { SearchableSelect } from '@/components/shared/searchable-select';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { QuickAddClientDialog, QuickAddDoctorDialog } from './quick-add-dialog';
 import { cn } from '@/lib/utils';
-import type { Client, Doctor, Product, User } from '@/types';
+import { computeFileHash } from '@/lib/file-hash';
+import { useToast } from '@/hooks/use-toast';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
+import { useFirebase } from '@/firebase/provider';
+import type { Client, Doctor, Product, Representante, User, PaymentLink } from '@/types';
 import type { ProductLine } from './nova-venda-wizard';
 import type { PrescriptionExtraction } from '@/app/api/ai/extract-prescription/route';
 
@@ -98,8 +102,16 @@ export interface Step1State {
   doctorIsNew: boolean;
   prescriptionFile: File | null;
   prescriptionFileName: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection). */
+  prescriptionHash: string;
   /** Date printed on the prescription (YYYY-MM-DD), extracted by AI or null if not found. */
   prescriptionDate: string;
+  /** Documento do paciente (identity doc) */
+  patientDocFile: File | null;
+  patientDocFileName: string;
+  /** Comprovante de residência */
+  addressDocFile: File | null;
+  addressDocFileName: string;
   products: ProductLine[];
   anvisaOption: string;
   allowedPaymentMethods: {
@@ -109,6 +121,21 @@ export interface Step1State {
     pix: boolean;
   };
 }
+
+// Document category for the unified upload zone
+type DocCategory = 'prescription' | 'patient_doc' | 'address_doc';
+
+const DOC_CATEGORY_LABELS: Record<DocCategory, string> = {
+  prescription: 'Receita Médica',
+  patient_doc: 'Documento do Paciente',
+  address_doc: 'Comprovante de Residência',
+};
+
+const DOC_CATEGORY_HINTS: Record<DocCategory, string> = {
+  prescription: 'Receita médica do paciente',
+  patient_doc: 'RG ou CNH',
+  address_doc: 'Conta de luz, água, etc.',
+};
 
 interface StepIdentificacaoProps {
   state: Step1State;
@@ -127,6 +154,18 @@ interface StepIdentificacaoProps {
   selectedRepresentanteId: string;
   /** Called when the user picks a rep */
   onRepresentanteChange: (id: string, name: string) => void;
+  /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
+  frete: number;
+  onFreteChange: (value: number) => void;
+  /** Retry PTAX fetch */
+  onRetryExchangeRate?: () => void;
+  /** Set exchange rate manually */
+  onManualExchangeRate?: (rate: number) => void;
+  /** Admin-only: unassigned standalone payments available to link */
+  isAdmin: boolean;
+  unassignedPayments: PaymentLink[];
+  selectedUnassignedPaymentId: string;
+  onUnassignedPaymentSelect: (id: string, payment: PaymentLink | null) => void;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -134,16 +173,94 @@ interface StepIdentificacaoProps {
 export function StepIdentificacao({
   state, onChange, clients, doctors, allProducts,
   exchangeRate, exchangeRateLoading, exchangeRateError, exchangeRateDate,
+  onRetryExchangeRate, onManualExchangeRate,
   repUsers, selectedRepresentanteId, onRepresentanteChange,
+  frete, onFreteChange,
+  isAdmin, unassignedPayments, selectedUnassignedPaymentId, onUnassignedPaymentSelect,
 }: StepIdentificacaoProps) {
+  const { user } = useFirebase();
+  const authFetch = useAuthFetch();
+  const { toast } = useToast();
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionMsg, setExtractionMsg] = useState<string | null>(null);
   const [showAddClient, setShowAddClient] = useState(false);
   const [showAddDoctor, setShowAddDoctor] = useState(false);
 
+  // Prescription age warning toast — fires once when prescriptionDate is set and age >= 5 months
+  const lastRxToastDate = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!state.prescriptionDate || state.prescriptionDate === lastRxToastDate.current) return;
+    const rxDate = new Date(state.prescriptionDate + 'T12:00:00');
+    if (isNaN(rxDate.getTime())) return;
+    const now = new Date();
+    const ageMonths = (now.getFullYear() - rxDate.getFullYear()) * 12 + (now.getMonth() - rxDate.getMonth());
+    if (ageMonths < 5) return;
+    lastRxToastDate.current = state.prescriptionDate;
+    const expiry = new Date(rxDate);
+    expiry.setMonth(expiry.getMonth() + 6);
+    const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    const expiryStr = expiry.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    if (daysLeft <= 0) {
+      toast({ variant: 'destructive', title: 'Receita vencida!', description: `Receita com ${ageMonths} meses. Venceu em ${expiryStr}.` });
+    } else {
+      toast({ variant: 'destructive', title: 'Receita proxima do vencimento!', description: `Receita com ${ageMonths} meses. Vence em ${expiryStr} (${daysLeft} dia${daysLeft !== 1 ? 's' : ''}).` });
+    }
+  }, [state.prescriptionDate, toast]);
+
+  // Track when an external file is being dragged over the window
+  const [isDraggingOnPage, setIsDraggingOnPage] = useState(false);
+  const dragCounter = React.useRef(0);
+  // Track when the file is hovering directly over the prohibited Produtos zone
+  const [isDraggingOverProhibited, setIsDraggingOverProhibited] = useState(false);
+  const prohibitedDragCounter = React.useRef(0);
+
+  useEffect(() => {
+    const handleDragEnter = (e: DragEvent) => {
+      // Only react to external file drags
+      if (e.dataTransfer?.types?.includes('Files')) {
+        dragCounter.current++;
+        if (dragCounter.current === 1) setIsDraggingOnPage(true);
+      }
+    };
+    const handleDragLeave = () => {
+      dragCounter.current = Math.max(0, dragCounter.current - 1);
+      if (dragCounter.current === 0) {
+        setIsDraggingOnPage(false);
+        setIsDraggingOverProhibited(false);
+        prohibitedDragCounter.current = 0;
+      }
+    };
+    const handleDrop = () => {
+      dragCounter.current = 0;
+      setIsDraggingOnPage(false);
+      setIsDraggingOverProhibited(false);
+      prohibitedDragCounter.current = 0;
+    };
+
+    window.addEventListener('dragenter', handleDragEnter);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
+  // Local editing state for the frete (shipping cost) input field
+  const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
+
+  // Sync freteInput when the frete prop changes externally (e.g., session restore / resume)
+  useEffect(() => {
+    setFreteInput(frete > 0 ? String(frete) : '');
+  }, [frete]);
+
   // Local editing state for "P. Total" inputs — holds the raw string while
   // the user is typing so that the computed value doesn't overwrite mid-edit.
   const [editingTotals, setEditingTotals] = useState<Record<string, string>>({});
+
+  // Local editing state for the all-product order total — same pattern as editingTotals.
+  const [editingOrderTotal, setEditingOrderTotal] = useState<string | null>(null);
 
   // Generate a blob URL for image preview (revoked on file change / unmount)
   const previewUrl = useMemo(() => {
@@ -154,6 +271,46 @@ export function StepIdentificacao({
   useEffect(() => {
     return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
   }, [previewUrl]);
+
+  // ── Unified document upload helpers ──────────────────────────────────────
+  const [classifyingCount, setClassifyingCount] = useState(0);
+
+  const guessDocCategory = useCallback((filename: string): DocCategory | null => {
+    const name = filename.toLowerCase();
+    if (/receit|prescription|rx|prescri/.test(name)) return 'prescription';
+    if (/\brg\b|cnh|identidade|doc.*paciente|identity/.test(name)) return 'patient_doc';
+    if (/comprovante|resid[eê]ncia|endere[cç]o|conta.*(luz|[aá]gua|g[aá]s|telefone)/.test(name)) return 'address_doc';
+    return null;
+  }, []);
+
+  const classifyFileAI = useCallback(async (file: File): Promise<DocCategory | null> => {
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await authFetch('/api/ai/classify-and-extract-document', {
+        method: 'POST',
+        body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 30_000,
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.confidence >= 0.6) {
+        const map: Record<string, DocCategory> = {
+          prescription: 'prescription',
+          identity: 'patient_doc',
+          proof_of_address: 'address_doc',
+        };
+        return map[data.documentType] ?? null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [authFetch]);
 
   const clientOptions = clients.map((c) => ({
     value: c.id, label: c.fullName, sublabel: c.document ? `CPF: ${c.document}` : undefined,
@@ -235,8 +392,45 @@ export function StepIdentificacao({
     updateLine(lineId, { discount: clampedDiscount, negotiatedPrice });
   };
 
+  /**
+   * When the user edits the ALL-PRODUCT order total, compute a single target
+   * discount percentage and apply it uniformly to every product line.
+   * This ensures all lines share the same Desc %.
+   */
+  const handleOrderTotalChange = (newTotal: number) => {
+    const activeLines = state.products.filter((p) => p.productId);
+    if (activeLines.length === 0) return;
+
+    // Total list price in BRL across all active lines
+    const totalListBRL = activeLines.reduce(
+      (s, p) => s + p.listPrice * exchangeRate * p.quantity, 0,
+    );
+
+    // Uniform discount %: clamp between 0–100
+    const targetDiscount = totalListBRL > 0
+      ? Math.max(0, Math.min(100, ((totalListBRL - Math.max(0, newTotal)) / totalListBRL) * 100))
+      : 0;
+
+    const updated = state.products.map((line) => {
+      if (!line.productId) return line;
+
+      const listPriceBRL = line.listPrice * exchangeRate;
+      const unitPriceBRL = parseFloat((listPriceBRL * (1 - targetDiscount / 100)).toFixed(2));
+
+      return { ...line, negotiatedPrice: unitPriceBRL, discount: targetDiscount };
+    });
+
+    onChange({ products: updated });
+  };
+
   // ── AI extraction ─────────────────────────────────────────────────────────
+  const MAX_EXTRACTION_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
   const runExtraction = useCallback(async (file: File) => {
+    if (file.size > MAX_EXTRACTION_FILE_SIZE) {
+      setExtractionMsg('Arquivo muito grande (máx. 10MB). Reduza o tamanho e tente novamente.');
+      return;
+    }
     setIsExtracting(true); setExtractionMsg(null);
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
@@ -245,13 +439,21 @@ export function StepIdentificacao({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await fetch('/api/ai/extract-prescription', {
+      const res = await authFetch('/api/ai/extract-prescription', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000,
       });
       const data: PrescriptionExtraction = await res.json();
-      if (data._error) { setExtractionMsg(data._error); return; }
+
+      // Check if ANY fields were extracted (partial extraction is still useful)
+      const hasAnyData = !!(data.patientName || data.patientDocument || data.doctorName || data.doctorCrm || data.prescriptionDate || data.products?.length);
+
+      // If complete failure with no data at all, show error and stop
+      if (!hasAnyData && (!res.ok || data._error)) {
+        setExtractionMsg(data._error || 'Falha na extração. Preencha os campos manualmente.');
+        return;
+      }
 
       const updates: Partial<Step1State> = {};
 
@@ -281,6 +483,11 @@ export function StepIdentificacao({
         if (matched) {
           updates.doctorId = matched.id; updates.doctorName = matched.fullName;
           updates.doctorCrm = matched.crm; updates.doctorIsNew = false;
+          // Auto-select the doctor's assigned rep
+          if (matched.repUserId && !selectedRepresentanteId) {
+            const rep = repUsers.find((r) => r.id === matched.repUserId);
+            if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+          }
         } else {
           updates.doctorId = ''; updates.doctorName = data.doctorName ?? '';
           updates.doctorCrm = data.doctorCrm ?? ''; updates.doctorIsNew = true;
@@ -317,27 +524,134 @@ export function StepIdentificacao({
       onChange(updates);
       const newItems = [updates.clientIsNew, updates.doctorIsNew].filter(Boolean).length
         + (updates.products ?? []).filter((l) => !l.productId && l.aiHintName).length;
-      setExtractionMsg(newItems > 0
-        ? `${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`
-        : 'Campos preenchidos automaticamente com sucesso!');
-    } catch {
-      setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+
+      if (data._error && hasAnyData) {
+        // Partial extraction — some fields filled, but warn the user
+        setExtractionMsg('Extração parcial — alguns campos foram preenchidos. Verifique e complete manualmente.');
+      } else if (newItems > 0) {
+        setExtractionMsg(`${newItems} item(s) não encontrado(s) no cadastro — destacados em amarelo.`);
+      } else {
+        setExtractionMsg('Campos preenchidos automaticamente com sucesso!');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      if (/Sessão expirada|expirada/i.test(msg)) {
+        setExtractionMsg('Sessão expirada. Recarregue a página e tente novamente.');
+      } else {
+        setExtractionMsg('Falha ao processar receita. Preencha os campos manualmente.');
+      }
     } finally {
       setIsExtracting(false);
     }
-  }, [clients, doctors, allProducts, onChange, exchangeRate]);
+  }, [user, clients, doctors, allProducts, onChange, exchangeRate]);
 
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    if (!acceptedFiles[0]) return;
-    const file = acceptedFiles[0];
-    onChange({ prescriptionFile: file, prescriptionFileName: file.name });
-    runExtraction(file);
+  // Assign a single file to a document slot
+  const assignFileToSlot = useCallback((category: DocCategory, file: File) => {
+    switch (category) {
+      case 'prescription':
+        onChange({ prescriptionFile: file, prescriptionFileName: file.name, prescriptionHash: '' });
+        runExtraction(file);
+        computeFileHash(file).then((hash) => onChange({ prescriptionHash: hash }));
+        break;
+      case 'patient_doc':
+        onChange({ patientDocFile: file, patientDocFileName: file.name });
+        break;
+      case 'address_doc':
+        onChange({ addressDocFile: file, addressDocFileName: file.name });
+        break;
+    }
   }, [onChange, runExtraction]);
 
+  // Unified drop handler — classifies and assigns each dropped file
+  const onDropUnified = useCallback(async (acceptedFiles: File[]) => {
+    if (!acceptedFiles.length) return;
+
+    const occupied = new Set<DocCategory>();
+    if (state.prescriptionFile) occupied.add('prescription');
+    if (state.patientDocFile) occupied.add('patient_doc');
+    if (state.addressDocFile) occupied.add('address_doc');
+
+    const pending: Array<{ file: File; category: DocCategory | null }> = [];
+
+    // Pass 1: filename heuristics
+    for (const file of acceptedFiles) {
+      const guessed = guessDocCategory(file.name);
+      if (guessed && !occupied.has(guessed)) {
+        occupied.add(guessed);
+        pending.push({ file, category: guessed });
+      } else {
+        pending.push({ file, category: null });
+      }
+    }
+
+    // Assign heuristic-matched files immediately
+    for (const item of pending) {
+      if (item.category) assignFileToSlot(item.category, item.file);
+    }
+
+    // Pass 2: AI classification for unclassified files
+    const unclassified = pending.filter((p) => !p.category);
+    if (unclassified.length > 0) {
+      setClassifyingCount(unclassified.length);
+      for (const item of unclassified) {
+        const aiCategory = await classifyFileAI(item.file);
+        if (aiCategory && !occupied.has(aiCategory)) {
+          occupied.add(aiCategory);
+          item.category = aiCategory;
+        } else {
+          // Fallback: first empty slot
+          const allCats: DocCategory[] = ['prescription', 'patient_doc', 'address_doc'];
+          const emptySlot = allCats.find((c) => !occupied.has(c));
+          if (emptySlot) {
+            occupied.add(emptySlot);
+            item.category = emptySlot;
+          }
+        }
+        if (item.category) assignFileToSlot(item.category, item.file);
+        setClassifyingCount((c) => Math.max(0, c - 1));
+      }
+    }
+  }, [guessDocCategory, classifyFileAI, assignFileToSlot, state.prescriptionFile, state.patientDocFile, state.addressDocFile]);
+
+  // Reassign a file from one slot to another (manual type correction)
+  const reassignFile = useCallback((from: DocCategory, to: DocCategory) => {
+    if (from === to) return;
+    let file: File | null = null;
+    let name = '';
+    if (from === 'prescription') { file = state.prescriptionFile; name = state.prescriptionFileName; }
+    else if (from === 'patient_doc') { file = state.patientDocFile; name = state.patientDocFileName; }
+    else { file = state.addressDocFile; name = state.addressDocFileName; }
+    if (!file) return;
+
+    const clear: Partial<Step1State> = {};
+    if (from === 'prescription') { clear.prescriptionFile = null; clear.prescriptionFileName = ''; clear.prescriptionHash = ''; clear.prescriptionDate = ''; }
+    else if (from === 'patient_doc') { clear.patientDocFile = null; clear.patientDocFileName = ''; }
+    else { clear.addressDocFile = null; clear.addressDocFileName = ''; }
+    onChange(clear);
+    assignFileToSlot(to, file);
+  }, [state, onChange, assignFileToSlot]);
+
+  // Remove a file from its slot
+  const removeFile = useCallback((category: DocCategory) => {
+    switch (category) {
+      case 'prescription':
+        onChange({ prescriptionFile: null, prescriptionFileName: '', prescriptionHash: '', prescriptionDate: '' });
+        setExtractionMsg(null);
+        break;
+      case 'patient_doc':
+        onChange({ patientDocFile: null, patientDocFileName: '' });
+        break;
+      case 'address_doc':
+        onChange({ addressDocFile: null, addressDocFileName: '' });
+        break;
+    }
+  }, [onChange]);
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
+    onDrop: onDropUnified,
     accept: { 'application/pdf': ['.pdf'], 'image/*': ['.jpg', '.jpeg', '.png'] },
-    maxFiles: 1, disabled: isExtracting,
+    multiple: true,
+    disabled: isExtracting || classifyingCount > 0,
   });
 
   const fmtBRL = (v: number) =>
@@ -350,8 +664,6 @@ export function StepIdentificacao({
     (sum, p) => sum + p.negotiatedPrice * p.quantity, 0
   );
 
-  const hasPrescription = !!state.prescriptionFile;
-  const showSideBySide = hasPrescription && !!previewUrl;
 
   return (
     <div>
@@ -377,8 +689,8 @@ export function StepIdentificacao({
         }}
       />
 
-      <div className={cn(showSideBySide && 'lg:grid lg:grid-cols-[1fr_minmax(300px,400px)] lg:gap-6 lg:items-start')}>
-      {/* ── Left column ─── */}
+      <div>
+      {/* ── Main column ─── */}
       <div className="space-y-7">
 
       {/* ── Client & Doctor — side by side ─────────────────────────── */}
@@ -393,24 +705,41 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.clientName}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddClient(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddClient(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ clientId: '', clientName: '', clientDocument: '', clientPhone: '', clientIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={clientOptions}
-            value={state.clientId}
-            onChange={(id) => {
-              const client = clients.find((c) => c.id === id);
-              if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
-            }}
-            placeholder="Buscar paciente…"
-            searchPlaceholder="Nome ou CPF…"
-            emptyMessage="Nenhum paciente encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={clientOptions}
+                value={state.clientId}
+                onChange={(id) => {
+                  const client = clients.find((c) => c.id === id);
+                  if (client) onChange({ clientId: id, clientName: client.fullName, clientDocument: client.document, clientPhone: client.phone ?? '', clientIsNew: false });
+                }}
+                placeholder="Buscar paciente…"
+                searchPlaceholder="Nome ou CPF…"
+                emptyMessage="Nenhum paciente encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo paciente"
+              onClick={() => setShowAddClient(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
 
         {/* Doctor */}
@@ -423,97 +752,293 @@ export function StepIdentificacao({
               </svg>
               <div className="flex-1 min-w-0">
                 <p className="truncate">Não encontrado: <strong>{state.doctorName || '–'}{state.doctorCrm ? ` (${state.doctorCrm})` : ''}</strong></p>
-                <Button type="button" size="sm" variant="outline" className="mt-1.5 text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
-                  onClick={() => setShowAddDoctor(true)}>
-                  + Cadastrar novo
-                </Button>
+                <div className="mt-1.5 flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="text-xs border-amber-400 text-amber-800 hover:bg-amber-100"
+                    onClick={() => setShowAddDoctor(true)}>
+                    + Cadastrar novo
+                  </Button>
+                  <Button type="button" size="sm" variant="ghost" className="text-xs text-amber-700 hover:bg-amber-100"
+                    onClick={() => onChange({ doctorId: '', doctorName: '', doctorCrm: '', doctorIsNew: false })}>
+                    Limpar
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-          <SearchableSelect
-            options={doctorOptions}
-            value={state.doctorId}
-            onChange={(id) => {
-              const doctor = doctors.find((d) => d.id === id);
-              if (doctor) onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
-            }}
-            placeholder="Buscar médico…"
-            searchPlaceholder="Nome ou CRM…"
-            emptyMessage="Nenhum médico encontrado."
-          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <SearchableSelect
+                options={doctorOptions}
+                value={state.doctorId}
+                onChange={(id) => {
+                  const doctor = doctors.find((d) => d.id === id);
+                  if (doctor) {
+                    onChange({ doctorId: id, doctorName: doctor.fullName, doctorCrm: doctor.crm, doctorIsNew: false });
+                    // Auto-select the doctor's assigned rep (if any and no rep currently selected)
+                    if (doctor.repUserId && !selectedRepresentanteId) {
+                      const rep = repUsers.find((r) => r.id === doctor.repUserId);
+                      if (rep) onRepresentanteChange(rep.id, rep.displayName || rep.email);
+                    }
+                  }
+                }}
+                placeholder="Buscar médico…"
+                searchPlaceholder="Nome ou CRM…"
+                emptyMessage="Nenhum médico encontrado."
+              />
+            </div>
+            <Button type="button" variant="outline" size="icon" className="h-10 w-10 shrink-0"
+              title="Cadastrar novo médico"
+              onClick={() => setShowAddDoctor(true)}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* ── Prescription upload & viewer ──────────────────────────── */}
-      <div className="space-y-2">
+      {/* ── Documents: Unified Upload ─────────────────────────── */}
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <Label className="text-sm font-semibold">Receita Médica</Label>
-          {state.prescriptionFile && !isExtracting && (
-            <div {...getRootProps()} className="contents">
-              <input {...getInputProps()} />
-              <Button type="button" variant="outline" size="sm" className="text-xs gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-3.5 w-3.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-                Trocar receita
-              </Button>
-            </div>
+          <Label className="text-sm font-semibold">Documentos</Label>
+          {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) && !isExtracting && classifyingCount === 0 && (
+            <span className="text-xs text-muted-foreground">
+              {[state.prescriptionFile, state.patientDocFile, state.addressDocFile].filter(Boolean).length}/3 enviados
+            </span>
           )}
         </div>
 
-        {isExtracting ? (
-          /* ── Extraction spinner ─── */
-          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-8 text-center pointer-events-none">
-            <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="text-sm font-medium text-primary">Analisando com IA…</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados da receita</p>
-          </div>
-        ) : previewUrl && state.prescriptionFile?.type?.startsWith('image/') ? (
-          /* ── Image viewer with zoom / pan / rotate ─── */
-          <div className={cn(showSideBySide && 'lg:hidden')}>
-            <ImageViewer
-              src={previewUrl}
-              alt={state.prescriptionFileName || 'Receita médica'}
-            />
-          </div>
-        ) : state.prescriptionFile ? (
-          /* ── PDF or non-image file fallback ─── */
-          <div className="flex flex-col items-center justify-center rounded-xl border bg-muted/30 px-6 py-8 text-center">
-            <svg className="mb-2 h-10 w-10 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <p className="text-sm font-medium text-green-700 truncate max-w-xs">{state.prescriptionFileName}</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">Arquivo enviado com sucesso</p>
-          </div>
-        ) : (
-          /* ── Initial drop zone ─── */
-          <div
-            {...getRootProps()}
-            className={cn(
-              'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
-              isDragActive
-                ? 'border-primary bg-primary/5 scale-[1.01]'
-                : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
-            )}
-          >
-            <input {...getInputProps()} />
-            <svg className="mb-3 h-10 w-10 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-            <p className="text-sm font-semibold">Arraste a receita aqui</p>
-            <p className="mt-1 text-xs text-muted-foreground">A IA preencherá os campos automaticamente · PDF, JPG, PNG (máx 5MB)</p>
+        {/* Unified drop zone — visible when at least one slot is empty */}
+        {(!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
+          classifyingCount > 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-8 text-center pointer-events-none">
+              <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              <p className="text-sm font-medium text-primary">Classificando documentos…</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{classifyingCount} arquivo(s) restante(s)</p>
+            </div>
+          ) : (
+            <div
+              {...getRootProps()}
+              className={cn(
+                'relative flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition-all cursor-pointer select-none',
+                isDragActive
+                  ? 'border-green-500 bg-green-50 scale-[1.01] ring-2 ring-green-400'
+                  : isDraggingOnPage
+                    ? 'border-green-400 bg-green-50/60 ring-2 ring-green-300 animate-pulse'
+                    : 'border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/40',
+              )}
+            >
+              <input {...getInputProps()} />
+              <svg className={cn('mb-3 h-10 w-10', isDraggingOnPage ? 'text-green-600' : 'text-muted-foreground')} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12l-3-3m0 0l-3 3m3-3v6m-1.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+              </svg>
+              <p className={cn('text-sm font-semibold', isDraggingOnPage && 'text-green-700')}>
+                {isDraggingOnPage ? 'Solte os documentos aqui!' : 'Arraste os documentos aqui'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Receita Médica, RG/CNH, Comprovante de Residência · PDF, JPG, PNG (máx 5MB)
+              </p>
+            </div>
+          )
+        )}
+
+        {/* Extraction spinner for prescription AI */}
+        {isExtracting && (
+          <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-primary/40 bg-primary/5 px-6 py-4 text-center">
+            <div className="mb-2 h-7 w-7 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="text-sm font-medium text-primary">Analisando receita com IA…</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Extraindo dados do paciente e médico</p>
           </div>
         )}
 
         {extractionMsg && (
-          <p className={cn('flex items-center gap-1.5 text-xs', extractionMsg.includes('sucesso') ? 'text-green-600' : 'text-amber-600')}>
-            {extractionMsg.includes('sucesso') ? '✓' : '⚠'} {extractionMsg}
+          <p className={cn('flex items-center gap-1.5 text-xs', extractionMsg.includes('sucesso') || extractionMsg.includes('preenchidos') ? 'text-green-600' : 'text-amber-600')}>
+            {extractionMsg.includes('sucesso') || extractionMsg.includes('preenchidos') ? '✓' : '⚠'} {extractionMsg}
           </p>
         )}
+
+        {/* Uploaded documents list */}
+        {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) && (
+          <div className="rounded-xl border bg-card divide-y">
+            {([
+              { category: 'prescription' as DocCategory, file: state.prescriptionFile, name: state.prescriptionFileName },
+              { category: 'patient_doc' as DocCategory, file: state.patientDocFile, name: state.patientDocFileName },
+              { category: 'address_doc' as DocCategory, file: state.addressDocFile, name: state.addressDocFileName },
+            ]).filter((d) => d.file).map((doc) => (
+              <div key={doc.category} className="flex items-center gap-3 px-4 py-3">
+                <svg className="h-5 w-5 flex-shrink-0 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{doc.name}</p>
+                  <p className="text-xs text-muted-foreground">{DOC_CATEGORY_HINTS[doc.category]}</p>
+                </div>
+                <Select
+                  value={doc.category}
+                  onValueChange={(val) => reassignFile(doc.category, val as DocCategory)}
+                >
+                  <SelectTrigger className="w-[200px] h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(['prescription', 'patient_doc', 'address_doc'] as DocCategory[]).map((cat) => (
+                      <SelectItem key={cat} value={cat} disabled={
+                        cat !== doc.category && (
+                          (cat === 'prescription' && !!state.prescriptionFile) ||
+                          (cat === 'patient_doc' && !!state.patientDocFile) ||
+                          (cat === 'address_doc' && !!state.addressDocFile)
+                        )
+                      }>
+                        {DOC_CATEGORY_LABELS[cat]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeFile(doc.category)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Missing document indicators */}
+        {(state.prescriptionFile || state.patientDocFile || state.addressDocFile) &&
+         (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
+          <div className="flex flex-wrap gap-2">
+            {!state.prescriptionFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Receita Médica pendente
+              </span>
+            )}
+            {!state.patientDocFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Documento do Paciente pendente
+              </span>
+            )}
+            {!state.addressDocFile && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                Comprovante de Residência pendente
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Prescription image preview */}
+        {previewUrl && state.prescriptionFile?.type?.startsWith('image/') && !isExtracting && (
+          <ImageViewer
+            src={previewUrl}
+            alt={state.prescriptionFileName || 'Receita médica'}
+          />
+        )}
+
+        {/* Prescription expiration notice (6-month validity) */}
+        {state.prescriptionDate && (() => {
+          const rxDate = new Date(state.prescriptionDate + 'T12:00:00');
+          const expiry = new Date(rxDate);
+          expiry.setMonth(expiry.getMonth() + 6);
+          const now = new Date();
+          const msLeft = expiry.getTime() - now.getTime();
+          const daysLeft = Math.ceil(msLeft / (1000 * 60 * 60 * 24));
+          const isExpired = daysLeft <= 0;
+          const isNearExpiry = daysLeft > 0 && daysLeft <= 30;
+          const expiryStr = expiry.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+          const rxDateStr = rxDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+          if (isExpired) {
+            return (
+              <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Receita vencida!</p>
+                  <p className="text-xs">Data da receita: {rxDateStr} · Venceu em {expiryStr}</p>
+                </div>
+              </div>
+            );
+          }
+          if (isNearExpiry) {
+            return (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Receita próxima do vencimento!</p>
+                  <p className="text-xs">Data da receita: {rxDateStr} · Vence em {expiryStr} ({daysLeft} dia{daysLeft !== 1 ? 's' : ''})</p>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <p className="text-xs text-muted-foreground">
+              Receita de {rxDateStr} · Válida até {expiryStr}
+            </p>
+          );
+        })()}
       </div>
 
       {/* ── Products ──────────────────────────────────────────────── */}
-      <div className="space-y-3">
+      <div
+        className="relative space-y-3"
+        onDragEnter={(e) => {
+          if (isDraggingOnPage && (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && e.dataTransfer?.types?.includes('Files')) {
+            prohibitedDragCounter.current++;
+            if (prohibitedDragCounter.current === 1) setIsDraggingOverProhibited(true);
+          }
+        }}
+        onDragLeave={() => {
+          prohibitedDragCounter.current = Math.max(0, prohibitedDragCounter.current - 1);
+          if (prohibitedDragCounter.current === 0) setIsDraggingOverProhibited(false);
+        }}
+        onDragOver={(e) => { if (isDraggingOnPage) e.preventDefault(); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          prohibitedDragCounter.current = 0;
+          setIsDraggingOverProhibited(false);
+        }}
+      >
+        {/* Red overlay when dragging a file — two-step warning */}
+        {isDraggingOnPage && (!state.prescriptionFile || !state.patientDocFile || !state.addressDocFile) && (
+          <div className={cn(
+            'absolute inset-0 z-20 flex flex-col items-center justify-center rounded-xl border-dashed pointer-events-none overflow-hidden transition-all',
+            isDraggingOverProhibited
+              ? 'border-4 border-red-500 bg-red-100/95'
+              : 'border-2 border-red-400 bg-red-50/90',
+          )}>
+            {isDraggingOverProhibited ? (
+              <>
+                {/* Escalated: big NÃO! texts in a single row */}
+                <div className="flex items-center justify-center gap-4 flex-wrap">
+                  <span className="text-5xl font-black text-red-500/80 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-600/90 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-500/80 tracking-widest select-none">NÃO!</span>
+                  <span className="text-5xl font-black text-red-600/90 tracking-widest select-none">NÃO!</span>
+                </div>
+                <p className="mt-2 text-sm font-bold text-red-700">↑ Arraste para a área de Documentos acima ↑</p>
+              </>
+            ) : (
+              <>
+                {/* Initial: small prohibition icon + message */}
+                <svg className="mx-auto mb-2 h-10 w-10 text-red-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                </svg>
+                <p className="text-lg font-bold text-red-600">Não solte aqui</p>
+                <p className="text-sm text-red-500">Arraste para a área de Documentos acima</p>
+              </>
+            )}
+          </div>
+        )}
+
         <Label className="text-sm font-semibold">Produtos <span className="text-red-500">*</span></Label>
 
         {/* Exchange rate banner */}
@@ -524,8 +1049,50 @@ export function StepIdentificacao({
           </div>
         )}
         {exchangeRateError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {exchangeRateError}
+          <div className="space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-sm text-red-700">
+            <p>{exchangeRateError}</p>
+            <div className="flex flex-wrap items-end gap-3">
+              {onRetryExchangeRate && (
+                <button
+                  type="button"
+                  onClick={onRetryExchangeRate}
+                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700"
+                >
+                  Tentar novamente
+                </button>
+              )}
+              {onManualExchangeRate && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium">Manual:</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    min="0"
+                    placeholder="5.1234"
+                    className="w-24 rounded border border-red-300 bg-white px-2 py-1 text-xs"
+                    onBlur={(e) => {
+                      const val = parseFloat(e.target.value);
+                      if (val > 0) onManualExchangeRate(val);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = parseFloat((e.target as HTMLInputElement).value);
+                        if (val > 0) onManualExchangeRate(val);
+                      }
+                    }}
+                  />
+                </div>
+              )}
+              <a
+                href="https://www.bcb.gov.br/conversao"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-red-600 underline hover:text-red-800"
+              >
+                Consultar BCB
+              </a>
+            </div>
           </div>
         )}
         {exchangeRate > 0 && !exchangeRateLoading && (
@@ -536,15 +1103,34 @@ export function StepIdentificacao({
         )}
 
         {state.products.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center">
-            <p className="text-sm text-muted-foreground">Envie uma receita acima para preencher os produtos automaticamente.</p>
+          <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center space-y-3">
+            {extractionMsg && (extractionMsg.includes('Falha') || extractionMsg.includes('falhou') || extractionMsg.includes('parcial')) ? (
+              <>
+                <div className="flex items-center justify-center gap-2 text-amber-600">
+                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <p className="text-sm font-medium">Não foi possível extrair os dados automaticamente.</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Insira os produtos manualmente.</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Envie uma receita acima ou adicione produtos manualmente.</p>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={addProductLine}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="mr-1.5 h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Adicionar produto
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">
             {/* Header */}
-            <div className="hidden grid-cols-[1fr_60px_90px_90px_90px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
+            <div className="hidden grid-cols-[1fr_60px_60px_90px_90px_90px_70px_36px] gap-2 px-2 text-xs font-medium text-muted-foreground sm:grid">
               <span>Produto</span>
               <span className="text-center">Qtd</span>
+              <span className="text-center">Qtd Rx</span>
               <span className="text-center">Preço Lista</span>
               <span className="text-center">P. Unit.</span>
               <span className="text-center">P. Total</span>
@@ -556,7 +1142,7 @@ export function StepIdentificacao({
               <div
                 key={line.id}
                 className={cn(
-                  'grid grid-cols-[1fr_60px_90px_90px_90px_70px_36px] items-center gap-2 rounded-lg border p-2',
+                  'grid grid-cols-[1fr_60px_60px_90px_90px_90px_70px_36px] items-center gap-2 rounded-lg border p-2',
                   line.aiHintName && !line.productId ? 'border-amber-300 bg-amber-50' : 'border-border bg-card',
                 )}
               >
@@ -575,6 +1161,16 @@ export function StepIdentificacao({
                 {/* Qty */}
                 <Input type="number" min={1} value={line.quantity}
                   onChange={(e) => updateLine(line.id, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
+                  onBlur={() => {
+                    if (line.prescribedQty && line.quantity > line.prescribedQty) {
+                      toast({ variant: 'destructive', title: 'Quantidade excede a receita', description: `Produto "${line.productName || 'selecionado'}": quantidade ${line.quantity} excede a prescrita (${line.prescribedQty}).` });
+                    }
+                  }}
+                  className={cn('text-center px-1', line.prescribedQty && line.quantity > line.prescribedQty && 'border-amber-400 ring-1 ring-amber-400')} />
+                {/* Prescribed Qty */}
+                <Input type="number" min={0} value={line.prescribedQty ?? ''}
+                  onChange={(e) => updateLine(line.id, { prescribedQty: e.target.value ? Math.max(0, parseInt(e.target.value) || 0) : undefined })}
+                  placeholder="—"
                   className="text-center px-1" />
                 {/* List price in BRL (read-only — converted from USD catalog price) */}
                 <div className="flex flex-col items-center justify-center rounded-md border bg-muted/40 px-1 py-1 text-center text-muted-foreground h-9" title={line.listPrice > 0 ? `${fmtUSD(line.listPrice)}` : undefined}>
@@ -615,10 +1211,13 @@ export function StepIdentificacao({
                     });
                   }}
                   className="text-center px-1" />
-                {/* Discount % (read-only — derived from list price vs negotiated) */}
-                <div className="flex items-center justify-center rounded-md border bg-muted/40 px-2 py-2 text-center text-sm text-muted-foreground h-9">
-                  {line.listPrice > 0 ? `${line.discount.toFixed(1)}%` : '—'}
-                </div>
+                {/* Discount % — editable, back-calculates negotiated price */}
+                <Input type="number" min={0} max={100} step="0.1"
+                  value={line.listPrice > 0 ? parseFloat(line.discount.toFixed(1)) : ''}
+                  onChange={(e) => handleDiscountChange(line.id, parseFloat(e.target.value) || 0)}
+                  disabled={line.listPrice <= 0}
+                  className="text-center px-1"
+                  placeholder="—" />
                 <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={() => removeLine(line.id)}>
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="h-4 w-4">
@@ -628,14 +1227,94 @@ export function StepIdentificacao({
               </div>
             ))}
 
-            {/* Total */}
-            <div className="flex justify-end border-t pt-3 pr-2">
-              <p className="text-sm font-medium">
-                Total: <span className="text-base font-bold text-primary">{fmtBRL(orderTotal)}</span>
+            {/* Add product button */}
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={addProductLine}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="mr-1.5 h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Adicionar produto
+            </Button>
+
+            {/* Total — editable, distributes changes equally across product lines */}
+            <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
+              <label className="text-sm font-medium">Subtotal:</label>
+              <div className="relative w-36">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
+                <Input
+                  type="number" min={0} step="0.01"
+                  value={
+                    editingOrderTotal !== null
+                      ? editingOrderTotal
+                      : parseFloat(orderTotal.toFixed(2))
+                  }
+                  onFocus={() => setEditingOrderTotal(orderTotal.toFixed(2))}
+                  onChange={(e) => setEditingOrderTotal(e.target.value)}
+                  onBlur={() => {
+                    if (editingOrderTotal !== null) {
+                      handleOrderTotalChange(parseFloat(editingOrderTotal) || 0);
+                    }
+                    setEditingOrderTotal(null);
+                  }}
+                  className="pl-8 text-right font-bold text-primary"
+                />
+              </div>
+            </div>
+
+            {/* Frete — directly below products */}
+            <div className="flex items-center justify-end gap-2 pr-2">
+              <label htmlFor="frete-input" className="text-sm font-medium">Frete:</label>
+              <div className="relative w-36">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">R$</span>
+                <Input
+                  id="frete-input"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  placeholder="0,00"
+                  value={freteInput}
+                  onChange={(e) => setFreteInput(e.target.value)}
+                  onBlur={() => {
+                    const parsed = parseFloat(freteInput) || 0;
+                    onFreteChange(Math.max(0, parsed));
+                    setFreteInput(parsed > 0 ? String(parsed) : '');
+                  }}
+                  className="pl-8 text-right"
+                />
+              </div>
+            </div>
+
+            {/* Grand total (products + frete) */}
+            <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
+              <label className="text-sm font-semibold">Total:</label>
+              <p className="w-36 text-right text-lg font-bold font-mono text-primary">
+                {fmtBRL(orderTotal + frete)}
               </p>
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Frete ───────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <Label htmlFor="frete-input-standalone" className="text-sm font-semibold">Frete (R$)</Label>
+        <p className="text-xs text-muted-foreground">
+          Custo de envio incluído no valor do link de pagamento GlobalPay.
+        </p>
+        <Input
+          id="frete-input-standalone"
+          type="number"
+          min={0}
+          step="0.01"
+          placeholder="0,00"
+          value={freteInput}
+          onChange={(e) => setFreteInput(e.target.value)}
+          onBlur={() => {
+            const parsed = parseFloat(freteInput) || 0;
+            onFreteChange(Math.max(0, parsed));
+            setFreteInput(parsed > 0 ? String(parsed) : '');
+          }}
+          className="max-w-[200px]"
+        />
       </div>
 
       {/* ── Representante ──────────────────────────────────────── */}
@@ -700,19 +1379,44 @@ export function StepIdentificacao({
         </div>
       </div>
 
-      </div>
 
-      {/* ── Right column — sticky prescription viewer ─── */}
-      {showSideBySide && (
-        <div className="hidden lg:block lg:sticky lg:top-24 self-start space-y-2">
-          <Label className="text-sm font-semibold">Visualizar Receita</Label>
-          <ImageViewer
-            src={previewUrl!}
-            alt={state.prescriptionFileName || 'Receita médica'}
-          />
-          <p className="text-xs text-muted-foreground text-center truncate">{state.prescriptionFileName}</p>
+
+      {/* ── Vincular Pagamento Avulso (admin only) ─────────────── */}
+      {isAdmin && unassignedPayments.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
+          <Label className="text-sm font-semibold">Vincular Pagamento Avulso</Label>
+          <p className="text-xs text-muted-foreground">
+            Vincule um pagamento já criado a esta venda. O sistema não gerará um novo link GlobalPay.
+          </p>
+          <Select
+            value={selectedUnassignedPaymentId || '__none__'}
+            onValueChange={(v) => {
+              if (v === '__none__') {
+                onUnassignedPaymentSelect('', null);
+              } else {
+                const payment = unassignedPayments.find((p) => p.id === v) ?? null;
+                onUnassignedPaymentSelect(v, payment);
+              }
+            }}
+          >
+            <SelectTrigger className="max-w-[400px]">
+              <SelectValue placeholder="Nenhum" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {unassignedPayments.map((pl) => (
+                <SelectItem key={pl.id} value={pl.id}>
+                  {pl.invoice || pl.id.slice(0, 8)} — {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: pl.currency || 'BRL' }).format(pl.amount)}
+                  {pl.clientName ? ` — ${pl.clientName}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
+
+      </div>
+
       </div>
 
     </div>

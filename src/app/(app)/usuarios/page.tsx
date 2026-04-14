@@ -1,15 +1,27 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { query, orderBy } from 'firebase/firestore';
+import { query, orderBy, doc, setDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { Trash2, Loader2 } from 'lucide-react';
 import { useUser, useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getUsersRef, updateUser, getPreregistrationsRef } from '@/services/users.service';
+import { getUsersRef, updateUser, getPreregistrationsRef, softDeleteUser } from '@/services/users.service';
 import type { Preregistration } from '@/services/users.service';
 import { DataTable } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Select,
   SelectContent,
@@ -74,10 +86,35 @@ type UserRow = (User & { id: string; pending?: false }) | {
 };
 
 export default function UsuariosPage() {
-  const { isAdmin, isAdminLoading } = useUser();
+  const { user, isAdmin, isAdminLoading } = useUser();
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
+
+  // Delete state
+  const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = useCallback(async () => {
+    if (!pendingDelete || !user) return;
+    setIsDeleting(true);
+    try {
+      if (pendingDelete.pending) {
+        // Hard-delete pre-registration doc
+        await deleteDoc(doc(db, 'preregistrations', pendingDelete.id));
+      } else {
+        // Soft-delete actual user
+        await softDeleteUser(db, pendingDelete.id, user.uid);
+      }
+      toast({ title: pendingDelete.pending ? 'Pré-cadastro excluído.' : 'Usuário desativado com sucesso.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao excluir usuário.', variant: 'destructive' });
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
+  }, [pendingDelete, user, db, toast]);
 
   const usersQuery = useMemoFirebase(
     () => query(getUsersRef(db), orderBy('createdAt', 'desc')),
@@ -90,7 +127,9 @@ export default function UsuariosPage() {
   );
 
   const { data: users, isLoading } = useCollection<User>(usersQuery);
-  const { data: preregistrations } = useCollection<Preregistration>(preregQuery);
+  const { data: preregistrations } = useCollection<Preregistration>(
+    !isAdminLoading && isAdmin ? preregQuery : null,
+  );
 
   // Merge: show pre-registrations first (as pending rows), then actual users
   const allRows: UserRow[] = [
@@ -107,7 +146,18 @@ export default function UsuariosPage() {
 
   const handleGroupChange = async (userId: string, newGroup: string) => {
     try {
-      await updateUser(db, userId, { groupId: newGroup });
+      await updateUser(db, userId, { groupId: newGroup }, user!.uid);
+
+      // Sync roles_admin collection: create doc for admin, delete for non-admin
+      const rolesRef = doc(db, 'roles_admin', userId);
+      if (newGroup === 'admin') {
+        await setDoc(rolesRef, { grantedAt: new Date().toISOString() });
+      } else {
+        await deleteDoc(rolesRef).catch(() => {
+          // Doc may not exist — that's fine
+        });
+      }
+
       toast({ title: 'Grupo atualizado com sucesso.' });
     } catch (err) {
       console.error(err);
@@ -117,7 +167,7 @@ export default function UsuariosPage() {
 
   const handleStatusChange = async (userId: string, newStatus: string) => {
     try {
-      await updateUser(db, userId, { active: newStatus === 'true' });
+      await updateUser(db, userId, { active: newStatus === 'true' }, user!.uid);
       toast({ title: 'Status atualizado com sucesso.' });
     } catch (err) {
       console.error(err);
@@ -127,11 +177,23 @@ export default function UsuariosPage() {
 
   const handleRepToggle = async (userId: string, isRep: boolean) => {
     try {
-      await updateUser(db, userId, { isRepresentante: isRep });
+      await updateUser(db, userId, { isRepresentante: isRep }, user!.uid);
       toast({ title: isRep ? 'Marcado como representante.' : 'Representante removido.' });
     } catch (err) {
       console.error(err);
       toast({ title: 'Erro ao atualizar representante.', variant: 'destructive' });
+    }
+  };
+
+  const handleOrderNotifToggle = async (userId: string, current: boolean) => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        'notificationPreferences.emailOnOrderCreated': !current,
+      });
+      toast({ title: !current ? 'Notificação de vendas ativada.' : 'Notificação de vendas desativada.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao atualizar notificação.', variant: 'destructive' });
     }
   };
 
@@ -208,6 +270,23 @@ export default function UsuariosPage() {
       ),
     },
     {
+      key: 'notificationPreferences',
+      header: 'Notif. Vendas',
+      render: (item) => {
+        if (item.pending) return <span className="text-muted-foreground text-xs">—</span>;
+        const u = item as User & { id: string };
+        const checked = !!u.notificationPreferences?.emailOnOrderCreated;
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Switch
+              checked={checked}
+              onCheckedChange={() => handleOrderNotifToggle(item.id, checked)}
+            />
+          </div>
+        );
+      },
+    },
+    {
       key: 'lastLogin',
       header: 'Ultimo Login',
       sortable: true,
@@ -218,6 +297,23 @@ export default function UsuariosPage() {
       header: 'Data de Criacao',
       sortable: true,
       render: (item) => <span className="text-sm">{formatDate(item.createdAt)}</span>,
+    },
+    {
+      key: 'actions' as string,
+      header: '',
+      render: (item: UserRow) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="inline-flex items-center justify-center rounded-md p-2 text-red-500 hover:bg-red-50 hover:text-red-700 transition-colors disabled:opacity-50"
+            onClick={() => setPendingDelete(item)}
+            disabled={isDeleting}
+            title="Excluir usuário"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
     },
   ];
 
@@ -271,6 +367,7 @@ export default function UsuariosPage() {
             loading={isLoading}
             searchPlaceholder="Buscar usuario..."
             emptyMessage="Nenhum usuario encontrado."
+            exportFilename="usuarios"
             {...(isAdmin ? {
               onRowClick: (u: UserRow) => {
                 if (!u.pending) router.push(`/usuarios/${u.id}`);
@@ -279,6 +376,32 @@ export default function UsuariosPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Delete confirmation dialog */}
+      <AlertDialog open={!!pendingDelete} onOpenChange={(open) => { if (!open) setPendingDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir usuário?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete?.pending
+                ? <>O pré-cadastro de <strong>{pendingDelete.email}</strong> será excluído permanentemente.</>
+                : <>O usuário <strong>{pendingDelete?.email}</strong> será desativado. Você poderá reativá-lo posteriormente.</>
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Excluir
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

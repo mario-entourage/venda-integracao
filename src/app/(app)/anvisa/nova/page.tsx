@@ -2,14 +2,16 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { compressImage } from '@/lib/compress-image';
+import { friendlyError } from '@/lib/friendly-error';
 import { FileUp, Loader2, Upload, Zap, X, Check, XCircle } from 'lucide-react';
 import { OrderPicker } from '@/components/anvisa/order-picker';
-import { updateOrder } from '@/services/orders.service';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useFirebase } from '@/firebase';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useToast } from '@/hooks/use-toast';
 import { doc, collection, writeBatch } from 'firebase/firestore';
 import { ref, uploadBytes } from 'firebase/storage';
@@ -31,7 +33,6 @@ type ClassifiedFile = {
   confidence: number;
   reasoning: string;
   isClassifying: boolean;
-  userOverride?: ClassificationType;
 };
 
 const DOC_TYPE_LABELS: Record<ClassificationType, string> = {
@@ -322,16 +323,22 @@ function FileUploadButton({
   );
 }
 
-function RequiredTypesStatus({ classifiedFiles }: { classifiedFiles: ClassifiedFile[] }) {
+function RequiredTypesStatus({
+  classifiedFiles,
+  requiredTypes,
+}: {
+  classifiedFiles: ClassifiedFile[];
+  requiredTypes: ClassificationType[];
+}) {
   const coveredTypes = new Set(
     classifiedFiles
-      .map(f => f.userOverride || f.classifiedType)
+      .map(f => f.classifiedType)
       .filter((t): t is ClassificationType => t !== null && t !== 'OUTRO')
   );
 
   return (
     <div className="flex flex-wrap gap-2">
-      {REQUIRED_TYPES.map(type => {
+      {requiredTypes.map(type => {
         const covered = coveredTypes.has(type);
         return (
           <div
@@ -361,17 +368,17 @@ function RequiredTypesStatus({ classifiedFiles }: { classifiedFiles: ClassifiedF
 
 function ClassifiedUploadArea({
   classifiedFiles,
+  requiredTypes,
   onFilesAdd,
   onFileRemove,
-  onTypeOverride,
   onReject,
   onSizeReject,
   onSizeWarn,
 }: {
   classifiedFiles: ClassifiedFile[];
+  requiredTypes: ClassificationType[];
   onFilesAdd: (files: File[]) => void;
   onFileRemove: (index: number) => void;
-  onTypeOverride: (index: number, type: ClassificationType) => void;
   onReject?: (rejectedNames: string[]) => void;
   onSizeReject?: (rejectedNames: string[]) => void;
   onSizeWarn?: (warnedNames: string[]) => void;
@@ -384,8 +391,8 @@ function ClassifiedUploadArea({
             <FileUp className="h-6 w-6 text-primary" />
           </div>
           <div className="flex-1">
-            <CardTitle>Documentos Obrigatorios</CardTitle>
-            <RequiredTypesStatus classifiedFiles={classifiedFiles} />
+            <CardTitle>Envie os Documentos</CardTitle>
+            <RequiredTypesStatus classifiedFiles={classifiedFiles} requiredTypes={requiredTypes} />
           </div>
         </div>
       </CardHeader>
@@ -395,17 +402,18 @@ function ClassifiedUploadArea({
         {classifiedFiles.length > 0 && (
           <div className="space-y-2">
             {classifiedFiles.map((entry, index) => {
-              const effectiveType = entry.userOverride || entry.classifiedType;
-              const needsManualSelect = !entry.isClassifying && !effectiveType;
+              const effectiveType = entry.classifiedType;
+              const label = effectiveType ? DOC_TYPE_LABELS[effectiveType] : 'Nao identificado';
+              const isOther = effectiveType === 'OUTRO' || effectiveType === null;
 
               return (
                 <div
                   key={`${entry.file.name}-${index}`}
-                  className={`flex items-center gap-3 p-3 border rounded-lg ${
-                    needsManualSelect ? 'bg-red-50 border-red-300' :
-                    entry.isClassifying ? 'bg-muted/30 border-border' :
-                    'bg-muted/50 border-border'
-                  }`}
+                  className={
+                    `flex items-center gap-3 p-3 border rounded-lg ${
+                      entry.isClassifying ? 'bg-muted/30 border-border' : 'bg-muted/50 border-border'
+                    }`
+                  }
                 >
                   <FileUp className="h-5 w-5 text-primary shrink-0" />
                   <p className="text-sm text-foreground flex-1 truncate min-w-0">{entry.file.name}</p>
@@ -418,20 +426,14 @@ function ClassifiedUploadArea({
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 shrink-0">
-                      <Select
-                        value={effectiveType || ''}
-                        onValueChange={(val) => onTypeOverride(index, val as ClassificationType)}
+                      <Badge
+                        variant="outline"
+                        className={isOther ? 'text-muted-foreground' : 'border-green-300 text-green-700 bg-green-50'}
+                        title={entry.reasoning || undefined}
                       >
-                        <SelectTrigger className="w-[220px] h-8 text-xs">
-                          <SelectValue placeholder="Selecione o tipo..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="DOCUMENTO_PACIENTE">{DOC_TYPE_LABELS.DOCUMENTO_PACIENTE}</SelectItem>
-                          <SelectItem value="COMPROVANTE_RESIDENCIA">{DOC_TYPE_LABELS.COMPROVANTE_RESIDENCIA}</SelectItem>
-                          <SelectItem value="RECEITA_MEDICA">{DOC_TYPE_LABELS.RECEITA_MEDICA}</SelectItem>
-                          <SelectItem value="OUTRO">{DOC_TYPE_LABELS.OUTRO}</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        {label}
+                        {entry.confidence ? ` · ${Math.round(entry.confidence * 100)}%` : ''}
+                      </Badge>
                     </div>
                   )}
 
@@ -457,66 +459,8 @@ function ClassifiedUploadArea({
           onSizeReject={onSizeReject}
           onSizeWarn={onSizeWarn}
           multiple
-          label="Clique ou arraste os documentos obrigatorios. Pode enviar varias paginas do mesmo documento."
+          label="Arraste todos os documentos aqui. Pode enviar tudo de uma vez (PDF/JPG/PNG)."
         />
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================================
-// Multi Upload Card (for optional docs)
-// ============================================================================
-
-function MultiUploadCard({
-  icon,
-  title,
-  description,
-  onFileAdd,
-  onFileRemove,
-  onReject,
-  onSizeReject,
-  onSizeWarn,
-  selectedFiles,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  onFileAdd: (files: File[]) => void;
-  onFileRemove: (index: number) => void;
-  onReject?: (rejectedNames: string[]) => void;
-  onSizeReject?: (rejectedNames: string[]) => void;
-  onSizeWarn?: (warnedNames: string[]) => void;
-  selectedFiles: File[];
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center gap-4">
-          <div className="bg-secondary p-3 rounded-full">{icon}</div>
-          <div>
-            <CardTitle>{title}</CardTitle>
-            {description && <CardDescription>{description}</CardDescription>}
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid w-full items-center gap-1.5">
-          {selectedFiles.length > 0 && (
-            <div className="space-y-2">
-              {selectedFiles.map((file, index) => (
-                <div key={`${file.name}-${index}`} className="flex items-center gap-3 p-3 bg-muted/50 border border-border rounded-lg">
-                  <FileUp className="h-5 w-5 text-primary shrink-0" />
-                  <p className="text-sm text-foreground flex-1 truncate">{file.name}</p>
-                  <Button variant="ghost" size="sm" type="button" className="h-7 w-7 p-0" onClick={() => onFileRemove(index)}>
-                    <X className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-          <FileUploadButton onFileSelect={onFileAdd} onReject={onReject} onSizeReject={onSizeReject} onSizeWarn={onSizeWarn} multiple />
-        </div>
       </CardContent>
     </Card>
   );
@@ -528,11 +472,11 @@ function MultiUploadCard({
 
 export default function NewRequestPage() {
   const [classifiedFiles, setClassifiedFiles] = useState<ClassifiedFile[]>([]);
-  const [outrosFiles, setOutrosFiles] = useState<File[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { firestore, storage, user } = useFirebase();
+  const authFetch = useAuthFetch();
   const { toast } = useToast();
 
   // ── Order linking ─────────────────────────────────────────────────────
@@ -576,7 +520,7 @@ export default function NewRequestPage() {
   const isAnyClassifying = classifiedFiles.some(f => f.isClassifying);
   const coveredTypes = new Set(
     classifiedFiles
-      .map(f => f.userOverride || f.classifiedType)
+      .map(f => f.classifiedType)
       .filter((t): t is ClassificationType => t !== null && t !== 'OUTRO')
   );
   const allRequiredCovered = effectiveRequiredTypes.every(t => coveredTypes.has(t));
@@ -647,9 +591,8 @@ export default function NewRequestPage() {
       filesToClassify.map(async (file) => {
         try {
           const dataUrl = await fileToDataUrl(file);
-          const response = await fetch(ANVISA_API_ROUTES.classifyDocument, {
+          const response = await authFetch(ANVISA_API_ROUTES.classifyDocument, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileDataUrl: dataUrl,
               contentType: effectiveMimeType(file),
@@ -679,7 +622,13 @@ export default function NewRequestPage() {
           setClassifiedFiles(prev =>
             prev.map(entry =>
               entry.file === file
-                ? { ...entry, isClassifying: false }
+                ? {
+                    ...entry,
+                    classifiedType: 'OUTRO',
+                    confidence: 0,
+                    reasoning: 'Nao foi possivel identificar o tipo automaticamente. Enviaremos como "Outro".',
+                    isClassifying: false,
+                  }
                 : entry
             )
           );
@@ -692,35 +641,15 @@ export default function NewRequestPage() {
     setClassifiedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleTypeOverride = (index: number, type: ClassificationType) => {
-    setClassifiedFiles(prev =>
-      prev.map((entry, i) =>
-        i === index ? { ...entry, userOverride: type } : entry
-      )
-    );
-  };
-
-  // --------------------------------
-  // Handlers for optional files
-  // --------------------------------
-
-  const handleOutrosFileAdd = (files: File[]) => {
-    setOutrosFiles(prev => [...prev, ...files]);
-  };
-
-  const handleOutrosFileRemove = (index: number) => {
-    setOutrosFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
   // --------------------------------
   // Submit
   // --------------------------------
 
-  const handleProcessDocuments = async (initialStatus: AnvisaRequestStatus = 'PENDENTE') => {
+  const handleProcessDocuments = async (initialStatus: AnvisaRequestStatus = 'RASCUNHO') => {
     // Build type -> files map from classified files (supports multiple files per type)
     const typeFilesMap = new Map<AnvisaDocumentType, File[]>();
     for (const entry of classifiedFiles) {
-      const effectiveType = entry.userOverride || entry.classifiedType;
+      const effectiveType = entry.classifiedType;
       if (effectiveType && effectiveType !== 'OUTRO') {
         const appType = effectiveType as AnvisaDocumentType;
         const existing = typeFilesMap.get(appType) || [];
@@ -822,8 +751,12 @@ export default function NewRequestPage() {
         }
       }
 
-      // Prepare "outros" documents
-      for (const file of outrosFiles) {
+      // Prepare "outros" documents (everything that could not be classified as required)
+      const outrosFilesForUpload = classifiedFiles
+        .filter((f) => f.classifiedType === 'OUTRO' || f.classifiedType === null)
+        .map((f) => f.file);
+
+      for (const file of outrosFilesForUpload) {
         const docId = doc(collection(firestore, 'id_generator')).id;
         const storagePath = `${ANVISA_COLLECTIONS.requests}/${newRequestId}/PROCURACAO/${file.name}`;
         docIds.procuracaoDocumentIds.push(docId);
@@ -898,8 +831,9 @@ export default function NewRequestPage() {
 
       await Promise.all(
         subdocEntries.map(async (entry) => {
+          const compressed = await compressImage(entry.file);
           const storageRef = ref(storage, entry.storagePath);
-          await uploadBytes(storageRef, entry.file);
+          await uploadBytes(storageRef, compressed);
         })
       );
 
@@ -911,12 +845,12 @@ export default function NewRequestPage() {
       });
 
       router.push(ANVISA_ROUTES.requestDetail(newRequestId));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating request: ', error);
       toast({
         variant: 'destructive',
-        title: 'Erro ao criar solicitacao',
-        description: error.message || 'Ocorreu um problema ao processar sua solicitacao. Tente novamente.',
+        title: 'Erro ao criar solicitação',
+        description: friendlyError(error, 'Ocorreu um problema ao processar sua solicitação. Tente novamente.'),
       });
     } finally {
       setIsLoading(false);
@@ -959,29 +893,18 @@ export default function NewRequestPage() {
         <CardContent className="grid gap-6">
           <ClassifiedUploadArea
             classifiedFiles={classifiedFiles}
+            requiredTypes={effectiveRequiredTypes}
             onFilesAdd={handleRequiredFilesAdd}
             onFileRemove={handleRequiredFileRemove}
-            onTypeOverride={handleTypeOverride}
             onReject={handleFileReject}
             onSizeReject={handleSizeReject}
             onSizeWarn={handleSizeWarn}
-          />
-          <MultiUploadCard
-            icon={<FileUp className="h-6 w-6 text-muted-foreground" />}
-            title="Outros Documentos (Opcional)"
-            description=""
-            onFileAdd={handleOutrosFileAdd}
-            onFileRemove={handleOutrosFileRemove}
-            onReject={handleFileReject}
-            onSizeReject={handleSizeReject}
-            onSizeWarn={handleSizeWarn}
-            selectedFiles={outrosFiles}
           />
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
-          <Link href={ANVISA_ROUTES.dashboard} passHref>
-            <Button variant="outline" disabled={isLoading}>Cancelar</Button>
-          </Link>
+          <Button variant="outline" disabled={isLoading} asChild>
+            <Link href={ANVISA_ROUTES.dashboard}>Cancelar</Link>
+          </Button>
           <Button
             onClick={() => handleProcessDocuments('EM_AUTOMACAO')}
             disabled={!canSubmit}

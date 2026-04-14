@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
+import { friendlyError } from '@/lib/friendly-error';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
@@ -23,6 +24,16 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Table,
   TableBody,
   TableCell,
@@ -31,6 +42,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
+import { exportToCsv } from '@/lib/export-csv';
+import { Download } from 'lucide-react';
 import type {
   Order,
   OrderCustomer,
@@ -293,10 +306,16 @@ export default function ControlePage() {
   // Enriched rows
   const [rows, setRows] = useState<ControleRow[]>([]);
   const [enriching, setEnriching] = useState(false);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
 
   // Pagination
-  const PAGE_SIZE = 25;
+  const PAGE_SIZE_OPTIONS = [30, 50, 100, 'all'] as const;
+  type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number];
+  const [pageSizeOption, setPageSizeOption] = useState<PageSizeOption>(30);
   const [currentPage, setCurrentPage] = useState(0);
+  const [showAllWarning, setShowAllWarning] = useState(false);
+
+  const PAGE_SIZE = pageSizeOption === 'all' ? Infinity : pageSizeOption;
 
   // Load subcollections for each order
   useEffect(() => {
@@ -312,30 +331,52 @@ export default function ControlePage() {
 
     let cancelled = false;
     setEnriching(true);
+    setEnrichError(null);
 
     async function loadDetails() {
-      const details = await Promise.all(
-        orders!.map(async (order) => {
-          const [customers, reps, doctors, products, paymentLinks, shippings] =
-            await Promise.all([
-              getOrderSubcollectionDocs<OrderCustomer>(firestore!, order.id, 'customer'),
-              getOrderSubcollectionDocs<OrderRepresentative>(firestore!, order.id, 'representative'),
-              getOrderSubcollectionDocs<OrderDoctor>(firestore!, order.id, 'doctor'),
-              getOrderSubcollectionDocs<OrderProduct>(firestore!, order.id, 'products'),
-              getOrderSubcollectionDocs<PaymentLink>(firestore!, order.id, 'paymentLinks'),
-              getOrderSubcollectionDocs<OrderShipping>(firestore!, order.id, 'shipping'),
-            ]);
-          return {
-            order,
-            customer: customers[0] ?? null,
-            rep: reps[0] ?? null,
-            doctor: doctors[0] ?? null,
-            products,
-            paymentLink: paymentLinks[0] ?? null,
-            shipping: shippings[0] ?? null,
-          };
-        }),
-      );
+      // Process orders in batches of 10 to avoid overwhelming Firestore
+      const BATCH_SIZE = 10;
+      const allDetails: {
+        order: Order;
+        customer: OrderCustomer | null;
+        rep: OrderRepresentative | null;
+        doctor: OrderDoctor | null;
+        products: OrderProduct[];
+        paymentLink: PaymentLink | null;
+        shipping: OrderShipping | null;
+      }[] = [];
+
+      for (let i = 0; i < orders!.length; i += BATCH_SIZE) {
+        if (cancelled) return;
+        const batch = orders!.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (order) => {
+            const [customers, reps, doctors, products, paymentLinks, shippings] =
+              await Promise.all([
+                getOrderSubcollectionDocs<OrderCustomer>(firestore!, order.id, 'customer'),
+                getOrderSubcollectionDocs<OrderRepresentative>(firestore!, order.id, 'representative'),
+                getOrderSubcollectionDocs<OrderDoctor>(firestore!, order.id, 'doctor'),
+                getOrderSubcollectionDocs<OrderProduct>(firestore!, order.id, 'products'),
+                getOrderSubcollectionDocs<PaymentLink>(firestore!, order.id, 'paymentLinks'),
+                getOrderSubcollectionDocs<OrderShipping>(firestore!, order.id, 'shipping'),
+              ]);
+            return {
+              order,
+              customer: customers[0] ?? null,
+              rep: reps[0] ?? null,
+              doctor: doctors[0] ?? null,
+              products,
+              paymentLink: paymentLinks[0] ?? null,
+              shipping: shippings[0] ?? null,
+            };
+          }),
+        );
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled') allDetails.push(r.value);
+        }
+      }
+
+      const details = allDetails;
 
       if (cancelled) return;
 
@@ -436,7 +477,10 @@ export default function ControlePage() {
 
     loadDetails().catch((err) => {
       console.error('[Controle] Failed to load order details:', err);
-      if (!cancelled) setEnriching(false);
+      if (!cancelled) {
+        setEnriching(false);
+        setEnrichError('Falha ao carregar detalhes dos pedidos. Recarregue a página para tentar novamente.');
+      }
     });
 
     return () => {
@@ -457,7 +501,7 @@ export default function ControlePage() {
         await updateOrder(firestore, orderId, {
           [field]: value,
           updatedById: user.uid,
-        } as Partial<Order>);
+        } as Partial<Order>, user.uid);
         // Optimistic: update local rows
         setRows((prev) =>
           prev.map((r) =>
@@ -468,7 +512,7 @@ export default function ControlePage() {
         console.error('[Controle] Update failed:', err);
         toast({
           title: 'Erro ao atualizar campo',
-          description: err instanceof Error ? err.message : 'Erro desconhecido',
+          description: friendlyError(err),
           variant: 'destructive',
         });
       }
@@ -485,12 +529,47 @@ export default function ControlePage() {
 
   const isLoading = ordersLoading || enriching;
 
+  const handleExportCsv = () => {
+    const csvCols = [
+      { key: 'representante', header: 'Representante' },
+      { key: 'dataOrcamento', header: 'Data Orçamento' },
+      { key: 'dataVenda', header: 'Data Venda' },
+      { key: 'invoiceGlobalPays', header: 'Nº Invoice (Global Pays)' },
+      { key: 'invoiceCorrecao', header: 'Nº Invoice (Correção)' },
+      ...PRODUCT_COLUMNS.map((c) => ({
+        key: c.key,
+        header: c.label,
+        render: (r: ControleRow) => String(r.productQtys[c.key] || 0),
+      })),
+      { key: 'meioPagamento', header: 'Meio de Pagamento' },
+      { key: 'priceListUSD', header: 'Price List (USD)', render: (r: ControleRow) => String(r.priceListUSD) },
+      { key: 'valorLiquido', header: 'Valor Líquido R$', render: (r: ControleRow) => String(r.valorLiquido) },
+      { key: 'valorLiquidoMenosFrete', header: 'Valor Líquido (-Frete) R$', render: (r: ControleRow) => String(r.valorLiquidoMenosFrete) },
+      { key: 'usdbrl', header: 'USDBRL', render: (r: ControleRow) => r.usdbrl ? r.usdbrl.toFixed(4) : '' },
+      { key: 'statusOrcamento', header: 'Status do Orçamento' },
+      { key: 'lead', header: 'Lead' },
+      { key: 'cliente', header: 'Cliente' },
+      { key: 'telefone', header: 'Telefone' },
+      { key: 'email', header: 'E-mail' },
+      { key: 'medico', header: 'Médico' },
+      { key: 'crmCroRqe', header: 'CRM/CRO/RQE' },
+      { key: 'formaEnvio', header: 'Forma de Envio' },
+      { key: 'endereco', header: 'Endereço' },
+      { key: 'cep', header: 'CEP' },
+      { key: 'lote', header: 'Lote' },
+      { key: 'dataEnvio', header: 'Data do Envio' },
+      { key: 'previsaoEntrega', header: 'Previsão de Entrega' },
+      { key: 'codigoRastreio', header: 'Código de Rastreio' },
+      { key: 'statusEnvio', header: 'Status do Envio' },
+    ];
+    exportToCsv(rows, csvCols, 'controle-pedidos');
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Controle de Pedidos"
         description="Visão geral com edição inline de todos os pedidos"
-        action={isAdmin ? { label: 'Importar CSV', href: '/controle/importar' } : undefined}
       />
 
       {/* ── Date filter ──────────────────────────────────────────────── */}
@@ -532,10 +611,26 @@ export default function ControlePage() {
                 <Skeleton key={i} className="h-8 w-full" />
               ))}
             </div>
+          ) : enrichError ? (
+            <div className="p-6 text-center space-y-2">
+              <p className="text-sm text-destructive font-medium">{enrichError}</p>
+              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                Recarregar
+              </Button>
+            </div>
           ) : rows.length === 0 ? (
-            <p className="p-6 text-center text-muted-foreground">
-              Nenhum pedido encontrado no período selecionado.
-            </p>
+            <div className="flex flex-col items-center gap-3 p-6 text-center">
+              <p className="text-muted-foreground">
+                Nenhum pedido encontrado no período selecionado.
+              </p>
+              <button
+                type="button"
+                onClick={() => { setDateFrom(startOfMonth); setDateTo(todayStr); }}
+                className="text-xs text-primary underline hover:text-primary/80"
+              >
+                Limpar filtros
+              </button>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table className="text-xs">
@@ -686,14 +781,8 @@ export default function ControlePage() {
                       {/* CRM / CRO / RQE */}
                       <TableCell>{row.crmCroRqe}</TableCell>
 
-                      {/* Forma de envio — editable */}
-                      <TableCell>
-                        <InlineSelect
-                          value={row.formaEnvio}
-                          options={FORMA_ENVIO_OPTIONS}
-                          onChange={(v) => handleFieldChange(row.id, 'formaEnvio', v)}
-                        />
-                      </TableCell>
+                      {/* Forma de envio — read-only */}
+                      <TableCell>{row.formaEnvio || '—'}</TableCell>
 
                       {/* Endereço */}
                       <TableCell className="max-w-[250px] truncate" title={row.endereco}>
@@ -711,21 +800,11 @@ export default function ControlePage() {
                         />
                       </TableCell>
 
-                      {/* Data do Envio — editable */}
-                      <TableCell>
-                        <InlineDateInput
-                          value={row.dataEnvio}
-                          onChange={(v) => handleFieldChange(row.id, 'dataEnvio', v)}
-                        />
-                      </TableCell>
+                      {/* Data do Envio — read-only */}
+                      <TableCell>{row.dataEnvio || '—'}</TableCell>
 
-                      {/* Previsão de Entrega — editable */}
-                      <TableCell>
-                        <InlineDateInput
-                          value={row.previsaoEntrega}
-                          onChange={(v) => handleFieldChange(row.id, 'previsaoEntrega', v)}
-                        />
-                      </TableCell>
+                      {/* Previsão de Entrega — read-only */}
+                      <TableCell>{row.previsaoEntrega || '—'}</TableCell>
 
                       {/* Código de Rastreio — editable */}
                       <TableCell>
@@ -752,13 +831,43 @@ export default function ControlePage() {
           )}
 
           {/* ── Pagination ─────────────────────────────────────────── */}
-          {rows.length > PAGE_SIZE && (
-            <div className="flex items-center justify-between border-t px-4 py-3">
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <div className="flex items-center gap-3">
               <p className="text-xs text-muted-foreground">
-                Mostrando {currentPage * PAGE_SIZE + 1} a{' '}
-                {Math.min((currentPage + 1) * PAGE_SIZE, rows.length)} de{' '}
-                {rows.length} pedidos
+                {pageSizeOption === 'all'
+                  ? `Mostrando todos os ${rows.length} pedidos`
+                  : `Mostrando ${currentPage * PAGE_SIZE + 1} a ${Math.min((currentPage + 1) * PAGE_SIZE, rows.length)} de ${rows.length} pedidos`}
               </p>
+              <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1.5" disabled={rows.length === 0}>
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </Button>
+              <div className="flex items-center gap-1.5">
+                <Label className="text-xs text-muted-foreground">Exibir:</Label>
+                <Select
+                  value={String(pageSizeOption)}
+                  onValueChange={(v) => {
+                    if (v === 'all') {
+                      setShowAllWarning(true);
+                    } else {
+                      setPageSizeOption(Number(v) as 30 | 50 | 100);
+                      setCurrentPage(0);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[80px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30">30</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                    <SelectItem value="all">Todos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {pageSizeOption !== 'all' && rows.length > PAGE_SIZE && (
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -782,8 +891,32 @@ export default function ControlePage() {
                   Próximo
                 </Button>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* ── "View all" warning dialog ──────────────────────────── */}
+          <AlertDialog open={showAllWarning} onOpenChange={setShowAllWarning}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Exibir todos os pedidos?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Isso pode demorar para carregar se houver muitos pedidos ({rows.length} encontrados).
+                  Tem certeza que deseja exibir todos de uma vez?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setPageSizeOption('all');
+                    setCurrentPage(0);
+                  }}
+                >
+                  Sim, exibir todos
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </CardContent>
       </Card>
     </div>

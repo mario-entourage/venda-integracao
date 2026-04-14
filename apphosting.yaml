@@ -51,3 +51,13 @@ env:
     value: "https://sandbox.tristarexpress.com/v1/"
   - variable: TRISTAR_API_KEY
     secret: TRISTAR_API_KEY
+
+  # Resend (email notifications for payment + shipping)
+  - variable: RESEND_API_KEY
+    secret: RESEND_API_KEY
+
+  # Webhook authentication
+  - variable: GLOBALPAY_WEBHOOK_SECRET
+    secret: GLOBALPAY_WEBHOOK_SECRET
+  - variable: ZAPSIGN_WEBHOOK_TOKEN
+    secret: ZAPSIGN_WEBHOOK_TOKEN

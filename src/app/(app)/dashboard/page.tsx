@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
-import { collection, collectionGroup, query, where } from 'firebase/firestore';
+import { collection, collectionGroup, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import { getOrdersQuery, getOrdersByCreatorQuery } from '@/services/orders.service';
@@ -11,20 +11,98 @@ import { OrderStatus } from '@/types/enums';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useDashboardLang } from '@/contexts/dashboard-lang-context';
 import type { Order } from '@/types';
 import type { Prescription } from '@/types/prescription';
 import type { Payment } from '@/types/payment';
 import type { ShippingRecord } from '@/types/shipping';
+
+// ─── translations ────────────────────────────────────────────────────────────
+
+type Lang = 'pt' | 'en';
+
+const translations = {
+  pt: {
+    dashboard: 'Dashboard',
+    revenueCurrentMonth: 'Faturamento (Mês Atual)',
+    revenuePreviousMonth: 'Faturamento (Mês Anterior)',
+    pendingOrders: 'Pedidos Pendentes',
+    activeUsers: 'Usuários Ativos',
+    activeOrders: 'Pedidos Ativos',
+    awaitingPayment: 'Aguardando Pagamento',
+    delivered: 'Entregues',
+    ordersByStatus: 'Pedidos por Status',
+    recentOrders: 'Pedidos Recentes',
+    thId: 'ID',
+    thStatus: 'Status',
+    thValue: 'Valor',
+    thDate: 'Data',
+    emptyOrders: 'Nenhum pedido encontrado.',
+    emptyOrdersUser: 'Nenhum pedido encontrado. Inicie uma nova venda em Vendas.',
+    statusPending: 'Pendente',
+    statusProcessing: 'Em andamento',
+    statusAwaitingDocs: 'Aguard. docs',
+    statusDocsComplete: 'Docs OK',
+    statusAwaitingPayment: 'Aguard. pagto',
+    statusPaid: 'Pago',
+    statusShipped: 'Enviado',
+    statusDelivered: 'Entregue',
+    statusCancelled: 'Cancelado',
+  },
+  en: {
+    dashboard: 'Dashboard',
+    revenueCurrentMonth: 'Revenue (Current Month)',
+    revenuePreviousMonth: 'Revenue (Previous Month)',
+    pendingOrders: 'Pending Orders',
+    activeUsers: 'Active Users',
+    activeOrders: 'Active Orders',
+    awaitingPayment: 'Awaiting Payment',
+    delivered: 'Delivered',
+    ordersByStatus: 'Orders by Status',
+    recentOrders: 'Recent Orders',
+    thId: 'ID',
+    thStatus: 'Status',
+    thValue: 'Amount',
+    thDate: 'Date',
+    emptyOrders: 'No orders found.',
+    emptyOrdersUser: 'No orders found. Start a new sale in Sales.',
+    statusPending: 'Pending',
+    statusProcessing: 'Processing',
+    statusAwaitingDocs: 'Awaiting Docs',
+    statusDocsComplete: 'Docs OK',
+    statusAwaitingPayment: 'Awaiting Payment',
+    statusPaid: 'Paid',
+    statusShipped: 'Shipped',
+    statusDelivered: 'Delivered',
+    statusCancelled: 'Cancelled',
+  },
+} as const;
+
+type Translations = typeof translations[Lang];
+
+function getStatusConfig(t: Translations): Record<string, { label: string; className: string }> {
+  return {
+    pending:            { label: t.statusPending,         className: 'border-slate-300 text-slate-600 bg-slate-50' },
+    processing:         { label: t.statusProcessing,      className: 'border-blue-300 text-blue-700 bg-blue-50' },
+    awaiting_documents: { label: t.statusAwaitingDocs,    className: 'border-amber-300 text-amber-700 bg-amber-50' },
+    documents_complete: { label: t.statusDocsComplete,    className: 'border-teal-300 text-teal-700 bg-teal-50' },
+    awaiting_payment:   { label: t.statusAwaitingPayment, className: 'border-orange-300 text-orange-700 bg-orange-50' },
+    paid:               { label: t.statusPaid,            className: 'border-green-300 text-green-700 bg-green-50' },
+    shipped:            { label: t.statusShipped,         className: 'border-purple-300 text-purple-700 bg-purple-50' },
+    delivered:          { label: t.statusDelivered,       className: 'border-green-400 text-green-800 bg-green-100' },
+    cancelled:          { label: t.statusCancelled,       className: 'border-red-300 text-red-600 bg-red-50' },
+  };
+}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
-const fmtDate = (ts: unknown) => {
+const fmtDate = (ts: unknown, lang: Lang = 'pt') => {
   const t = ts as { seconds?: number } | null | undefined;
   if (!t?.seconds) return '—';
-  return new Date(t.seconds * 1000).toLocaleDateString('pt-BR');
+  return new Date(t.seconds * 1000).toLocaleDateString(lang === 'en' ? 'en-US' : 'pt-BR');
 };
 
 const REVENUE_STATUSES = new Set<string>([
@@ -68,20 +146,6 @@ function tsInCurrentMonth(ts: unknown): boolean {
   const now = new Date();
   return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
 }
-
-// ─── status config ────────────────────────────────────────────────────────────
-
-const ORDER_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending:            { label: 'Pendente',       className: 'border-slate-300 text-slate-600 bg-slate-50' },
-  processing:         { label: 'Em andamento',   className: 'border-blue-300 text-blue-700 bg-blue-50' },
-  awaiting_documents: { label: 'Aguard. docs',   className: 'border-amber-300 text-amber-700 bg-amber-50' },
-  documents_complete: { label: 'Docs OK',        className: 'border-teal-300 text-teal-700 bg-teal-50' },
-  awaiting_payment:   { label: 'Aguard. pagto',  className: 'border-orange-300 text-orange-700 bg-orange-50' },
-  paid:               { label: 'Pago',           className: 'border-green-300 text-green-700 bg-green-50' },
-  shipped:            { label: 'Enviado',        className: 'border-purple-300 text-purple-700 bg-purple-50' },
-  delivered:          { label: 'Entregue',       className: 'border-green-400 text-green-800 bg-green-100' },
-  cancelled:          { label: 'Cancelado',      className: 'border-red-300 text-red-600 bg-red-50' },
-};
 
 // ─── sub-components ──────────────────────────────────────────────────────────
 
@@ -141,16 +205,22 @@ function StatusCountCard({
 function RecentOrdersTable({
   orders,
   loading,
-  emptyText = 'Nenhum pedido encontrado.',
+  emptyText,
+  t,
+  lang,
 }: {
   orders: Order[];
   loading: boolean;
   emptyText?: string;
+  t: Translations;
+  lang: Lang;
 }) {
+  const statusConfig = useMemo(() => getStatusConfig(t), [t]);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Pedidos Recentes</CardTitle>
+        <CardTitle className="text-base">{t.recentOrders}</CardTitle>
       </CardHeader>
       <CardContent className="px-0">
         {loading ? (
@@ -160,21 +230,21 @@ function RecentOrdersTable({
             ))}
           </div>
         ) : orders.length === 0 ? (
-          <p className="px-6 text-sm text-muted-foreground">{emptyText}</p>
+          <p className="px-6 text-sm text-muted-foreground">{emptyText ?? t.emptyOrders}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b">
-                  <th className="pb-2 pl-6 text-left font-medium text-muted-foreground w-28">ID</th>
-                  <th className="pb-2 text-left font-medium text-muted-foreground">Status</th>
-                  <th className="pb-2 text-right font-medium text-muted-foreground w-32">Valor</th>
-                  <th className="pb-2 pr-6 text-right font-medium text-muted-foreground w-28">Data</th>
+                  <th className="pb-2 pl-6 text-left font-medium text-muted-foreground w-28">{t.thId}</th>
+                  <th className="pb-2 text-left font-medium text-muted-foreground">{t.thStatus}</th>
+                  <th className="pb-2 text-right font-medium text-muted-foreground w-32">{t.thValue}</th>
+                  <th className="pb-2 pr-6 text-right font-medium text-muted-foreground w-28">{t.thDate}</th>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order) => {
-                  const cfg = ORDER_STATUS_CONFIG[order.status] ?? ORDER_STATUS_CONFIG.pending;
+                  const cfg = statusConfig[order.status] ?? statusConfig.pending;
                   return (
                     <tr key={order.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="py-2.5 pl-6">
@@ -192,7 +262,7 @@ function RecentOrdersTable({
                       </td>
                       <td className="py-2.5 text-right font-medium">{fmtBRL(order.amount ?? 0)}</td>
                       <td className="py-2.5 pr-6 text-right text-muted-foreground">
-                        {fmtDate(order.createdAt)}
+                        {fmtDate(order.createdAt, lang)}
                       </td>
                     </tr>
                   );
@@ -208,7 +278,7 @@ function RecentOrdersTable({
 
 // ─── admin dashboard ──────────────────────────────────────────────────────────
 
-function AdminDashboard() {
+function AdminDashboard({ t, lang }: { t: Translations; lang: Lang }) {
   const { firestore } = useFirebase();
 
   // All orders (real-time)
@@ -230,27 +300,34 @@ function AdminDashboard() {
     useCollection<{ id: string }>(usersQ);
 
   // ── Auxiliary queries for current-month filtering ──────────────────────────
+  // Only load data from start of last month onward (dashboard only shows this + last month)
+  const dateFloor = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1, 1);
+    d.setHours(0, 0, 0, 0);
+    return Timestamp.fromDate(d);
+  }, []);
 
-  // Prescriptions (top-level collection, linked to orders via orderId)
+  // Prescriptions (top-level collection — filtered to recent)
   const prescriptionsQ = useMemoFirebase(
-    () => (firestore ? query(collection(firestore, 'prescriptions')) : null),
-    [firestore],
+    () => (firestore ? query(collection(firestore, 'prescriptions'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allPrescriptions, isLoading: prescriptionsLoading } =
     useCollection<Prescription>(prescriptionsQ);
 
-  // Payments (subcollection group across all orders)
+  // Payments (subcollection group — filtered to recent)
   const paymentsGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'payments') : null),
-    [firestore],
+    () => (firestore ? query(collectionGroup(firestore, 'payments'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allPayments, isLoading: paymentsLoading } =
     useCollection<Payment>(paymentsGroupQ);
 
-  // Shipping records (subcollection group across all orders)
+  // Shipping records (subcollection group — filtered to recent)
   const shippingGroupQ = useMemoFirebase(
-    () => (firestore ? collectionGroup(firestore, 'shipping') : null),
-    [firestore],
+    () => (firestore ? query(collectionGroup(firestore, 'shipping'), where('createdAt', '>=', dateFloor), orderBy('createdAt', 'desc'), limit(200)) : null),
+    [firestore, dateFloor],
   );
   const { data: allShipping, isLoading: shippingLoading } =
     useCollection<ShippingRecord>(shippingGroupQ);
@@ -356,16 +433,19 @@ function AdminDashboard() {
 
   const recentOrders = useMemo(() => activeOrders.slice(0, 5), [activeOrders]);
 
+  const locale = lang === 'en' ? 'en-US' : 'pt-BR';
   const now = new Date();
-  const thisMonthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const thisMonthName = now.toLocaleString(locale, { month: 'long', year: 'numeric' });
   const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthName = lastMonthDate.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const lastMonthName = lastMonthDate.toLocaleString(locale, { month: 'long', year: 'numeric' });
 
   // Combined loading state for the status section
   const statusSectionLoading = ordersLoading || prescriptionsLoading || paymentsLoading || shippingLoading;
 
+  const statusConfig = useMemo(() => getStatusConfig(t), [t]);
+
   // Only show statuses that have at least one order
-  const visibleStatuses = Object.entries(ORDER_STATUS_CONFIG).filter(
+  const visibleStatuses = Object.entries(statusConfig).filter(
     ([status]) => (statusCounts[status] ?? 0) > 0,
   );
 
@@ -375,24 +455,24 @@ function AdminDashboard() {
       {/* ── Row 1: Key metrics ── */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Faturamento (Mês Atual)"
+          title={t.revenueCurrentMonth}
           value={fmtBRL(thisMonthRevenue)}
           sub={thisMonthName}
           loading={ordersLoading}
         />
         <StatCard
-          title="Faturamento (Mês Anterior)"
+          title={t.revenuePreviousMonth}
           value={fmtBRL(lastMonthRevenue)}
           sub={lastMonthName}
           loading={ordersLoading}
         />
         <StatCard
-          title="Pedidos Pendentes"
+          title={t.pendingOrders}
           value={String(pendingCount)}
           loading={ordersLoading}
         />
         <StatCard
-          title="Usuários Ativos"
+          title={t.activeUsers}
           value={String(activeUsers?.length ?? 0)}
           loading={usersLoading}
         />
@@ -402,12 +482,12 @@ function AdminDashboard() {
       {(statusSectionLoading || visibleStatuses.length > 0) && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Pedidos por Status</CardTitle>
+            <CardTitle className="text-base">{t.ordersByStatus}</CardTitle>
           </CardHeader>
           <CardContent>
             {statusSectionLoading ? (
               <div className="grid gap-2 grid-cols-3 sm:grid-cols-5 lg:grid-cols-9">
-                {Object.entries(ORDER_STATUS_CONFIG).map(([status, cfg]) => (
+                {Object.entries(statusConfig).map(([status, cfg]) => (
                   <StatusCountCard
                     key={status}
                     label={cfg.label}
@@ -434,14 +514,14 @@ function AdminDashboard() {
       )}
 
       {/* ── Row 3: Recent orders ── */}
-      <RecentOrdersTable orders={recentOrders} loading={ordersLoading} />
+      <RecentOrdersTable orders={recentOrders} loading={ordersLoading} t={t} lang={lang} />
     </div>
   );
 }
 
 // ─── user dashboard ───────────────────────────────────────────────────────────
 
-function UserDashboard() {
+function UserDashboard({ t, lang }: { t: Translations; lang: Lang }) {
   const { firestore, user } = useFirebase();
 
   const myOrdersQ = useMemoFirebase(
@@ -473,8 +553,9 @@ function UserDashboard() {
 
   const recentOrders = useMemo(() => (myOrders ?? []).slice(0, 5), [myOrders]);
 
+  const locale = lang === 'en' ? 'en-US' : 'pt-BR';
   const now = new Date();
-  const thisMonthName = now.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+  const thisMonthName = now.toLocaleString(locale, { month: 'long', year: 'numeric' });
 
   return (
     <div className="space-y-6">
@@ -482,23 +563,23 @@ function UserDashboard() {
       {/* ── Row 1: My metrics ── */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Pedidos Ativos"
+          title={t.activeOrders}
           value={String(activeOrders.length)}
           loading={isLoading}
         />
         <StatCard
-          title="Aguardando Pagamento"
+          title={t.awaitingPayment}
           value={String(awaitingPayment)}
           loading={isLoading}
         />
         <StatCard
-          title="Faturamento (Mês Atual)"
+          title={t.revenueCurrentMonth}
           value={fmtBRL(thisMonthRevenue)}
           sub={thisMonthName}
           loading={isLoading}
         />
         <StatCard
-          title="Entregues"
+          title={t.delivered}
           value={String(delivered)}
           loading={isLoading}
         />
@@ -508,7 +589,9 @@ function UserDashboard() {
       <RecentOrdersTable
         orders={recentOrders}
         loading={isLoading}
-        emptyText="Nenhum pedido encontrado. Inicie uma nova venda em Vendas."
+        emptyText={t.emptyOrdersUser}
+        t={t}
+        lang={lang}
       />
     </div>
   );
@@ -518,11 +601,29 @@ function UserDashboard() {
 
 export default function DashboardPage() {
   const { isAdmin } = useFirebase();
+  const ctx = useDashboardLang();
+  const lang: Lang = ctx?.lang ?? 'pt';
+  const t = translations[lang];
+
+  const buildSha = process.env.NEXT_PUBLIC_BUILD_SHA;
+  const buildDate = process.env.NEXT_PUBLIC_BUILD_DATE;
+  const buildMsg = process.env.NEXT_PUBLIC_BUILD_MSG;
+  const locale = lang === 'en' ? 'en-US' : 'pt-BR';
+  const buildDateFmt = buildDate
+    ? new Date(buildDate).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null;
 
   return (
     <div className="space-y-6">
-      <h1 className="font-headline text-2xl font-bold">Dashboard</h1>
-      {isAdmin ? <AdminDashboard /> : <UserDashboard />}
+      <div className="flex items-center justify-between">
+        <h1 className="font-headline text-2xl font-bold">{t.dashboard}</h1>
+        {buildSha && (
+          <span className="text-xs text-muted-foreground font-mono" title={buildMsg || undefined}>
+            Build {buildSha} {buildDateFmt ? `\u00b7 ${buildDateFmt}` : ''}
+          </span>
+        )}
+      </div>
+      {isAdmin ? <AdminDashboard t={t} lang={lang} /> : <UserDashboard t={t} lang={lang} />}
     </div>
   );
 }

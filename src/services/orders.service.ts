@@ -1,12 +1,12 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, writeBatch,
+  collection, doc, updateDoc, getDoc, getDocs,
+  query, where, orderBy, limit, serverTimestamp, writeBatch,
   Firestore, Query, Timestamp,
 } from 'firebase/firestore';
 import type {
-  Order, OrderCustomer, OrderRepresentative, OrderDoctor,
-  OrderProduct, OrderShipping, ShippingAddress,
+  Order, ShippingAddress,
 } from '@/types';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -65,12 +65,18 @@ export interface CreateOrderData {
   type?: string;
   shippingAddress?: ShippingAddress;
   prescriptionDocId?: string;
+  /** SHA-256 hex hash of the prescription file (for duplicate detection) */
+  prescriptionHash?: string;
+  /** Date printed on the prescription (YYYY-MM-DD). Expires 6 months after this date. */
+  prescriptionDate?: string;
   allowedPaymentMethods?: {
     creditCard: boolean;
     debitCard: boolean;
     boleto: boolean;
     pix: boolean;
   };
+  /** FK → clients collection. */
+  clientId?: string;
 }
 
 /**
@@ -123,7 +129,10 @@ export async function createOrder(
     documentsComplete: false,
     tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',
+    prescriptionHash: orderData.prescriptionHash || '',
+    prescriptionDate: orderData.prescriptionDate || '',
     ...(orderData.allowedPaymentMethods && { allowedPaymentMethods: orderData.allowedPaymentMethods }),
+    ...(orderData.clientId && { clientId: orderData.clientId }),
     createdById,
     updatedById: createdById,
     createdAt: serverTimestamp(),
@@ -189,6 +198,18 @@ export async function createOrder(
 
   // Phase 4 -- Commit everything atomically.
   await batch.commit();
+  await writeAuditLog(db, {
+    action: 'create',
+    collection: 'orders',
+    documentId: orderId,
+    performedById: createdById,
+    changes: {
+      amount,
+      currency: orderData.currency || 'BRL',
+      customerName: orderData.customer.name,
+      products: orderData.products.map((p) => `${p.productName} x${p.quantity}`),
+    },
+  });
   return orderId;
 }
 
@@ -211,6 +232,7 @@ export async function updateOrderStatus(
     updatedById,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update_status', collection: 'orders', documentId: orderId, performedById: updatedById, changes: { status } });
 }
 
 /**
@@ -220,12 +242,14 @@ export async function updateOrder(
   db: Firestore,
   orderId: string,
   data: Partial<Omit<Order, 'id' | 'createdAt' | 'createdById'>>,
+  performedById: string,
 ): Promise<void> {
   const orderRef = getOrderRef(db, orderId);
   await updateDoc(orderRef, {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'orders', documentId: orderId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 // ---------------------------------------------------------------------------
@@ -236,8 +260,8 @@ export async function updateOrder(
  * Build a Firestore query for orders.
  * Optionally filter by status; always ordered by creation date descending.
  */
-export function getOrdersQuery(db: Firestore, status?: string): Query {
-  const constraints = [orderBy('createdAt', 'desc')];
+export function getOrdersQuery(db: Firestore, status?: string, maxResults = 500): Query {
+  const constraints = [orderBy('createdAt', 'desc'), limit(maxResults)];
 
   if (status) {
     return query(
@@ -258,23 +282,26 @@ export function getOrdersByDateRangeQuery(
   db: Firestore,
   from: Date,
   to: Date,
+  maxResults = 500,
 ): Query {
   return query(
     getOrdersRef(db),
     where('createdAt', '>=', Timestamp.fromDate(from)),
     where('createdAt', '<=', Timestamp.fromDate(to)),
     orderBy('createdAt', 'desc'),
+    limit(maxResults),
   );
 }
 
 /**
  * Return orders created by a specific user, ordered by creation date desc.
  */
-export function getOrdersByCreatorQuery(db: Firestore, createdById: string): Query {
+export function getOrdersByCreatorQuery(db: Firestore, createdById: string, maxResults = 500): Query {
   return query(
     getOrdersRef(db),
     where('createdById', '==', createdById),
     orderBy('createdAt', 'desc'),
+    limit(maxResults),
   );
 }
 
@@ -291,6 +318,23 @@ export function getAnvisaEligibleOrdersQuery(db: Firestore): Query {
     where('prescriptionDocId', '!=', ''),
     orderBy('createdAt', 'desc'),
   );
+}
+
+/**
+ * Find an active (non-cancelled, non-soft-deleted) order that has the same
+ * prescription file hash.  Returns the first match, or `null` if none.
+ */
+export async function findActiveOrderByPrescriptionHash(
+  db: Firestore,
+  hash: string,
+): Promise<(Order & { id: string }) | null> {
+  if (!hash) return null;
+  const q = query(getOrdersRef(db), where('prescriptionHash', '==', hash));
+  const snap = await getDocs(q);
+  const match = snap.docs
+    .map((d) => ({ id: d.id, ...d.data() } as Order & { id: string }))
+    .find((o) => o.status !== 'cancelled' && !o.softDeleted);
+  return match ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -330,6 +374,7 @@ export async function updateOrderRepresentative(
   db: Firestore,
   orderId: string,
   representative: { name: string; userId: string },
+  performedById: string,
 ): Promise<void> {
   const repRef = collection(db, 'orders', orderId, 'representative');
   const snap = await getDocs(repRef);
@@ -340,4 +385,5 @@ export async function updateOrderRepresentative(
       updatedAt: serverTimestamp(),
     });
   }
+  await writeAuditLog(db, { action: 'update_representative', collection: 'orders', documentId: orderId, performedById, changes: representative });
 }

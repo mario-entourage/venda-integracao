@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-// Select removed — representante moved to Step 0
+// Select, Label removed — frete/representante moved to Step 0
 import { useFirebase } from '@/firebase/provider';
 import { createPaymentLink } from '@/services/payments.service';
 import { updateOrder } from '@/services/orders.service';
@@ -27,10 +26,9 @@ interface StepPagamentoProps {
   clientEmail: string;
   paymentUrl: string;
   gpOrderId: string;
-  onPaymentGenerated: (paymentUrl: string, gpOrderId: string) => void;
-  /** Frete cost (BRL) */
+  onPaymentGenerated: (paymentUrl: string, gpOrderId: string, invoiceNumber?: string) => void;
+  /** Frete cost (BRL) — set in Step 0, read-only here */
   frete: number;
-  onFreteChange: (value: number) => void;
   /** Allowed payment methods from Step 0 (for display) */
   allowedPaymentMethods: {
     creditCard: boolean;
@@ -44,6 +42,10 @@ interface StepPagamentoProps {
   repUserId?: string;
   /** Rep email for email notifications */
   repEmail?: string;
+  /** Pre-assigned standalone payment invoice (from Step 0) */
+  preAssignedInvoice?: string;
+  /** Pre-assigned standalone payment amount */
+  preAssignedAmount?: number;
 }
 
 // ─── component ───────────────────────────────────────────────────────────────
@@ -61,19 +63,21 @@ export function StepPagamento({
   gpOrderId,
   onPaymentGenerated,
   frete,
-  onFreteChange,
   allowedPaymentMethods,
   repDisplayName,
   repUserId,
   repEmail,
+  preAssignedInvoice,
+  preAssignedAmount,
 }: StepPagamentoProps) {
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [whatsappSent, setWhatsappSent] = useState(false);
-  const [freteInput, setFreteInput] = useState(frete > 0 ? String(frete) : '');
   const hasGenerated = useRef(false);
+
+  const isPreAssigned = !!(preAssignedInvoice && paymentUrl);
 
   const totalWithFrete = orderAmount + frete;
 
@@ -123,14 +127,15 @@ export function StepPagamento({
 
         // Save frete to order document
         if (frete > 0) {
-          await updateOrder(firestore, orderId, { frete });
+          await updateOrder(firestore, orderId, { frete }, user!.uid);
         }
       }
 
-      onPaymentGenerated(result.paymentUrl, result.gpOrderId);
+      onPaymentGenerated(result.paymentUrl, result.gpOrderId, result.invoiceNumber ?? '');
 
       // Notify rep (fire-and-forget)
       if (firestore && repUserId && repEmail) {
+        const tkn = await user?.getIdToken().catch(() => undefined);
         notifyPaymentLinkCreated(firestore, {
           recipientUserId: repUserId,
           recipientEmail: repEmail,
@@ -138,6 +143,7 @@ export function StepPagamento({
           invoiceNumber: result.invoiceNumber,
           amount: totalWithFrete,
           currency,
+          idToken: tkn,
         }).catch(() => {});
       }
     } catch (err) {
@@ -150,12 +156,7 @@ export function StepPagamento({
     }
   };
 
-  // Auto-generate on mount (or when orderId becomes available)
-  useEffect(() => {
-    if (!orderId || paymentUrl || hasGenerated.current) return;
-    generateLink();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, paymentUrl]);
+  // No auto-generation — user sets Frete first, then clicks "Gerar Link".
 
   const handleRetry = () => {
     hasGenerated.current = false;
@@ -219,27 +220,31 @@ export function StepPagamento({
         </CardContent>
       </Card>
 
-      {/* Frete input */}
-      <div className="space-y-2">
-        <Label htmlFor="frete-input" className="text-sm font-semibold">Frete (R$)</Label>
-        <p className="text-xs text-muted-foreground">Deixe em branco ou 0 para não adicionar frete ao link de pagamento.</p>
-        <Input
-          id="frete-input"
-          type="number"
-          min={0}
-          step="0.01"
-          placeholder="0,00"
-          value={freteInput}
-          onChange={(e) => setFreteInput(e.target.value)}
-          onBlur={() => {
-            const parsed = parseFloat(freteInput) || 0;
-            onFreteChange(Math.max(0, parsed));
-            setFreteInput(parsed > 0 ? String(parsed) : '');
-          }}
-          disabled={!!paymentUrl}
-          className="max-w-[200px]"
-        />
-      </div>
+      {/* Pre-assigned standalone payment notice */}
+      {isPreAssigned && (
+        <Card className="border-amber-200 bg-amber-50/60">
+          <CardContent className="pt-5 space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-amber-700 uppercase tracking-wide">
+                Pagamento Avulso Vinculado
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Invoice</span>
+              <span className="font-mono font-medium">{preAssignedInvoice}</span>
+            </div>
+            {preAssignedAmount != null && preAssignedAmount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Valor do pagamento</span>
+                <span className="font-medium">{fmtAmount(preAssignedAmount)}</span>
+              </div>
+            )}
+            <p className="text-xs text-amber-600">
+              Este pedido foi vinculado a um pagamento avulso existente. Nenhum novo link será gerado.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Payment link section */}
       <div className="space-y-3">
@@ -394,10 +399,17 @@ export function StepPagamento({
           </div>
         )}
 
-        {!isGenerating && !paymentUrl && !error && (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            Aguardando geração do link…
-          </p>
+        {!isPreAssigned && !isGenerating && !paymentUrl && !error && (
+          <Button
+            className="w-full gap-2"
+            onClick={generateLink}
+            disabled={!orderId}
+          >
+            <svg className="h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-1.242-7.244l-4.5-4.5a4.5 4.5 0 00-6.364 6.364L4.34 8.72" />
+            </svg>
+            Gerar Link de Pagamento
+          </Button>
         )}
       </div>
 

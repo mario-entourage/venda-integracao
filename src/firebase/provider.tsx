@@ -8,14 +8,6 @@ import { FirebaseStorage } from 'firebase/storage';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 import { ensureUser } from '@/services/users.service';
 
-// Super-admins are hardcoded and always have admin access
-const SUPER_ADMIN_EMAILS = [
-  'caio@entouragelab.com',
-  'mario@entouragelab.com',
-  'marcos.freitas@entouragelab.com',
-  'tiago.fonseca@entouragelab.com',
-];
-
 interface FirebaseProviderProps {
   children: ReactNode;
   firebaseApp: FirebaseApp;
@@ -116,15 +108,41 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     return () => unsubscribe(); // Cleanup
   }, [auth]); // Depends on the auth instance
 
+  // Subscribe to config/superAdmins for the configurable super-admin email list
+  const [superAdminEmails, setSuperAdminEmails] = useState<string[]>([]);
+  const [isSuperAdminLoading, setIsSuperAdminLoading] = useState(true);
+
+  useEffect(() => {
+    if (!firestore || !userAuthState.user?.uid) {
+      setIsSuperAdminLoading(false);
+      return;
+    }
+    const configRef = doc(firestore, 'config', 'superAdmins');
+    const unsubscribe = onSnapshot(
+      configRef,
+      (snap) => {
+        setSuperAdminEmails(snap.exists() ? ((snap.data().emails as string[]) ?? []) : []);
+        setIsSuperAdminLoading(false);
+      },
+      (error) => {
+        console.error('Error fetching super-admin config:', error);
+        setSuperAdminEmails([]);
+        setIsSuperAdminLoading(false);
+      },
+    );
+    return () => unsubscribe();
+  // Use user?.uid (not user object) to avoid re-subscribing on every hourly token refresh.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firestore, userAuthState.user?.uid]);
+
+  const isSuperAdmin = useMemo(() => {
+    if (!userAuthState.user?.email) return false;
+    return superAdminEmails.includes(userAuthState.user.email);
+  }, [userAuthState.user, superAdminEmails]);
+
   // Track admin status from roles_admin collection
   const [isDynamicAdmin, setIsDynamicAdmin] = useState(false);
   const [isDynamicAdminLoading, setIsDynamicAdminLoading] = useState(true);
-
-  // Check if user is a super-admin (hardcoded)
-  const isSuperAdmin = useMemo(() => {
-    if (!userAuthState.user?.email) return false;
-    return SUPER_ADMIN_EMAILS.includes(userAuthState.user.email);
-  }, [userAuthState.user]);
 
   // Subscribe to roles_admin document for dynamic admin status
   useEffect(() => {
@@ -134,8 +152,8 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       return;
     }
 
-    // If user is already a super-admin, no need to check Firestore
-    if (isSuperAdmin) {
+    // If user is already a super-admin, no need to check roles_admin.
+    if (isSuperAdmin && !isSuperAdminLoading) {
       setIsDynamicAdmin(false);
       setIsDynamicAdminLoading(false);
       return;
@@ -158,11 +176,14 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     );
 
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- isSuperAdminLoading omitted intentionally:
+  // by the time isSuperAdmin flips true, isSuperAdminLoading is already false (same snapshot flush).
+  // Adding it would cause an unnecessary roles_admin re-subscription for non-admins.
   }, [firestore, userAuthState.user?.uid, isSuperAdmin]);
 
   // User is admin if they're a super-admin OR have a roles_admin document
   const isAdmin = isSuperAdmin || isDynamicAdmin;
-  const isAdminLoading = userAuthState.isUserLoading || isDynamicAdminLoading;
+  const isAdminLoading = userAuthState.isUserLoading || isSuperAdminLoading || isDynamicAdminLoading;
 
   // Auto-create user document on first login
   const hasEnsuredUser = useRef(false);

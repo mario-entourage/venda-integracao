@@ -18,14 +18,24 @@ export default function LoginPage() {
 
   return (
     <div className="w-full max-w-sm rounded-2xl bg-white px-8 py-10 shadow-md space-y-6">
+      
       {/* Logo */}
-      <div className="flex justify-center">
-        <Image src="/logo.png" alt="Entourage Phytolab" width={240} height={80} priority />
+      <div className="flex flex-col items-center gap-3">
+        <Image
+          src="/logo.png"
+          alt="Entourage Phytolab"
+          width={240}
+          height={80}
+          style={{ height: 'auto' }}
+          priority
+        />
       </div>
 
       {/* Subtitle */}
       <div className="text-center">
-        <p className="text-sm text-muted-foreground">Acesso restrito para @entouragelab.com</p>
+        <p className="text-sm text-muted-foreground">
+          Acesso restrito para @entouragelab.com
+        </p>
       </div>
 
       {/* Sign in */}
@@ -33,15 +43,14 @@ export default function LoginPage() {
 
       {/* Error */}
       {userError && (
-        <p className="text-center text-sm text-red-500">{userError.message}</p>
+        <p className="text-center text-sm text-red-500">
+          {userError.message}
+        </p>
       )}
 
       {/* Disclaimer */}
       <p className="text-center text-xs text-muted-foreground/60 leading-relaxed">
-        Ao continuar, você concorda com nossos{' '}
-        <span className="underline cursor-pointer">Termos de Serviço</span>{' '}
-        e{' '}
-        <span className="underline cursor-pointer">Política de Privacidade</span>.
+        Ao continuar, você concorda com os Termos de Serviço e a Política de Privacidade da Entourage Lab.
       </p>
     </div>
   );

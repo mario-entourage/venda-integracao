@@ -1,19 +1,16 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertTriangle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { NovaVendaWizard } from '@/components/vendas/nova-venda-wizard';
-import { VendasEmAndamento } from '@/components/vendas/vendas-em-andamento';
-import { ResumeVendaWizard } from '@/components/vendas/resume-venda-wizard';
 
 // ─── Inner component (needs access to useSearchParams) ────────────────────────
 
 function VendasPageContent() {
-  const [activeTab, setActiveTab] = useState<'em-andamento' | 'nova'>('em-andamento');
-  // Bump the key each time the wizard tab is opened so state resets cleanly
+  // Bump the key each time the wizard should reset cleanly
   const [wizardKey, setWizardKey] = useState(0);
 
   const searchParams = useSearchParams();
@@ -21,29 +18,36 @@ function VendasPageContent() {
 
   const resumeOrderId = searchParams.get('resume');
 
-  const handleTabChange = (tab: string) => {
-    if (tab === 'nova') {
-      setWizardKey((k) => k + 1);
-    }
-    setActiveTab(tab as 'em-andamento' | 'nova');
+  // Check for an unfinished wizard session in sessionStorage
+  const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('nova-venda-wizard');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.state?.orderId) setSavedOrderId(parsed.state.orderId);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const dismissSavedOrder = () => {
+    sessionStorage.removeItem('nova-venda-wizard');
+    setSavedOrderId(null);
   };
 
-  const handleVendaComplete = () => {
-    setActiveTab('em-andamento');
-  };
-
-  const goToNovaVenda = () => {
+  const handleVendaComplete = (_orderId: string) => {
+    // After completing a sale, navigate to Pedidos
     setWizardKey((k) => k + 1);
-    setActiveTab('nova');
+    router.push('/pedidos');
   };
 
-  const handleResumeComplete = () => {
-    // Clear the resume param and go back to the list
-    router.replace('/remessas');
+  const handleResumeComplete = (_orderId: string) => {
+    // Clear the resume param and go to pedidos
+    router.replace('/pedidos');
   };
 
   // ── Resume mode ─────────────────────────────────────────────────────────────
-  // When ?resume=<orderId> is present, skip the tabs and show the resume wizard.
+  // When ?resume=<orderId> is present, show the full wizard pre-populated.
   if (resumeOrderId) {
     return (
       <div className="space-y-6">
@@ -61,8 +65,8 @@ function VendasPageContent() {
 
         <Card>
           <CardContent className="pt-6 pb-8">
-            <ResumeVendaWizard
-              orderId={resumeOrderId}
+            <NovaVendaWizard
+              resumeOrderId={resumeOrderId}
               onComplete={handleResumeComplete}
             />
           </CardContent>
@@ -71,29 +75,40 @@ function VendasPageContent() {
     );
   }
 
-  // ── Normal mode (tabs) ──────────────────────────────────────────────────────
+  // ── Normal mode — Nova Venda wizard directly ──────────────────────────────
   return (
     <div className="space-y-6">
-      <h1 className="font-headline text-2xl font-bold">Vendas</h1>
+      <h1 className="font-headline text-2xl font-bold">Nova Venda</h1>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange}>
-        <TabsList>
-          <TabsTrigger value="em-andamento">Vendas em andamento</TabsTrigger>
-          <TabsTrigger value="nova">Nova venda</TabsTrigger>
-        </TabsList>
+      {/* Resume banner for unfinished wizard session */}
+      {savedOrderId && !resumeOrderId && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-700 dark:bg-amber-950">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+          <span className="flex-1 text-amber-900 dark:text-amber-200">
+            Você tem uma venda não finalizada.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => router.push(`/remessas?resume=${savedOrderId}`)}
+          >
+            Continuar
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={dismissSavedOrder}
+          >
+            Descartar
+          </Button>
+        </div>
+      )}
 
-        <TabsContent value="em-andamento" className="mt-4">
-          <VendasEmAndamento onNewVenda={goToNovaVenda} />
-        </TabsContent>
-
-        <TabsContent value="nova" className="mt-4">
-          <Card>
-            <CardContent className="pt-6 pb-8">
-              <NovaVendaWizard key={wizardKey} onComplete={handleVendaComplete} />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <Card>
+        <CardContent className="pt-6 pb-8">
+          <NovaVendaWizard key={wizardKey} onComplete={handleVendaComplete} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

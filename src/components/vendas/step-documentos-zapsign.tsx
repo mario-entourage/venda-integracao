@@ -11,7 +11,20 @@ import { useFirebase, useMemoFirebase, useDoc } from '@/firebase';
 import { getClientRef } from '@/services/clients.service';
 import { getOrderRef, updateOrder } from '@/services/orders.service';
 import { generateProcuracao, generateComprovanteVinculo } from '@/server/actions/zapsign.actions';
+import { updateClient } from '@/services/clients.service';
+import { cn } from '@/lib/utils';
 import type { Client, Order } from '@/types';
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+/** Formats digits into XXX.XXX.XXX-XX */
+function formatCpf(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +59,7 @@ export function StepDocumentosZapSign({
   cvSignatarioCpf,
   onCvSignatarioCpfChange,
 }: StepDocumentosZapSignProps) {
-  const { firestore } = useFirebase();
+  const { firestore, user } = useFirebase();
 
   // ── client data (for address / CPF needed by ZapSign API) ──────────────
   const clientRef = useMemoFirebase(
@@ -68,12 +81,38 @@ export function StepDocumentosZapSign({
   const [cvLoading, setCvLoading] = useState(false);
   const [cvError, setCvError] = useState<string | null>(null);
 
+  // ── CPF inline edit ────────────────────────────────────────────────
+  const [cpfValue, setCpfValue] = useState('');
+  const [cpfSaving, setCpfSaving] = useState(false);
+  const [humanVerified, setHumanVerified] = useState(false);
+  const cpfInitialized = useRef(false);
+
+  React.useEffect(() => {
+    if (clientData?.document && !cpfInitialized.current) {
+      setCpfValue(formatCpf(clientData.document));
+      cpfInitialized.current = true;
+    }
+  }, [clientData?.document]);
+
+  const handleCpfSave = async () => {
+    if (!firestore || !clientId || !user) return;
+    const digits = cpfValue.replace(/\D/g, '');
+    if (digits.length !== 11) return;
+    setCpfSaving(true);
+    try {
+      await updateClient(firestore, clientId, { document: formatCpf(digits) }, user.uid);
+    } finally {
+      setCpfSaving(false);
+    }
+  };
+
   // ── prevent double-triggering ──────────────────────────────────────────
   const hasTriggeredProcuracao = useRef(false);
   const hasTriggeredCv = useRef(false);
 
   // ── helpers ────────────────────────────────────────────────────────────
-  const clientMissingData = !clientData?.address || !clientData?.document;
+  const clientMissingCpf = !clientData?.document;
+  const clientMissingData = !clientData?.address || clientMissingCpf;
 
   const canGenerateProcuracao =
     needsProcuracao &&
@@ -127,7 +166,7 @@ export function StepDocumentosZapSign({
         zapsignDocId: result.docId,
         zapsignStatus: result.status,
         zapsignSignUrl: result.signUrl,
-      });
+      }, user!.uid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao gerar procuração.';
       setProcuracaoError(msg);
@@ -174,7 +213,7 @@ export function StepDocumentosZapSign({
         zapsignCvDocId: result.docId,
         zapsignCvStatus: result.status,
         zapsignCvSignUrl: result.signUrl,
-      });
+      }, user!.uid);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao gerar Comprovante de Vínculo.';
       setCvError(msg);
@@ -218,20 +257,72 @@ export function StepDocumentosZapSign({
 
             {needsProcuracao && (
               <div className="space-y-3">
-                {clientMissingData && (
+                {/* CPF field */}
+                {clientMissingCpf && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">CPF do Paciente</Label>
+                    <Input
+                      placeholder="000.000.000-00"
+                      value={cpfValue}
+                      onChange={(e) => setCpfValue(formatCpf(e.target.value))}
+                      className="w-56"
+                    />
+                  </div>
+                )}
+
+                {clientMissingData && !clientMissingCpf && (
                   <p className="text-sm text-amber-600">
-                    ⚠ Cliente sem endereço ou CPF cadastrado. Atualize o cadastro para gerar a procuração.
+                    ⚠ Cliente sem endereço cadastrado. Atualize o cadastro para gerar a procuração.
                   </p>
                 )}
 
                 {!orderData?.zapsignDocId ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
+                    {/* Human verification checkbox */}
+                    <label
+                      className="flex items-center gap-3 rounded-lg px-4 py-3 cursor-pointer select-none"
+                      style={{ backgroundColor: '#abdeda' }}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors',
+                          humanVerified
+                            ? 'border-teal-700 bg-teal-700 text-white'
+                            : 'border-teal-600 bg-white',
+                        )}
+                      >
+                        {humanVerified && (
+                          <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={humanVerified}
+                        onChange={(e) => setHumanVerified(e.target.checked)}
+                      />
+                      <span className="text-sm font-medium text-teal-900">Sou humano</span>
+                    </label>
+
+                    {/* Generate button */}
                     <Button
-                      onClick={handleGenerateProcuracao}
-                      disabled={!canGenerateProcuracao || procuracaoLoading}
+                      onClick={async () => {
+                        if (clientMissingCpf && cpfValue.replace(/\D/g, '').length === 11) {
+                          await handleCpfSave();
+                        }
+                        handleGenerateProcuracao();
+                      }}
+                      disabled={
+                        !canGenerateProcuracao ||
+                        procuracaoLoading ||
+                        !humanVerified ||
+                        (clientMissingCpf && cpfValue.replace(/\D/g, '').length !== 11)
+                      }
                       size="sm"
                     >
-                      {procuracaoLoading ? 'Gerando...' : 'Gerar Procuração'}
+                      {procuracaoLoading ? 'Gerando...' : cpfSaving ? 'Salvando CPF...' : 'Gerar Procuração'}
                     </Button>
                     {procuracaoError && (
                       <p className="text-sm text-red-500">{procuracaoError}</p>

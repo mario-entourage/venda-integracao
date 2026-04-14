@@ -15,7 +15,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+
+/** Formats digits into (XX) XXXXX-XXXX (mobile) or (XX) XXXX-XXXX (landline). */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length === 0) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+const BRAZILIAN_STATES = [
+  'AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT',
+  'PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO',
+] as const;
 
 const optionalRg = z.string().refine(
   (val) => !val || /^[\d.\-/]+$/.test(val),
@@ -30,12 +47,21 @@ const optionalPhone = z.string().refine(
   "Formato invalido. Ex: (31) 99999-9999"
 );
 
+const optionalDate = z.string().refine(
+  (val) => !val || /^\d{2}\/\d{2}\/\d{4}$/.test(val),
+  "Formato invalido (DD/MM/AAAA)."
+);
+
 const profileSchema = z.object({
   requesterName: z.string().default(''),
   requesterEmail: z.string().email("Email invalido").or(z.literal('')).default(''),
   requesterRg: optionalRg.default(''),
+  requesterSexo: z.string().default(''),
+  requesterDob: optionalDate.default(''),
   requesterAddress: z.string().default(''),
   requesterCep: optionalCep.default(''),
+  requesterEstado: z.string().default(''),
+  requesterMunicipio: z.string().default(''),
   requesterPhone: optionalPhone.default(''),
   requesterLandline: z.string().default(''),
 });
@@ -55,8 +81,12 @@ export default function AnvisaPerfilPage() {
       requesterName: '',
       requesterEmail: '',
       requesterRg: '',
+      requesterSexo: '',
+      requesterDob: '',
       requesterAddress: '',
       requesterCep: '',
+      requesterEstado: '',
+      requesterMunicipio: '',
       requesterPhone: '',
       requesterLandline: '',
     },
@@ -76,8 +106,12 @@ export default function AnvisaPerfilPage() {
             requesterName: data.requesterName || '',
             requesterEmail: data.requesterEmail || '',
             requesterRg: data.requesterRg || '',
+            requesterSexo: data.requesterSexo || '',
+            requesterDob: data.requesterDob || '',
             requesterAddress: data.requesterAddress || '',
             requesterCep: data.requesterCep || '',
+            requesterEstado: data.requesterEstado || '',
+            requesterMunicipio: data.requesterMunicipio || '',
             requesterPhone: data.requesterPhone || '',
             requesterLandline: data.requesterLandline || '',
           });
@@ -97,8 +131,10 @@ export default function AnvisaPerfilPage() {
                     requesterName: pData.requesterName || '',
                     requesterEmail: pData.requesterEmail || '',
                     requesterRg: pData.requesterRg || '',
+                    requesterSexo: pData.requesterSexo || '',
                     requesterAddress: pData.requesterAddress || '',
                     requesterCep: pData.requesterCep || '',
+                    requesterEstado: pData.requesterEstado || '',
                     requesterPhone: pData.requesterPhone || '',
                     requesterLandline: pData.requesterLandline || '',
                   });
@@ -134,12 +170,13 @@ export default function AnvisaPerfilPage() {
         title: 'Perfil salvo',
         description: 'Seus dados de solicitante foram atualizados com sucesso.',
       });
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving profile:', error);
+      const message = error instanceof Error ? error.message : 'Nao foi possivel salvar seus dados de perfil.';
       toast({
         variant: 'destructive',
         title: 'Erro ao salvar perfil',
-        description: error.message || 'Nao foi possivel salvar seus dados de perfil.',
+        description: message,
       });
     } finally {
       setIsSaving(false);
@@ -238,6 +275,43 @@ export default function AnvisaPerfilPage() {
 
               <FormField
                 control={form.control}
+                name="requesterSexo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sexo/Genero *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSaving}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Masculino">Masculino</SelectItem>
+                        <SelectItem value="Feminino">Feminino</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="requesterDob"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data de Nascimento *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="DD/MM/AAAA" {...field} disabled={isSaving} />
+                    </FormControl>
+                    <FormDescription>Data de nascimento do solicitante (formato DD/MM/AAAA)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="requesterAddress"
                 render={({ field }) => (
                   <FormItem>
@@ -272,12 +346,51 @@ export default function AnvisaPerfilPage() {
 
               <FormField
                 control={form.control}
+                name="requesterEstado"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado (UF) *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value} disabled={isSaving}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {BRAZILIAN_STATES.map((uf) => (
+                          <SelectItem key={uf} value={uf}>{uf}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormDescription>Estado do solicitante (usado no formulario da ANVISA)</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="requesterMunicipio"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Municipio *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Belo Horizonte" {...field} disabled={isSaving} />
+                    </FormControl>
+                    <FormDescription>Municipio do solicitante</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
                 name="requesterPhone"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Celular *</FormLabel>
                     <FormControl>
-                      <Input placeholder="(31) 99999-9999" {...field} disabled={isSaving} />
+                      <Input placeholder="(00) 00000-0000" {...field} disabled={isSaving} onChange={(e) => field.onChange(formatPhone(e.target.value))} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -291,7 +404,7 @@ export default function AnvisaPerfilPage() {
                   <FormItem>
                     <FormLabel>Telefone Fixo</FormLabel>
                     <FormControl>
-                      <Input placeholder="(31) 3333-3333" {...field} disabled={isSaving} />
+                      <Input placeholder="(00) 0000-0000" {...field} disabled={isSaving} onChange={(e) => field.onChange(formatPhone(e.target.value))} />
                     </FormControl>
                     <FormDescription>Opcional</FormDescription>
                     <FormMessage />

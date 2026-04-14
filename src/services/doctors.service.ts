@@ -1,10 +1,11 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc,
-  query, where, orderBy, serverTimestamp,
+  query, where, orderBy, limit, serverTimestamp,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { Doctor } from '@/types/doctor';
 import type { DoctorFormValues } from '@/types/forms';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -29,6 +30,7 @@ export function getDoctorRef(db: Firestore, doctorId: string) {
 export async function createDoctor(
   db: Firestore,
   data: DoctorFormValues,
+  performedById: string,
 ): Promise<string> {
   const ref = await addDoc(getDoctorsRef(db), {
     firstName: data.firstName,
@@ -46,6 +48,7 @@ export async function createDoctor(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'create', collection: 'doctors', documentId: ref.id, performedById, changes: data as unknown as Record<string, unknown> });
   return ref.id;
 }
 
@@ -56,11 +59,13 @@ export async function updateDoctor(
   db: Firestore,
   doctorId: string,
   data: Partial<Omit<Doctor, 'id' | 'createdAt'>>,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getDoctorRef(db, doctorId), {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'doctors', documentId: doctorId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -69,22 +74,25 @@ export async function updateDoctor(
 export async function softDeleteDoctor(
   db: Firestore,
   doctorId: string,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getDoctorRef(db, doctorId), {
     active: false,
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'doctors', documentId: doctorId, performedById, changes: { active: false } });
 }
 
 /**
  * Query for all active doctors ordered by full name ascending.
  */
-export function getActiveDoctorsQuery(db: Firestore): Query {
+export function getActiveDoctorsQuery(db: Firestore, maxResults = 500): Query {
   return query(
     getDoctorsRef(db),
     where('active', '==', true),
     orderBy('fullName', 'asc'),
+    limit(maxResults),
   );
 }
 

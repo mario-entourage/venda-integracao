@@ -108,7 +108,7 @@ export function SearchableSelect({
           </svg>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent className="min-w-[--radix-popover-trigger-width] w-auto max-w-[400px] p-0" align="start">
         {/* Search input */}
         <div className="p-2 border-b">
           <Input
@@ -157,9 +157,9 @@ export function SearchableSelect({
                     />
                   </svg>
                   <div className="min-w-0 flex-1">
-                    <span className="block truncate">{option.label}</span>
+                    <span className="block">{option.label}</span>
                     {option.sublabel && (
-                      <span className="block truncate text-xs text-muted-foreground">
+                      <span className="block text-xs text-muted-foreground">
                         {option.sublabel}
                       </span>
                     )}

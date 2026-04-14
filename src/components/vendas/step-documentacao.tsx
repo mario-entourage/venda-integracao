@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
+import { compressImage } from '@/lib/compress-image';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import { ref, uploadBytesResumable } from 'firebase/storage';
 import { UpdateProfileDialog, type FieldChange } from './update-profile-dialog';
 import { ImageViewer } from '@/components/shared/image-viewer';
 import { cn } from '@/lib/utils';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import type { Client, Doctor, Order } from '@/types';
 import type { ClassifyAndExtractResponse } from '@/app/api/ai/classify-and-extract-document/route';
 
@@ -143,6 +145,7 @@ export function StepDocumentacao({
   cvSignatarioName = '', cvSignatarioCpf = '',
 }: StepDocumentacaoProps) {
   const { firestore, storage, user } = useFirebase();
+  const authFetch = useAuthFetch();
 
   // Load doc requests
   const docRequestsRef = useMemoFirebase(
@@ -267,7 +270,7 @@ export function StepDocumentacao({
           zapsignDocId: result.docId,
           zapsignStatus: result.status,
           zapsignSignUrl: result.signUrl,
-        });
+        }, user!.uid);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro ao gerar procuração.';
         setZapsignError(msg);
@@ -322,7 +325,7 @@ export function StepDocumentacao({
           zapsignCvDocId: result.docId,
           zapsignCvStatus: result.status,
           zapsignCvSignUrl: result.signUrl,
-        });
+        }, user!.uid);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Erro ao gerar Comprovante de Vínculo.';
         setCvError(msg);
@@ -342,14 +345,16 @@ export function StepDocumentacao({
       return;
     }
     setIsProcessing(true);
-    setProcessingMsg(`Enviando "${file.name}"…`);
+    setProcessingMsg(`Comprimindo "${file.name}"…`);
+    const compressed = await compressImage(file);
+    setProcessingMsg(`Enviando "${compressed.name}"…`);
 
     try {
       // 1. Upload to Storage — non-fatal
       try {
-        const path = `documents/${orderId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const path = `documents/${orderId}/${Date.now()}_${compressed.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
         const storageRef = ref(storage, path);
-        const task = uploadBytesResumable(storageRef, file);
+        const task = uploadBytesResumable(storageRef, compressed);
         const uploadPromise = new Promise<void>((resolve, reject) => {
           task.on('state_changed', null, reject, resolve);
         });
@@ -374,12 +379,17 @@ export function StepDocumentacao({
         reader.readAsDataURL(file);
       });
 
-      const res = await fetch('/api/ai/classify-and-extract-document', {
+      const res = await authFetch('/api/ai/classify-and-extract-document', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+        timeout: 60_000,
       });
+      if (!res.ok) { setProcessingMsg('Falha na classificação. Tente novamente.'); return; }
       const classification: ClassifyAndExtractResponse = await res.json();
+      if (classification._error) {
+        setProcessingMsg(`Erro ao classificar "${file.name}": ${classification._error}`);
+        return;
+      }
 
       // 3. Mark matching document request as received (only if still pending)
       const matchingRequest = requests.find(
@@ -509,7 +519,7 @@ export function StepDocumentacao({
         if (clientIsNew) {
           // Auto-apply for new clients
           if (firestore) {
-            updateClient(firestore, clientId, fieldsToApply as Parameters<typeof updateClient>[2]).catch(console.error);
+            updateClient(firestore, clientId, fieldsToApply as Parameters<typeof updateClient>[2], user!.uid).catch((err) => console.warn('[StepDocumentacao] auto-profile update failed (non-blocking):', err));
           }
         } else {
           newUpdates.push({ entityType: 'client', entityId: clientId, entityLabel: `Paciente: ${clientName}`, changes, fieldsToApply });
@@ -551,7 +561,7 @@ export function StepDocumentacao({
         const newAddress = { ...(clientData.address ?? { street: '', number: '', neighborhood: '', city: '', state: '', country: 'BR', postalCode: '' }), ...addressFields };
         if (clientIsNew) {
           if (firestore) {
-            updateClient(firestore, clientId, { address: newAddress } as Parameters<typeof updateClient>[2]).catch(console.error);
+            updateClient(firestore, clientId, { address: newAddress } as Parameters<typeof updateClient>[2], user!.uid).catch((err) => console.warn('[StepDocumentacao] auto-profile update failed (non-blocking):', err));
           }
         } else {
           newUpdates.push({
@@ -596,7 +606,7 @@ export function StepDocumentacao({
       if (changes.length > 0) {
         if (doctorIsNew) {
           if (firestore) {
-            updateDoctor(firestore, doctorId, fieldsToApply as Parameters<typeof updateDoctor>[2]).catch(console.error);
+            updateDoctor(firestore, doctorId, fieldsToApply as Parameters<typeof updateDoctor>[2], user!.uid).catch((err) => console.warn('[StepDocumentacao] auto-profile update failed (non-blocking):', err));
           }
         } else {
           newUpdates.push({ entityType: 'doctor', entityId: doctorId, entityLabel: `Médico: ${doctorData.fullName}`, changes, fieldsToApply });
@@ -624,9 +634,9 @@ export function StepDocumentacao({
       if (key in currentPendingUpdate.fieldsToApply) fieldsToSave[key] = currentPendingUpdate.fieldsToApply[key];
     }
     if (currentPendingUpdate.entityType === 'client') {
-      await updateClient(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateClient>[2]);
+      await updateClient(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateClient>[2], user!.uid);
     } else {
-      await updateDoctor(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateDoctor>[2]);
+      await updateDoctor(firestore, currentPendingUpdate.entityId, fieldsToSave as Parameters<typeof updateDoctor>[2], user!.uid);
     }
     setPendingUpdates(prev => prev.slice(1));
   };

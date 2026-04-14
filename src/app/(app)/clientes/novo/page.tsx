@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirestore } from '@/firebase/provider';
+import { useFirestore, useUser } from '@/firebase/provider';
 import { createClient } from '@/services/clients.service';
 import { CustomerForm } from '@/components/forms/customer-form';
 import { PageHeader } from '@/components/shared/page-header';
@@ -13,14 +13,16 @@ import type { CustomerFormValues } from '@/types';
 
 export default function NovoClientePage() {
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (data: CustomerFormValues) => {
+    if (isLoading) return;
     setIsLoading(true);
     try {
-      await createClient(db, data);
+      await createClient(db, data, user!.uid);
       toast({ title: 'Cliente cadastrado com sucesso.' });
       router.push('/clientes');
     } catch (err) {

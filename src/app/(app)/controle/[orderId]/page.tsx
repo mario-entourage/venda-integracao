@@ -2,21 +2,39 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { getDocs } from 'firebase/firestore';
-import { useFirebase, useMemoFirebase, useDoc } from '@/firebase';
+import { getDocs, onSnapshot } from 'firebase/firestore';
+import { ref as storageRef, deleteObject } from 'firebase/storage';
+import { useFirebase, useMemoFirebase, useDoc, useCollection } from '@/firebase';
 import {
   getOrderRef,
   getOrderSubcollectionRef,
   updateOrderStatus,
   updateOrder,
+  updateOrderRepresentative,
 } from '@/services/orders.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ExternalLink, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
+import { useToast } from '@/hooks/use-toast';
 import { OrderChecklist } from '@/components/controle/order-checklist';
+import { FileUpload } from '@/components/shared/file-upload';
+import { createDocumentRecord, updateDocumentRecord, getDocumentRecordsByOrderId } from '@/services/documents.service';
+import { getOrderPaymentLinksRef } from '@/services/payments.service';
 import { OrderStatus } from '@/types';
-import type { Order, OrderCustomer, OrderDoctor } from '@/types';
+import type { Order, OrderCustomer, OrderDoctor, OrderRepresentative } from '@/types';
+import type { PaymentLink } from '@/types/payment';
+import type { User } from '@/types';
 
 // ─── local types ──────────────────────────────────────────────────────────────
 
@@ -49,6 +67,16 @@ const ANVISA_LABELS: Record<string, string> = {
   exempt:      'Isento',
 };
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  prescription: 'Prescrição',
+  identity: 'Identidade',
+  proof_of_address: 'Comprov. Endereço',
+  medical_report: 'Laudo Médico',
+  invoice: 'Nota Fiscal',
+  anvisa_authorization: 'Autorização ANVISA',
+  general: 'Geral',
+};
+
 const fmtBRL = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
@@ -63,7 +91,9 @@ const fmtDate = (ts: unknown) => {
 export default function OrderDetailPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const router = useRouter();
-  const { firestore, user } = useFirebase();
+  const { firestore, storage, user } = useFirebase();
+  const authFetch = useAuthFetch();
+  const { toast } = useToast();
 
   // Real-time order subscription
   const orderRef = useMemoFirebase(
@@ -72,44 +102,240 @@ export default function OrderDetailPage() {
   );
   const { data: order, isLoading: orderLoading } = useDoc<Order>(orderRef);
 
+  // Rep users (for the representative selector)
+  const repUsersQ = useMemoFirebase(
+    () => (firestore ? getActiveRepUsersQuery(firestore) : null),
+    [firestore],
+  );
+  const { data: repUsers } = useCollection<User>(repUsersQ);
+
   // Subcollection data (loaded once on mount)
   const [customer, setCustomer] = useState<OrderCustomer | null>(null);
   const [doctor, setDoctor] = useState<OrderDoctor | null>(null);
+  const [representative, setRepresentative] = useState<OrderRepresentative | null>(null);
   const [products, setProducts] = useState<StoredProduct[]>([]);
+  const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
   const [subLoading, setSubLoading] = useState(true);
 
   useEffect(() => {
     if (!firestore || !orderId) return;
     setSubLoading(true);
-    Promise.all([
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'customer')),
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'doctor')),
-      getDocs(getOrderSubcollectionRef(firestore, orderId, 'products')),
-    ])
-      .then(([customerSnap, doctorSnap, productsSnap]) => {
-        setCustomer(
-          customerSnap.docs[0]
-            ? ({ id: customerSnap.docs[0].id, ...customerSnap.docs[0].data() } as unknown as OrderCustomer)
-            : null,
-        );
-        setDoctor(
-          doctorSnap.docs[0]
-            ? ({ id: doctorSnap.docs[0].id, ...doctorSnap.docs[0].data() } as unknown as OrderDoctor)
-            : null,
-        );
-        setProducts(
-          productsSnap.docs.map((d) => ({
-            id: d.id,
-            ...(d.data() as Omit<StoredProduct, 'id'>),
-          })),
-        );
-        setSubLoading(false);
-      })
-      .catch((err) => {
-        console.error('[OrderDetailPage] subcollection load error:', err);
-        setSubLoading(false);
-      });
+    let initialLoad = true;
+
+    const unsubCustomer = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'customer'), (snap) => {
+      setCustomer(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderCustomer) : null);
+      if (initialLoad) { initialLoad = false; setSubLoading(false); }
+    });
+    const unsubDoctor = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'doctor'), (snap) => {
+      setDoctor(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderDoctor) : null);
+    });
+    const unsubRep = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'representative'), (snap) => {
+      setRepresentative(snap.docs[0] ? ({ id: snap.docs[0].id, ...snap.docs[0].data() } as unknown as OrderRepresentative) : null);
+    });
+    const unsubProducts = onSnapshot(getOrderSubcollectionRef(firestore, orderId, 'products'), (snap) => {
+      setProducts(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<StoredProduct, 'id'>) })));
+    });
+    const unsubPaymentLinks = onSnapshot(getOrderPaymentLinksRef(firestore, orderId), (snap) => {
+      setPaymentLinks(snap.docs.map((d) => ({ id: d.id, ...d.data() } as unknown as PaymentLink)));
+    });
+
+    return () => { unsubCustomer(); unsubDoctor(); unsubRep(); unsubProducts(); unsubPaymentLinks(); };
   }, [firestore, orderId]);
+
+  // ── document uploads ─────────────────────────────────────────────────────────
+  const [uploadedDocs, setUploadedDocs] = useState<{ name: string; url: string; type: string; docRecordId: string }[]>([]);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [classifyingFiles, setClassifyingFiles] = useState<Set<string>>(new Set());
+
+  // Pre-load existing document filenames to prevent duplicate uploads
+  useEffect(() => {
+    if (!firestore || !orderId) return;
+    getDocumentRecordsByOrderId(firestore, orderId).then((existing) => {
+      setUploadedDocs(existing.map((d) => ({
+        name: String((d.metadata as Record<string, unknown>)?.fileName ?? d.key),
+        url: String((d.metadata as Record<string, unknown>)?.url ?? ''),
+        type: d.type,
+        docRecordId: d.id,
+      })));
+    }).catch(() => { /* non-fatal */ });
+  }, [firestore, orderId]);
+
+  /** Convert a File to base64 for AI classification. */
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        resolve(dataUrl.split(',')[1]); // strip "data:...;base64," prefix
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const MAX_CLASSIFY_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+  /** Called when a file finishes uploading. Classifies via AI, then creates document record. */
+  const handleFileReady = async (file: File, result: { path: string; url: string; name: string }) => {
+    if (!firestore) return;
+
+    // Reject duplicate filenames
+    if (uploadedDocs.some((d) => d.name === result.name)) {
+      toast({
+        variant: 'destructive',
+        title: 'Documento já enviado',
+        description: `"${result.name}" já foi carregado para este pedido.`,
+      });
+      return;
+    }
+
+    let docType = 'general';
+    setClassifyingFiles((prev) => new Set(prev).add(file.name));
+
+    try {
+      // Skip AI classification for oversized files
+      if (file.size > MAX_CLASSIFY_FILE_SIZE) {
+        toast({ title: 'Arquivo grande', description: 'Arquivo excede 10MB — selecione o tipo manualmente.' });
+      } else {
+        // AI classification
+        const base64 = await fileToBase64(file);
+        const res = await authFetch('/api/ai/classify-document', {
+          method: 'POST',
+          body: JSON.stringify({ imageBase64: base64, mimeType: file.type || 'image/jpeg' }),
+          timeout: 60_000, // AI classification can be slow
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.documentType && data.documentType !== 'unknown') {
+            docType = data.documentType;
+          }
+        }
+      }
+    } catch (err) {
+      const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+      toast({
+        title: 'Tipo não reconhecido',
+        description: isTimeout
+          ? 'A classificação demorou muito. Selecione o tipo manualmente.'
+          : 'Não foi possível classificar o documento. Selecione o tipo manualmente.',
+      });
+      // Either way, fall back to 'general'
+    } finally {
+      setClassifyingFiles((prev) => {
+        const next = new Set(prev);
+        next.delete(file.name);
+        return next;
+      });
+    }
+
+    try {
+      const docRecordId = await createDocumentRecord(firestore, {
+        type: docType,
+        holder: customer?.name ?? '',
+        key: result.path,
+        number: '',
+        metadata: { fileName: result.name, url: result.url, doctorName: doctor?.name ?? '' },
+        userId: user?.uid ?? '',
+        orderId,
+      });
+      setUploadedDocs((prev) => [...prev, { name: result.name, url: result.url, type: docType, docRecordId }]);
+      setUploadError(null);
+    } catch (err) {
+      console.error('[OrderDetailPage] doc record error:', err);
+      setUploadError('Arquivo enviado mas erro ao salvar registro.');
+      // Clean up the orphaned storage file
+      if (storage) {
+        try {
+          await deleteObject(storageRef(storage, result.path));
+        } catch (cleanupErr) {
+          console.error('[OrderDetailPage] storage cleanup failed:', cleanupErr);
+        }
+      }
+    }
+  };
+
+  /** Override the AI-detected document type for an already-uploaded doc. */
+  const handleTypeOverride = async (idx: number, newType: string) => {
+    const doc = uploadedDocs[idx];
+    if (!firestore || !doc) return;
+    const prevType = doc.type;
+    setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: newType } : d)));
+    try {
+      await updateDocumentRecord(firestore, doc.docRecordId, { type: newType });
+    } catch (err) {
+      console.error('[OrderDetailPage] type override error:', err);
+      setUploadedDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, type: prevType } : d)));
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar tipo',
+        description: 'Não foi possível salvar o tipo do documento. Tente novamente.',
+      });
+    }
+  };
+
+  // ── GlobalPay payment sync ───────────────────────────────────────────────────
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  const handlePaymentSync = async () => {
+    setIsSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await authFetch('/api/payments/sync', {
+        method: 'POST',
+        body: JSON.stringify({ orderId }),
+        timeout: 120_000, // 2 min — GlobalPay API can be slow
+      });
+      const data = await res.json() as { ok?: boolean; checked?: number; approved?: number; errors?: number; error?: string; details?: string };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      }
+      if (data.approved) {
+        setSyncMsg(`✓ Pagamento confirmado!`);
+      } else if (data.errors) {
+        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s), ${data.errors} erro(s) ao consultar GlobalPay.`);
+      } else {
+        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[controle/sync] Error:', msg);
+      setSyncMsg(`Não foi possível sincronizar o pagamento: ${msg}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // ── representative change ───────────────────────────────────────────────────
+  const [repSaving, setRepSaving] = useState(false);
+
+  const handleRepChange = async (userId: string) => {
+    if (!firestore) return;
+    const isNone = userId === '__none__';
+    const repUser = isNone ? null : (repUsers ?? []).find((r) => r.id === userId);
+    const name = repUser?.displayName || repUser?.email || 'Venda Direta';
+
+    setRepSaving(true);
+    try {
+      await updateOrderRepresentative(firestore, orderId, {
+        name: isNone ? 'Venda Direta' : name,
+        userId: isNone ? '' : userId,
+      }, user!.uid);
+      setRepresentative((prev) =>
+        prev
+          ? { ...prev, name: isNone ? 'Venda Direta' : name, userId: isNone ? '' : userId }
+          : null,
+      );
+    } catch (err) {
+      console.error('[OrderDetailPage] rep update error:', err);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao salvar representante',
+        description: 'Não foi possível alterar o representante. Tente novamente.',
+      });
+    } finally {
+      setRepSaving(false);
+    }
+  };
 
   // ── manual status override ───────────────────────────────────────────────────
   const [isUpdating, setIsUpdating] = useState(false);
@@ -123,7 +349,7 @@ export default function OrderDetailPage() {
       await updateOrderStatus(firestore, orderId, 'paid', user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark paid error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível marcar como pago. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -137,10 +363,10 @@ export default function OrderDetailPage() {
       await updateOrder(firestore, orderId, {
         [field]: 'signed',
         updatedById: user.uid,
-      });
+      }, user.uid);
     } catch (err) {
       console.error('[OrderDetailPage] mark signed error:', err);
-      setUpdateError('Erro ao atualizar status.');
+      setUpdateError('Não foi possível atualizar o status de assinatura. Verifique sua conexão e tente novamente.');
     } finally {
       setIsUpdating(false);
     }
@@ -155,9 +381,17 @@ export default function OrderDetailPage() {
     setIsCancelling(true);
     try {
       await updateOrderStatus(firestore, orderId, 'cancelled', user.uid);
-      router.push('/remessas');
+      // Navigate after success — skip setState since component will unmount
+      router.push('/controle');
     } catch (err) {
       console.error('[OrderDetailPage] cancel error:', err);
+      setConfirmCancel(false);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao cancelar pedido',
+        description: 'Não foi possível cancelar o pedido. Verifique sua conexão e tente novamente.',
+      });
+    } finally {
       setIsCancelling(false);
     }
   };
@@ -176,7 +410,7 @@ export default function OrderDetailPage() {
   if (!order) {
     return (
       <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/remessas')}>
+        <Button variant="ghost" size="sm" onClick={() => router.push('/controle')}>
           ← Voltar
         </Button>
         <p className="text-muted-foreground">Pedido não encontrado.</p>
@@ -206,7 +440,7 @@ export default function OrderDetailPage() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => router.push('/remessas')}
+          onClick={() => router.push('/controle')}
           className="-ml-2"
         >
           ← Voltar
@@ -252,12 +486,115 @@ export default function OrderDetailPage() {
               <dt className="text-muted-foreground">Data do Pedido</dt>
               <dd className="mt-0.5 font-medium">{fmtDate(order.createdAt)}</dd>
             </div>
+            <div>
+              <dt className="text-muted-foreground">Validade da Receita</dt>
+              <dd className="mt-0.5 font-medium">
+                {(() => {
+                  const rxDate = order.prescriptionDate;
+                  if (!rxDate) return '—';
+                  const d = new Date(rxDate + 'T12:00:00');
+                  if (isNaN(d.getTime())) return '—';
+                  const expiry = new Date(d);
+                  expiry.setMonth(expiry.getMonth() + 6);
+                  const now = new Date();
+                  const daysLeft = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                  const isExpired = daysLeft <= 0;
+                  const isNearExpiry = daysLeft > 0 && daysLeft <= 30;
+                  return (
+                    <span className={cn(isExpired ? 'text-red-600 font-semibold' : isNearExpiry ? 'text-amber-600 font-semibold' : '')}>
+                      {expiry.toLocaleDateString('pt-BR')}
+                      {isExpired && ' (vencida)'}
+                      {isNearExpiry && ` (${daysLeft}d restantes)`}
+                    </span>
+                  );
+                })()}
+              </dd>
+            </div>
+            <div className="col-span-2 sm:col-span-3">
+              <dt className="text-muted-foreground mb-1">Representante</dt>
+              <dd>
+                <Select
+                  value={representative?.userId || '__none__'}
+                  onValueChange={handleRepChange}
+                  disabled={repSaving || isCancelledOrder || !repUsers}
+                >
+                  <SelectTrigger className="w-full max-w-xs">
+                    <SelectValue placeholder="Selecionar representante" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Nenhum (Venda Direta)</SelectItem>
+                    {(repUsers ?? []).map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.displayName || rep.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {repSaving && (
+                  <p className="text-xs text-muted-foreground mt-1">Salvando…</p>
+                )}
+              </dd>
+            </div>
           </dl>
         </CardContent>
       </Card>
 
       {/* ── Order Checklist ── */}
       <OrderChecklist order={order} />
+
+      {/* ── Document Upload ── */}
+      {!isCancelledOrder && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Enviar Documentos</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Envie documentos — o tipo será detectado automaticamente.
+            </p>
+            <FileUpload
+              storagePath={`documents/${orderId}`}
+              onUploadComplete={() => {}}
+              onFileReady={handleFileReady}
+              onError={(err) => setUploadError(err.message)}
+              multiple
+              label="Clique ou arraste arquivos aqui"
+              sublabel="Aceita múltiplos arquivos · PDF, JPG, PNG (max 5MB cada)"
+            />
+            {classifyingFiles.size > 0 && (
+              <p className="text-xs text-muted-foreground animate-pulse">
+                Classificando {classifyingFiles.size} documento{classifyingFiles.size > 1 ? 's' : ''}...
+              </p>
+            )}
+            {uploadError && (
+              <p className="text-sm text-destructive">{uploadError}</p>
+            )}
+            {uploadedDocs.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Enviados nesta sessão:</p>
+                {uploadedDocs.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <svg className="h-3.5 w-3.5 flex-shrink-0 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="truncate text-green-700">{d.name}</span>
+                    <Select value={d.type} onValueChange={(v) => handleTypeOverride(i, v)}>
+                      <SelectTrigger className="h-6 w-auto min-w-[120px] text-xs px-2 py-0 gap-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(DOC_TYPE_LABELS).map(([key, label]) => (
+                          <SelectItem key={key} value={key} className="text-xs">{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Products ── */}
       <Card>
@@ -306,15 +643,35 @@ export default function OrderDetailPage() {
                   })}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t">
+                  {order.frete && order.frete > 0 && (
+                    <>
+                      <tr className="border-t">
+                        <td colSpan={3} className="pt-3 pl-6 pb-0.5 text-right text-sm text-muted-foreground">
+                          Subtotal
+                        </td>
+                        <td className="pt-3 pr-6 pb-0.5 text-right text-sm">
+                          {fmtBRL(order.amount)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={3} className="pl-6 pb-0.5 text-right text-sm text-muted-foreground">
+                          Frete
+                        </td>
+                        <td className="pr-6 pb-0.5 text-right text-sm">
+                          {fmtBRL(order.frete)}
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                  <tr className={!order.frete ? 'border-t' : ''}>
                     <td
                       colSpan={3}
-                      className="pt-3 pl-6 pb-1 text-right font-semibold text-muted-foreground"
+                      className="pt-1 pl-6 pb-1 text-right font-semibold text-muted-foreground"
                     >
                       Total
                     </td>
-                    <td className="pt-3 pr-6 pb-1 text-right text-lg font-bold">
-                      {fmtBRL(order.amount)}
+                    <td className="pt-1 pr-6 pb-1 text-right text-lg font-bold">
+                      {fmtBRL(order.amount + (order.frete || 0))}
                     </td>
                   </tr>
                 </tfoot>
@@ -323,6 +680,90 @@ export default function OrderDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── GlobalPay payment sync ── */}
+      {canMarkAsPaid && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sincronizar Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              Consulta o GlobalPay e atualiza o status do link de pagamento pendente.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isSyncing}
+                onClick={handlePaymentSync}
+              >
+                {isSyncing ? 'Sincronizando…' : '↻ Sincronizar GlobalPay'}
+              </Button>
+              {syncMsg && (
+                <p className="text-sm text-muted-foreground">{syncMsg}</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Payment links ── */}
+      {paymentLinks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Links de Pagamento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {paymentLinks.map((pl) => (
+              <div
+                key={pl.id}
+                className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+              >
+                <Badge
+                  variant={
+                    pl.status === 'paid'
+                      ? 'default'
+                      : pl.status === 'created'
+                        ? 'outline'
+                        : 'destructive'
+                  }
+                  className="shrink-0"
+                >
+                  {pl.status === 'paid' ? 'Pago' : pl.status === 'created' ? 'Pendente' : pl.status}
+                </Badge>
+                <span className="font-medium">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: pl.currency || 'BRL' }).format(pl.amount)}
+                </span>
+                {pl.paymentUrl && (
+                  <>
+                    <a
+                      href={pl.paymentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ml-auto flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Abrir link
+                    </a>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText(pl.paymentUrl!);
+                        toast({ title: 'Link copiado!' });
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Manual payment status override ── */}
       {showPaymentActions && (

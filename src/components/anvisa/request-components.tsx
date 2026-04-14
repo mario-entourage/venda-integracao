@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useRef } from "react";
 import { AlertCircle, CheckCircle, Lightbulb, Loader2, Wand2, Check, ExternalLink, ZoomIn, ZoomOut, RotateCw, X, Maximize2, FileText, Copy } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -10,6 +10,7 @@ import { doc, writeBatch, updateDoc, getDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useFirebase, errorEmitter } from "@/firebase";
 import { FirestorePermissionError } from "@/firebase/errors";
+import { useAuthFetch } from "@/hooks/use-auth-fetch";
 import { useToast } from "@/hooks/use-toast";
 import { getDownloadURL, ref } from "firebase/storage";
 import Image from 'next/image';
@@ -26,6 +27,86 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import type { PatientRequest, PacienteDocument, ComprovanteResidenciaDocument, ProcuracaoDocument, ReceitaMedicaDocument, DocumentBase, OcrData, AnvisaRequestStatus, AnvisaUserProfile } from "@/types/anvisa";
 import { ANVISA_ROUTES, ANVISA_API_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
+
+// ─── Phone formatting ───────────────────────────────────────────────────────
+
+/** Formats digits into (XX) XXXXX-XXXX (mobile) or (XX) XXXX-XXXX (landline). */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 11);
+  if (digits.length === 0) return '';
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10)
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+// ─── CEP-to-state derivation ────────────────────────────────────────────────
+// CEP range → UF mapping (first 1-2 digits determine the state)
+function stateFromCep(cep: string | undefined | null): string {
+    if (!cep) return '';
+    const digits = cep.replace(/\D/g, '');
+    if (digits.length < 5) return '';
+    const prefix = parseInt(digits.substring(0, 5), 10);
+    // SP: 01000-19999
+    if (prefix >= 1000 && prefix <= 19999) return 'SP';
+    // RJ: 20000-28999
+    if (prefix >= 20000 && prefix <= 28999) return 'RJ';
+    // ES: 29000-29999
+    if (prefix >= 29000 && prefix <= 29999) return 'ES';
+    // MG: 30000-39999
+    if (prefix >= 30000 && prefix <= 39999) return 'MG';
+    // BA: 40000-48999
+    if (prefix >= 40000 && prefix <= 48999) return 'BA';
+    // SE: 49000-49999
+    if (prefix >= 49000 && prefix <= 49999) return 'SE';
+    // PE: 50000-56999
+    if (prefix >= 50000 && prefix <= 56999) return 'PE';
+    // AL: 57000-57999
+    if (prefix >= 57000 && prefix <= 57999) return 'AL';
+    // PB: 58000-58999
+    if (prefix >= 58000 && prefix <= 58999) return 'PB';
+    // RN: 59000-59999
+    if (prefix >= 59000 && prefix <= 59999) return 'RN';
+    // CE: 60000-63999
+    if (prefix >= 60000 && prefix <= 63999) return 'CE';
+    // PI: 64000-64999
+    if (prefix >= 64000 && prefix <= 64999) return 'PI';
+    // MA: 65000-65999
+    if (prefix >= 65000 && prefix <= 65999) return 'MA';
+    // PA: 66000-68899
+    if (prefix >= 66000 && prefix <= 68899) return 'PA';
+    // AP: 68900-68999
+    if (prefix >= 68900 && prefix <= 68999) return 'AP';
+    // AM: 69000-69299, 69400-69899
+    if (prefix >= 69000 && prefix <= 69299) return 'AM';
+    if (prefix >= 69400 && prefix <= 69899) return 'AM';
+    // RR: 69300-69399
+    if (prefix >= 69300 && prefix <= 69399) return 'RR';
+    // AC: 69900-69999
+    if (prefix >= 69900 && prefix <= 69999) return 'AC';
+    // DF: 70000-72799, 73000-73699
+    if (prefix >= 70000 && prefix <= 72799) return 'DF';
+    if (prefix >= 73000 && prefix <= 73699) return 'DF';
+    // GO: 72800-72999, 73700-76799
+    if (prefix >= 72800 && prefix <= 72999) return 'GO';
+    if (prefix >= 73700 && prefix <= 76799) return 'GO';
+    // TO: 77000-77999
+    if (prefix >= 77000 && prefix <= 77999) return 'TO';
+    // MT: 78000-78899
+    if (prefix >= 78000 && prefix <= 78899) return 'MT';
+    // MS: 79000-79999
+    if (prefix >= 79000 && prefix <= 79999) return 'MS';
+    // RO: 76800-76999
+    if (prefix >= 76800 && prefix <= 76999) return 'RO';
+    // PR: 80000-87999
+    if (prefix >= 80000 && prefix <= 87999) return 'PR';
+    // SC: 88000-89999
+    if (prefix >= 88000 && prefix <= 89999) return 'SC';
+    // RS: 90000-99999
+    if (prefix >= 90000 && prefix <= 99999) return 'RS';
+    return '';
+}
 
 // Optional format validation: validates format only when a value is provided
 const optionalDate = z.string().refine(
@@ -295,6 +376,7 @@ type OcrDataFormProps = DocumentProps & {
 
 function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResidenciaDoc, comprovanteResidenciaDocs = [], procuracaoDoc, procuracaoDocs = [], receitaMedicaDoc, receitaMedicaDocs = [], reusedData }: OcrDataFormProps) {
     const { firestore } = useFirebase();
+    const authFetch = useAuthFetch();
     const { toast } = useToast();
     const [isSaving, setIsSaving] = useState(false);
     const [suggestions, setSuggestions] = useState<Record<string, string>>({});
@@ -331,9 +413,8 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                     missingFields: missingFields,
                 };
 
-                const response = await fetch(ANVISA_API_ROUTES.suggestCorrections, {
+                const response = await authFetch(ANVISA_API_ROUTES.suggestCorrections, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(input),
                 });
                 if (!response.ok) {
@@ -385,31 +466,31 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
 
     const defaultValues = useMemo(() => {
         const { fields: combinedData } = mergeDocPages(allDocs);
-        // Reused data from Sales Integration takes priority over OCR-extracted data
-        const reused = reusedData || {};
+        // OCR-extracted data takes priority; database (reusedData) fills gaps
+        const db = reusedData || {};
 
         return {
-            patientName: reused.patientName || combinedData.patientName || '',
-            patientRg: reused.patientRg || combinedData.patientRg || '',
-            patientCpf: reused.patientCpf || combinedData.patientCpf || '',
-            patientDob: reused.patientDob || combinedData.patientDob || '',
-            patientCep: reused.patientCep || combinedData.patientCep || '',
-            patientAddress: reused.patientAddress || combinedData.patientAddress || '',
-            patientCity: reused.patientCity || combinedData.patientCity || '',
-            patientState: reused.patientState || combinedData.patientState || '',
-            patientPhone: reused.patientPhone || combinedData.patientPhone || '',
-            patientEmail: reused.patientEmail || combinedData.patientEmail || '',
-            doctorName: reused.doctorName || combinedData.doctorName || '',
-            doctorCrm: reused.doctorCrm || combinedData.doctorCrm || '',
-            doctorSpecialty: reused.doctorSpecialty || combinedData.doctorSpecialty || '',
-            doctorUf: reused.doctorUf || combinedData.doctorUf || '',
-            doctorCity: reused.doctorCity || combinedData.doctorCity || '',
-            doctorPhone: reused.doctorPhone || combinedData.doctorPhone || '',
-            doctorMobile: reused.doctorMobile || combinedData.doctorMobile || '',
-            doctorEmail: reused.doctorEmail || combinedData.doctorEmail || '',
-            prescriptionDate: reused.prescriptionDate || combinedData.prescriptionDate || '',
-            prescriptionMedication: reused.prescriptionMedication || combinedData.prescriptionMedication || '',
-            prescriptionDosage: reused.prescriptionDosage || combinedData.prescriptionDosage || '',
+            patientName: combinedData.patientName || db.patientName || '',
+            patientRg: combinedData.patientRg || db.patientRg || '',
+            patientCpf: combinedData.patientCpf || db.patientCpf || '',
+            patientDob: combinedData.patientDob || db.patientDob || '',
+            patientCep: combinedData.patientCep || db.patientCep || '',
+            patientAddress: combinedData.patientAddress || db.patientAddress || '',
+            patientCity: combinedData.patientCity || db.patientCity || '',
+            patientState: combinedData.patientState || db.patientState || stateFromCep(combinedData.patientCep || db.patientCep) || '',
+            patientPhone: combinedData.patientPhone || db.patientPhone || '',
+            patientEmail: combinedData.patientEmail || db.patientEmail || '',
+            doctorName: combinedData.doctorName || db.doctorName || '',
+            doctorCrm: combinedData.doctorCrm || db.doctorCrm || '',
+            doctorSpecialty: combinedData.doctorSpecialty || db.doctorSpecialty || '',
+            doctorUf: combinedData.doctorUf || db.doctorUf || '',
+            doctorCity: combinedData.doctorCity || db.doctorCity || '',
+            doctorPhone: combinedData.doctorPhone || db.doctorPhone || '',
+            doctorMobile: combinedData.doctorMobile || db.doctorMobile || '',
+            doctorEmail: combinedData.doctorEmail || db.doctorEmail || '',
+            prescriptionDate: combinedData.prescriptionDate || db.prescriptionDate || '',
+            prescriptionMedication: combinedData.prescriptionMedication || db.prescriptionMedication || '',
+            prescriptionDosage: combinedData.prescriptionDosage || db.prescriptionDosage || '',
         };
     }, [allDocs, reusedData]);
 
@@ -419,7 +500,17 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
     });
 
     useEffect(() => {
-        form.reset(defaultValues);
+        // Only update fields the user hasn't manually edited (non-dirty),
+        // so user-typed values are never overwritten by incoming OCR/DB data.
+        const dirtyFields = form.formState.dirtyFields;
+        const currentValues = form.getValues();
+        const merged = { ...currentValues };
+        for (const key of Object.keys(defaultValues) as (keyof typeof defaultValues)[]) {
+            if (!dirtyFields[key]) {
+                merged[key] = defaultValues[key];
+            }
+        }
+        form.reset(merged, { keepDirtyValues: true });
     }, [defaultValues, form]);
 
     async function onSubmit(data: z.infer<typeof ocrSchema>) {
@@ -498,7 +589,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
             updatedAt: new Date().toISOString()
         };
 
-        if (request.status === 'PENDENTE') {
+        if (request.status === 'RASCUNHO' || request.status === 'PENDENTE') {
             requestUpdatePayload.status = 'EM_AJUSTE';
         }
 
@@ -629,7 +720,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="patientPhone" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.patientPhone)}`}>
                                 <FormLabel>Celular</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 99999-9999"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 00000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="patientPhone" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('patientPhone', v)} />
@@ -715,7 +806,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="doctorPhone" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.doctorPhone)}`}>
                                 <FormLabel>Telefone Fixo do Prescritor</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 3333-3333"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 0000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="doctorPhone" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('doctorPhone', v)} />
@@ -726,7 +817,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
                             <FormItem id="doctorMobile" className={`rounded-md p-2 -m-2 ${confidenceClass(confidenceMap.doctorMobile)}`}>
                                 <FormLabel>Celular do Prescritor</FormLabel>
                                 <div className="flex items-center gap-1">
-                                    <FormControl><Input {...field} placeholder="(31) 99999-9999"/></FormControl>
+                                    <FormControl><Input {...field} placeholder="(00) 00000-0000" onChange={(e) => field.onChange(formatPhone(e.target.value))} /></FormControl>
                                     <CopyButton value={field.value} />
                                 </div>
                                 <SuggestionBox fieldName="doctorMobile" suggestions={suggestions} isSuggesting={isSuggesting} onApply={(v) => form.setValue('doctorMobile', v)} />
@@ -795,7 +886,7 @@ function OcrDataForm({ request, pacienteDoc, pacienteDocs = [], comprovanteResid
 }
 
 function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovanteResidenciaDoc, comprovanteResidenciaDocs = [], procuracaoDoc, procuracaoDocs = [], receitaMedicaDoc, receitaMedicaDocs = [], isProcessing }: AdjustmentListProps) {
-    const { firestore, user } = useFirebase();
+    const { firestore, storage, user } = useFirebase();
     const { toast } = useToast();
 
     // Merge all pages per type for comprehensive field coverage
@@ -808,7 +899,9 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
     const [confirmationNumber, setConfirmationNumber] = useState('');
     const [isCompleting, setIsCompleting] = useState(false);
     const [dataSentToExtension, setDataSentToExtension] = useState(false);
+    const dataSentRef = useRef(false);
     const [autoSent, setAutoSent] = useState(false);
+    const [extensionReady, setExtensionReady] = useState(false);
     const [userProfile, setUserProfile] = useState<AnvisaUserProfile | null>(null);
     const [profileLoaded, setProfileLoaded] = useState(false);
 
@@ -831,18 +924,23 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
         loadProfile();
     }, [firestore, user]);
 
-    // Listen for confirmation that extension stored the data (via postMessage)
+    // Listen for extension bridge ready signal + confirmation that extension stored data
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (!event.data || typeof event.data !== 'object') return;
+            if (event.data.type === 'anvisa-extension-ready') {
+                setExtensionReady(true);
+                return;
+            }
             if (event.data.type === 'anvisa-extension-data-stored') {
                 if (event.data.success) {
                     setDataSentToExtension(true);
+                    dataSentRef.current = true;
                     toast({
                         title: "Dados enviados para a extensão!",
                         description: `${event.data.fieldCount} campos prontos. Abra o site da ANVISA e clique em "Preencher" na extensão.`,
                     });
-                    setTimeout(() => setDataSentToExtension(false), 5000);
+                    setTimeout(() => { setDataSentToExtension(false); dataSentRef.current = false; }, 5000);
                 } else {
                     toast({
                         variant: 'destructive',
@@ -868,50 +966,107 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
             data.requesterName = userProfile.requesterName;
             data.requesterEmail = userProfile.requesterEmail;
             data.requesterRg = userProfile.requesterRg;
+            data.requesterSexo = userProfile.requesterSexo;
+            data.requesterDob = userProfile.requesterDob;
             data.requesterAddress = userProfile.requesterAddress;
             data.requesterCep = userProfile.requesterCep;
+            data.requesterEstado = userProfile.requesterEstado;
+            data.requesterMunicipio = userProfile.requesterMunicipio;
             data.requesterPhone = userProfile.requesterPhone;
             data.requesterLandline = userProfile.requesterLandline;
         }
         return data;
     }, [validatedData, userProfile]);
 
-    // Auto-send data to extension once OCR/extraction is done AND profile is loaded
+    // Resolve Firebase Storage download URLs for all documents
+    type FileEntry = { docType: string; fileName: string; downloadUrl: string; mimeType: string };
+    const [resolvedFiles, setResolvedFiles] = useState<FileEntry[]>([]);
+
     useEffect(() => {
-        if (autoSent || isProcessing || !profileLoaded) return;
+        if (!storage || isProcessing) return;
+
+        const docsByType: { doc: DocumentBase; docType: string }[] = [];
+
+        const pDocs = pacienteDocs.length > 0 ? pacienteDocs : [pacienteDoc];
+        pDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'DOCUMENTO_PACIENTE' }); });
+
+        const crDocs = comprovanteResidenciaDocs.length > 0 ? comprovanteResidenciaDocs : [comprovanteResidenciaDoc];
+        crDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'COMPROVANTE_RESIDENCIA' }); });
+
+        const rmDocs = receitaMedicaDocs.length > 0 ? receitaMedicaDocs : [receitaMedicaDoc];
+        rmDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'RECEITA_MEDICA' }); });
+
+        const prDocs = procuracaoDocs.length > 0 ? procuracaoDocs : (procuracaoDoc ? [procuracaoDoc] : []);
+        prDocs.forEach(d => { if (d?.fileStoragePath) docsByType.push({ doc: d, docType: 'PROCURACAO' }); });
+
+        if (docsByType.length === 0) return;
+
+        let cancelled = false;
+        Promise.all(
+            docsByType.map(async (entry) => {
+                try {
+                    const storageRef = ref(storage, entry.doc.fileStoragePath);
+                    const url = await getDownloadURL(storageRef);
+                    const fn = entry.doc.fileName.toLowerCase();
+                    const mimeType = fn.endsWith('.pdf') ? 'application/pdf'
+                        : fn.endsWith('.png') ? 'image/png'
+                        : fn.endsWith('.jpg') || fn.endsWith('.jpeg') ? 'image/jpeg'
+                        : 'application/octet-stream';
+                    return { docType: entry.docType, fileName: entry.doc.fileName, downloadUrl: url, mimeType } as FileEntry;
+                } catch {
+                    return null;
+                }
+            })
+        ).then((results) => {
+            if (!cancelled) setResolvedFiles(results.filter((r): r is FileEntry => r !== null));
+        });
+
+        return () => { cancelled = true; };
+    }, [storage, isProcessing, pacienteDoc, pacienteDocs, comprovanteResidenciaDoc, comprovanteResidenciaDocs, receitaMedicaDoc, receitaMedicaDocs, procuracaoDoc, procuracaoDocs]);
+
+    // Full payload including file URLs for the extension
+    const extensionPayload = useMemo(() => {
+        const payload: Record<string, unknown> = { ...fullPayload };
+        if (resolvedFiles.length > 0) {
+            payload._files = resolvedFiles;
+        }
+        return payload;
+    }, [fullPayload, resolvedFiles]);
+
+    // Probe for extension bridge — it may have sent 'ready' before this component mounted.
+    // The bridge re-sends 'ready' in response to a ping.
+    useEffect(() => {
+        window.postMessage({ type: 'anvisa-extension-ping' }, '*');
+    }, []);
+
+    // Auto-send data to extension once OCR/extraction is done, profile is loaded, AND bridge is ready
+    useEffect(() => {
+        if (autoSent || isProcessing || !profileLoaded || !extensionReady) return;
         const hasData = Object.values(validatedData).some(v => v && String(v).trim().length > 0);
         if (!hasData) return;
         setAutoSent(true);
-        window.postMessage({ type: 'anvisa-autofill-data', data: fullPayload }, '*');
-    }, [validatedData, isProcessing, autoSent, profileLoaded, fullPayload]);
+        window.postMessage({ type: 'anvisa-autofill-data', data: extensionPayload }, '*');
+    }, [validatedData, isProcessing, autoSent, profileLoaded, extensionReady, extensionPayload]);
 
     const handleSendToExtension = () => {
         // Use postMessage to cross the content script isolation boundary
         window.postMessage(
-            { type: 'anvisa-autofill-data', data: fullPayload },
+            { type: 'anvisa-autofill-data', data: extensionPayload },
             '*'
         );
 
-        // If the extension bridge doesn't reply within 2 seconds, the content script
+        // If the extension bridge doesn't reply within 3 seconds, the content script
         // is likely dead (extension was reinstalled/updated). Prompt user to refresh.
+        // Use dataSentRef (not state) to avoid stale closure issues.
         const timeout = setTimeout(() => {
-            if (!dataSentToExtension) {
+            if (!dataSentRef.current) {
                 toast({
                     variant: 'destructive',
                     title: 'Extensão não respondeu',
                     description: 'Recarregue esta página (F5) e tente novamente. A extensão pode ter sido reinstalada.',
                 });
             }
-        }, 2000);
-
-        // Clear timeout if we get a reply (handled by the message listener)
-        const handleReply = (event: MessageEvent) => {
-            if (event.data?.type === 'anvisa-extension-data-stored') {
-                clearTimeout(timeout);
-                window.removeEventListener('message', handleReply);
-            }
-        };
-        window.addEventListener('message', handleReply);
+        }, 3000);
     };
 
     const handleCompleteRequest = () => {
@@ -959,7 +1114,7 @@ function AutomationHelper({ request, pacienteDoc, pacienteDocs = [], comprovante
                     <AlertTitle>Modelo Solicitante não configurado</AlertTitle>
                     <AlertDescription>
                         Configure o{' '}
-                        <Link href={ANVISA_ROUTES.profile} className="underline text-primary font-medium">Modelo Solicitante</Link>{' '}
+                        <Link href={ANVISA_ROUTES.profile} target="_blank" className="underline text-primary font-medium">Modelo Solicitante</Link>{' '}
                         para preencher automaticamente os dados do solicitante no formulário ANVISA.
                     </AlertDescription>
                 </Alert>

@@ -1,16 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreHorizontal, File, ListFilter, Plus, Trash2, Loader2 } from "lucide-react";
+import { MoreHorizontal, File, Plus, Trash2, Loader2, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,9 +28,20 @@ import { collection, query, where, doc, updateDoc, writeBatch } from "firebase/f
 import { useToast } from "@/hooks/use-toast";
 import { ANVISA_ROUTES } from "@/lib/anvisa-routes";
 import { ANVISA_COLLECTIONS } from "@/lib/anvisa-paths";
+import { TablePagination } from "@/components/shared/table-pagination";
+import { exportToCsv } from "@/lib/export-csv";
 
+
+const TAB_STATUSES: Record<string, AnvisaRequestStatus[]> = {
+  // active = in-flight (submitted and being processed)
+  active:   ['PENDENTE', 'EM_AJUSTE', 'EM_AUTOMACAO', 'ERRO'],
+  // draft = created but not yet submitted
+  draft:    ['RASCUNHO'],
+  archived: ['CONCLUIDO'],
+};
 
 const statusMap: Record<AnvisaRequestStatus, { label: string; className: string }> = {
+  RASCUNHO: { label: "Rascunho", className: "bg-gray-100 text-gray-700 border-gray-300" },
   PENDENTE: { label: "Pendente", className: "bg-yellow-100 text-yellow-800 border-yellow-300" },
   EM_AJUSTE: { label: "Em Ajuste", className: "bg-blue-100 text-blue-800 border-blue-300" },
   EM_AUTOMACAO: { label: "Em Automação", className: "bg-purple-100 text-purple-800 border-purple-300" },
@@ -55,7 +67,8 @@ export function RequestTable() {
   // For batch selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteDialog, setShowBatchDeleteDialog] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isSingleDeleting, setIsSingleDeleting] = useState(false);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
 
   // Admin sees all non-deleted requests; regular users see only their own
   const requestsQuery = useMemoFirebase(() => {
@@ -63,14 +76,46 @@ export function RequestTable() {
     if (isAdmin) {
       return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('softDeleted', '==', false));
     }
-    return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('ownerEmail', '==', user.email));
+    return query(collection(firestore, ANVISA_COLLECTIONS.requests), where('ownerEmail', '==', user.email), where('softDeleted', '==', false));
   }, [user, firestore, isAdmin]);
 
   const { data: requests, isLoading } = useCollection<PatientRequest>(requestsQuery);
 
+  // Tab + search filter + pagination
+  const [activeTab, setActiveTab] = useState('all');
+  const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(30);
+
+  const filteredRequests = (requests ?? []).filter((r) => {
+    const tabStatuses = TAB_STATUSES[activeTab];
+    if (tabStatuses && !tabStatuses.includes(r.status)) return false;
+    return !search.trim() || r.patientDisplayName?.toLowerCase().includes(search.toLowerCase());
+  });
+
+  const paginatedRequests = useMemo(() => {
+    const start = currentPage * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
+
+  // Reset page when search or tab changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => setCurrentPage(0), [search, activeTab]);
+
+  const handleExportCsv = useCallback(() => {
+    exportToCsv(filteredRequests, [
+      { key: 'id', header: 'ID' },
+      { key: 'patientDisplayName', header: 'Paciente' },
+      { key: 'ownerEmail', header: 'Operador' },
+      { key: 'status', header: 'Status', render: (r) => statusMap[r.status]?.label ?? r.status },
+      { key: 'createdAt', header: 'Criado em', render: (r) => new Date(r.createdAt).toLocaleDateString('pt-BR') },
+      { key: 'updatedAt', header: 'Atualizado em', render: (r) => new Date(r.updatedAt).toLocaleDateString('pt-BR') },
+    ], 'solicitacoes-anvisa');
+  }, [filteredRequests]);
+
   const handleSoftDelete = useCallback(async (request: PatientRequest) => {
     if (!firestore) return;
-    setIsDeleting(true);
+    setIsSingleDeleting(true);
     try {
       const requestRef = doc(firestore, ANVISA_COLLECTIONS.requests, request.id);
       await updateDoc(requestRef, { softDeleted: true, updatedAt: new Date().toISOString() });
@@ -79,13 +124,13 @@ export function RequestTable() {
       console.error("Error soft-deleting request:", error);
       toast({ variant: "destructive", title: "Erro", description: "Nao foi possivel excluir a solicitacao." });
     } finally {
-      setIsDeleting(false);
+      setIsSingleDeleting(false);
     }
   }, [firestore, toast]);
 
   const handleBatchDelete = useCallback(async () => {
     if (!firestore || selectedIds.size === 0) return;
-    setIsDeleting(true);
+    setIsBatchDeleting(true);
     try {
       const batch = writeBatch(firestore);
       const now = new Date().toISOString();
@@ -100,7 +145,7 @@ export function RequestTable() {
       console.error("Error batch-deleting requests:", error);
       toast({ variant: "destructive", title: "Erro", description: "Nao foi possivel excluir as solicitacoes." });
     } finally {
-      setIsDeleting(false);
+      setIsBatchDeleting(false);
       setShowBatchDeleteDialog(false);
     }
   }, [firestore, selectedIds, toast]);
@@ -118,11 +163,10 @@ export function RequestTable() {
   };
 
   const toggleSelectAll = () => {
-    if (!requests) return;
-    if (selectedIds.size === requests.length) {
+    if (selectedIds.size === filteredRequests.length && filteredRequests.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(requests.map(r => r.id)));
+      setSelectedIds(new Set(filteredRequests.map(r => r.id)));
     }
   };
 
@@ -151,7 +195,7 @@ export function RequestTable() {
 
   return (
     <>
-    <Tabs defaultValue="all">
+    <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setCurrentPage(0); }} className="min-w-0">
       <div className="flex items-center">
         <TabsList>
           <TabsTrigger value="all">Todas</TabsTrigger>
@@ -168,7 +212,7 @@ export function RequestTable() {
               variant="destructive"
               className="h-8 gap-1"
               onClick={() => setShowBatchDeleteDialog(true)}
-              disabled={isDeleting}
+              disabled={isBatchDeleting}
             >
               <Trash2 className="h-3.5 w-3.5" />
               <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">
@@ -182,38 +226,36 @@ export function RequestTable() {
               <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Nova Solicitacao</span>
             </Button>
           )}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-8 gap-1">
-                <ListFilter className="h-3.5 w-3.5" />
-                <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Filtrar</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filtrar por</DropdownMenuLabel>
-              <DropdownMenuItem>Status</DropdownMenuItem>
-              <DropdownMenuItem>Data</DropdownMenuItem>
-              <DropdownMenuItem>Operador</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button size="sm" variant="outline" className="h-8 gap-1">
+          <Button size="sm" variant="outline" className="h-8 gap-1" onClick={handleExportCsv}>
             <File className="h-3.5 w-3.5" />
             <span className="sr-only sm:not-sr-only sm:whitespace-nowrap">Exportar CSV</span>
           </Button>
         </div>
       </div>
-      <TabsContent value="all">
-        <Card>
+      <Card className="mt-2">
           <CardHeader>
-            <CardTitle>{isAdmin ? 'Todas as Solicitacoes' : 'Minhas Solicitacoes'}</CardTitle>
-            <CardDescription>
-              {isAdmin
-                ? 'Gerencie todas as solicitacoes de pacientes de todos os operadores.'
-                : 'Gerencie e acompanhe todas as suas solicitacoes de pacientes.'
-              }
-            </CardDescription>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle>{isAdmin ? 'Todas as Solicitacoes' : 'Minhas Solicitacoes'}</CardTitle>
+                <CardDescription>
+                  {isAdmin
+                    ? 'Gerencie todas as solicitacoes de pacientes de todos os operadores.'
+                    : 'Gerencie e acompanhe todas as suas solicitacoes de pacientes.'
+                  }
+                </CardDescription>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar paciente..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-8 h-9"
+                />
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -243,7 +285,7 @@ export function RequestTable() {
                     <TableCell colSpan={isAdmin ? 8 : 6} className="text-center">Carregando...</TableCell>
                   </TableRow>
                 )}
-                {!isLoading && requests?.map((request) => (
+                {!isLoading && paginatedRequests.map((request) => (
                   <TableRow key={request.id} className={selectedIds.has(request.id) ? 'bg-muted/50' : undefined}>
                     {isAdmin && (
                       <TableCell>
@@ -298,7 +340,7 @@ export function RequestTable() {
                     </TableCell>
                   </TableRow>
                 ))}
-                 {!isLoading && requests?.length === 0 && (
+                 {!isLoading && filteredRequests.length === 0 && (
                    <TableRow>
                      <TableCell colSpan={isAdmin ? 8 : 6} className="text-center">Nenhuma solicitacao encontrada.</TableCell>
                    </TableRow>
@@ -306,13 +348,20 @@ export function RequestTable() {
               </TableBody>
             </Table>
           </CardContent>
-          <CardFooter>
-            <div className="text-xs text-muted-foreground">
-              Mostrando <strong>{requests?.length || 0}</strong> de <strong>{requests?.length || 0}</strong> solicitacoes
-            </div>
+          <CardFooter className="p-0">
+            {!isLoading && filteredRequests.length > 0 && (
+              <TablePagination
+                totalItems={filteredRequests.length}
+                currentPage={currentPage}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                itemLabel="solicitações"
+                onExport={handleExportCsv}
+              />
+            )}
           </CardFooter>
-        </Card>
-      </TabsContent>
+      </Card>
     </Tabs>
 
     {/* Single-delete confirmation dialog */}
@@ -331,7 +380,7 @@ export function RequestTable() {
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={confirmSingleDelete}
           >
-            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSingleDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Excluir
           </AlertDialogAction>
         </AlertDialogFooter>
@@ -349,13 +398,13 @@ export function RequestTable() {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+          <AlertDialogCancel disabled={isBatchDeleting}>Cancelar</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={handleBatchDelete}
-            disabled={isDeleting}
+            disabled={isBatchDeleting}
           >
-            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isBatchDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Excluir {selectedIds.size} solicitacao(oes)
           </AlertDialogAction>
         </AlertDialogFooter>

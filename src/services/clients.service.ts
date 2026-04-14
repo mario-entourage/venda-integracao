@@ -1,10 +1,11 @@
 import {
   collection, doc, addDoc, updateDoc, getDoc,
-  query, where, orderBy, serverTimestamp, Timestamp,
+  query, where, orderBy, limit, serverTimestamp, Timestamp,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { Client } from '@/types/client';
 import type { CustomerFormValues } from '@/types/forms';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Collection / document references
@@ -29,6 +30,7 @@ export function getClientRef(db: Firestore, clientId: string) {
 export async function createClient(
   db: Firestore,
   data: CustomerFormValues,
+  performedById: string,
 ): Promise<string> {
   const ref = await addDoc(getClientsRef(db), {
     document: data.document,
@@ -44,6 +46,7 @@ export async function createClient(
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'create', collection: 'clients', documentId: ref.id, performedById, changes: data as unknown as Record<string, unknown> });
   return ref.id;
 }
 
@@ -54,11 +57,13 @@ export async function updateClient(
   db: Firestore,
   clientId: string,
   data: Partial<Omit<Client, 'id' | 'createdAt'>>,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'clients', documentId: clientId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -67,22 +72,25 @@ export async function updateClient(
 export async function softDeleteClient(
   db: Firestore,
   clientId: string,
+  performedById: string,
 ): Promise<void> {
   await updateDoc(getClientRef(db, clientId), {
     active: false,
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'clients', documentId: clientId, performedById, changes: { active: false } });
 }
 
 /**
  * Query for all active clients ordered by full name ascending.
  */
-export function getActiveClientsQuery(db: Firestore): Query {
+export function getActiveClientsQuery(db: Firestore, maxResults = 500): Query {
   return query(
     getClientsRef(db),
     where('active', '==', true),
     orderBy('fullName', 'asc'),
+    limit(maxResults),
   );
 }
 

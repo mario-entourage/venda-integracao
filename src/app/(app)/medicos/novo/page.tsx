@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirestore } from '@/firebase/provider';
+import { useFirestore, useUser } from '@/firebase/provider';
 import { createDoctor } from '@/services/doctors.service';
 import { DoctorForm } from '@/components/forms/doctor-form';
 import { PageHeader } from '@/components/shared/page-header';
@@ -13,14 +13,16 @@ import type { DoctorFormValues } from '@/types';
 
 export default function NovoMedicoPage() {
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (data: DoctorFormValues) => {
+    if (isLoading) return;
     setIsLoading(true);
     try {
-      await createDoctor(db, data);
+      await createDoctor(db, data, user!.uid);
       toast({ title: 'Medico cadastrado com sucesso.' });
       router.push('/medicos');
     } catch (err) {

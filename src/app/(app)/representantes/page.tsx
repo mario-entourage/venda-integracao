@@ -54,6 +54,7 @@ export default function RepresentantesPage() {
             loading={isLoading}
             searchPlaceholder="Buscar por nome, email..."
             emptyMessage="Nenhum representante cadastrado ainda."
+            exportFilename="representantes"
             onRowClick={(r) => router.push(`/usuarios/${r.id}`)}
           />
         </CardContent>

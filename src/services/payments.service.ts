@@ -1,6 +1,6 @@
 import {
   collection, collectionGroup, doc, addDoc, updateDoc, getDoc, getDocs,
-  query, where, orderBy, serverTimestamp, Firestore, Timestamp, Query,
+  query, where, orderBy, limit, serverTimestamp, Firestore, Timestamp, Query,
 } from 'firebase/firestore';
 import type { Payment, PaymentLink } from '@/types';
 
@@ -191,9 +191,23 @@ export async function getPaymentById(
 /**
  * Query all payment links across all orders, ordered by creation date (newest first).
  */
-export function getAllPaymentLinksQuery(db: Firestore): Query {
+export function getAllPaymentLinksQuery(db: Firestore, maxResults = 200): Query {
   return query(
     collectionGroup(db, 'paymentLinks'),
+    orderBy('createdAt', 'desc'),
+    limit(maxResults),
+  );
+}
+
+/**
+ * Query unassigned (standalone) payment links from the top-level collection.
+ * Only returns active links (status = 'created') sorted newest first.
+ */
+export function getUnassignedPaymentLinksQuery(db: Firestore): Query {
+  return query(
+    collection(db, 'paymentLinks'),
+    where('orderId', '==', ''),
+    where('status', '==', 'created'),
     orderBy('createdAt', 'desc'),
   );
 }

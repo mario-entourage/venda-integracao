@@ -22,6 +22,7 @@ export interface User {
 }
 
 export interface NotificationPreferences {
+  emailOnOrderCreated: boolean;
   emailOnPaymentLinkCreated: boolean;
   emailOnPaymentReceived: boolean;
   inAppOnPaymentLinkCreated: boolean;

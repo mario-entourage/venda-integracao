@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useFirestore, useMemoFirebase } from '@/firebase/provider';
+import { useFirestore, useMemoFirebase, useUser } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
+import { useCollection } from '@/firebase/firestore/use-collection';
 import { getDoctorRef, updateDoctor, softDeleteDoctor } from '@/services/doctors.service';
+import { getActiveRepUsersQuery } from '@/services/users.service';
 import { DoctorForm } from '@/components/forms/doctor-form';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import type { Doctor } from '@/types/doctor';
+import type { User } from '@/types';
 import type { DoctorFormValues } from '@/types';
 
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
@@ -28,6 +31,7 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function MedicoDetailPage() {
   const { id } = useParams<{ id: string }>();
   const db = useFirestore();
+  const { user } = useUser();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -37,6 +41,15 @@ export default function MedicoDetailPage() {
 
   const doctorRef = useMemoFirebase(() => getDoctorRef(db, id), [db, id]);
   const { data: doctor, isLoading } = useDoc<Doctor>(doctorRef);
+
+  const repUsersQ = useMemoFirebase(() => getActiveRepUsersQuery(db), [db]);
+  const { data: repUsers } = useCollection<User>(repUsersQ);
+
+  const repName = doctor?.repUserId
+    ? (repUsers ?? []).find((r) => r.id === doctor.repUserId)?.displayName
+      || (repUsers ?? []).find((r) => r.id === doctor.repUserId)?.email
+      || doctor.repUserId
+    : '—';
 
   if (isLoading) {
     return (
@@ -71,6 +84,7 @@ export default function MedicoDetailPage() {
     city: doctor.city,
     phone: doctor.phone,
     mobilePhone: doctor.mobilePhone,
+    repUserId: doctor.repUserId,
   };
 
   const handleSave = async (data: DoctorFormValues) => {
@@ -87,7 +101,8 @@ export default function MedicoDetailPage() {
         city: data.city || '',
         phone: data.phone || '',
         mobilePhone: data.mobilePhone || '',
-      });
+        repUserId: data.repUserId || '',
+      }, user!.uid);
       toast({ title: 'Medico atualizado com sucesso.' });
       setEditing(false);
     } catch (err) {
@@ -101,7 +116,7 @@ export default function MedicoDetailPage() {
   const handleDeactivate = async () => {
     setDeleting(true);
     try {
-      await softDeleteDoctor(db, id);
+      await softDeleteDoctor(db, id, user!.uid);
       toast({ title: 'Medico desativado.' });
       router.push('/medicos');
     } catch (err) {
@@ -149,6 +164,7 @@ export default function MedicoDetailPage() {
           <InfoRow label="Telefone" value={doctor.phone} />
           <InfoRow label="Celular" value={doctor.mobilePhone} />
           <InfoRow label="Email" value={doctor.email} />
+          <InfoRow label="Representante" value={repName} />
           <InfoRow
             label="Status"
             value={

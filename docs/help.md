@@ -28,24 +28,48 @@ DASHBOARD
   - Usuarios ativos: quantidade de usuarios ativos.
   - Acesso rapido: links para criar nova venda e acessar
     modulos principais.
+  - Versao do build: exibe o SHA do commit e data do deploy
+    para que o usuario saiba qual versao esta em uso.
 
 VENDAS (menu: Vendas | rota: /remessas)
   Modulo central para gerenciamento de vendas.
 
   Lista de Vendas:
-  - Tabela com colunas: Pedido, Cliente, Medico, Status,
-    Valor, Data.
+  - Cada linha mostra: Invoice (ou ID curto), Data, Cliente,
+    CPF, Representante, Cidade/Estado, Status, Valor.
+  - Invoice no formato ETGANS##### exibido quando presente.
   - Filtros por status e busca por nome do cliente.
   - Botao "Nova Venda" inicia o wizard de criacao.
   - Botao "Retomar" aparece para pedidos incompletos.
 
-  Nova Venda - Wizard de 3 Etapas:
+  Nova Venda - Wizard de 5 Etapas:
 
     Etapa 1 - Identificacao
     - Selecionar ou cadastrar Paciente (cliente).
     - Selecionar ou cadastrar Medico prescritor.
-    - Upload opcional da receita medica.
-    - Selecionar produtos e quantidades.
+    - Upload da receita medica com extracao automatica por IA.
+      Apos o upload, o sistema preenche automaticamente os
+      campos de Cliente, Medico e Produto com os dados
+      extraidos da receita. O operador pode revisar e
+      corrigir qualquer campo antes de prosseguir.
+      Ao arrastar um arquivo sobre a pagina, a area de Receita
+      fica verde ("Solte a receita aqui!") e a area de Produtos
+      fica vermelha com icone de proibicao e "Nao solte aqui".
+      Se o usuario mover o arquivo sobre a area de Produtos,
+      o aviso escala para textos grandes repetidos "NAO!" para
+      deixar claro que nao deve soltar ali.
+    - Deteccao de receita duplicada: o sistema calcula o hash
+      SHA-256 da receita e bloqueia reutilizacao com vendas ativas.
+      Se a receita ja estiver vinculada a outro pedido ativo, o
+      usuario deve cancelar o pedido existente primeiro.
+      Administradores podem marcar "Permitir receita duplicada"
+      para prosseguir sem cancelar o pedido anterior.
+    - Selecionar produtos e quantidades (dropdown expandido
+      mostra nomes completos dos produtos).
+    - Selecionar Representante (dropdown com usuarios marcados
+      como Sales Rep). Padrao: "Venda Direta".
+    - Definir frete (custo de envio incluido no link GlobalPay).
+    - Escolher metodos de pagamento permitidos.
     - Escolher opcao ANVISA:
       * Regular - importacao com autorizacao padrao
       * Excepcional - importacao excepcional
@@ -53,13 +77,11 @@ VENDAS (menu: Vendas | rota: /remessas)
 
     Etapa 2 - Pagamento
     - Gera link de pagamento GlobalPay para o paciente.
+    - Numero de invoice gerado automaticamente no formato
+      ETGANS##### (ex: ETGAMB00042) quando ha representante.
     - Opcao de gerar Procuracao ZapSign (SIM/NAO, padrao NAO).
       Se SIM, a procuracao sera gerada automaticamente na
       etapa seguinte, apos receber todos os documentos.
-    - Selecionar Representante (opcional, padrao "Venda Direta").
-    - Possibilidade de cadastrar novo Representante inline
-      clicando em "+ Novo Representante" (nome, codigo,
-      email, telefone, vinculo opcional com usuario).
 
     Etapa 3 - Documentacao
     - Upload de documentos obrigatorios via drag-and-drop
@@ -102,18 +124,75 @@ VENDAS (menu: Vendas | rota: /remessas)
 
 ENVIO (menu: Envio | rota: /envio)
   Gerenciamento de envios e rastreamento de entregas.
-  - Integracao com TriStar para criacao de remessas.
+  - Metodos: TriStar Express, Correios (Sedex/PAC), Motoboy.
+
+  TriStar Express (envio internacional de Miami):
+  - Dialog de criacao de remessa com campos do destinatario
+    (nome, CPF, endereco, telefone, email).
+  - Suporte a MULTIPLOS ITENS por remessa: adicione linhas
+    com "+ Adicionar item". Cada item tem tipo, descricao,
+    quantidade e preco unitario.
+  - Tipos de item: Produtos (10), Livros (20), Medicamento
+    (30), CBD (40), THC (41), Outro (90).
+  - Para itens CBD (tipo 40): campos adicionais de numero
+    de autorizacao ANVISA e nome comercial do produto.
+  - Codigos aduaneiros (HS codes) sao inseridos
+    automaticamente pelo servidor por tipo de item —
+    nao e necessario preencher manualmente.
+  - Seguro: toggle para incluir seguro com valor declarado.
+  - Dados do remetente (Entourage Lab Miami, incluindo
+    CNPJ e nome fantasia) sao inseridos automaticamente
+    pelo servidor — nao e necessario preencher.
+  - Apos criar a remessa: exibe codigo de rastreamento,
+    ID da remessa, e botao para baixar etiqueta (PDF).
   - Gera etiquetas de envio (PDF).
   - Rastreamento de encomendas.
   - Status de envio atualizado automaticamente.
-  - Metodos: TriStar, Correios (Sedex/PAC), Motoboy.
+
+  Correios (envio nacional):
+  - Entrada manual: codigo de rastreio, transportadora
+    (Sedex/PAC), data de envio.
+
+  Motoboy (entrega local):
+  - Entrada manual: nome do entregador, telefone, previsao
+    de entrega.
 
 CONTROLE (menu: Controle | rota: /controle)
-  Visao detalhada de cada pedido.
+  Lista de pedidos com filtros robustos e visao detalhada.
+
+  Lista de Pedidos:
+  - Filtros: Data Inicio, Data Fim, Status do Pedido.
+  - Datas padrao: ultimos 30 dias.
+  - Paginacao: 30 (padrao), 50, 100, ou Todos.
+    Ao selecionar "Todos", exibe aviso de confirmacao.
+
+  Detalhe do Pedido:
   - Todas as informacoes: cliente, medico, produtos,
     documentos, pagamento, envio.
-  - Status de cada documento (pendente, recebido, aprovado).
-  - Historico de atualizacoes do pedido.
+  - Seletor de representante (dropdown para alterar rep).
+    Se a alteracao falhar, uma mensagem de erro e exibida
+    e o valor anterior e restaurado automaticamente.
+  - Upload de documentos com seletor de tipo (Receita,
+    Identidade, Comprovante, Laudo, NF, ANVISA, Geral).
+    Se a alteracao de tipo falhar, o valor anterior e
+    restaurado automaticamente com mensagem de erro.
+  - Sincronizar pagamento com GlobalPay. Erros de
+    conexao exibem mensagem descritiva com instrucao
+    de recarregar e tentar novamente.
+  - Marcar como pago manualmente. Erros exibem mensagem
+    especifica sobre o que falhou.
+  - Marcar comprovante de vinculo como assinado. Erros
+    exibem mensagem especifica sobre o que falhou.
+  - Iniciar ANVISA (habilitado quando pagamento confirmado
+    e ZapSign assinado, se aplicavel).
+  - Upload de Autorizacao ANVISA (marca como CONCLUIDO).
+  - Upload de documentos restantes com status individual.
+  - Cancelar venda: solicita confirmacao. Se o cancelamento
+    falhar, o dialogo de confirmacao e fechado e uma
+    mensagem de erro e exibida.
+  - Continuar wizard a partir do pedido existente.
+  - CSV bulk import (admin): mapeamento de colunas,
+    validacao, deteccao de duplicatas via batchImportId.
 
 CLIENTES (menu: Clientes | rota: /clientes)
   Cadastro e gerenciamento de pacientes.
@@ -194,25 +273,37 @@ DOCUMENTOS
 
 DOCUMENTOS (menu: Documentos | rota: /documentos)
   Repositorio central de todos os documentos do sistema.
-  - Lista com filtros por tipo e status.
-  - Visualizacao detalhada de cada documento.
+  - Colunas: Tipo, Pedido, Medico, Enviado por, Data.
+  - Clique em um documento para ver todos os metadados.
+  - Upload de documentos na pagina do pedido com seletor
+    de tipo (Receita, Identidade, Comprovante de Endereco,
+    Laudo Medico, Nota Fiscal, Autorizacao ANVISA, Geral).
   - Tipos suportados:
+    * Prescricao (Receita Medica)
     * Identidade (RG/CNH)
-    * Comprovante de Residencia
-    * Receita Medica
+    * Comprovante de Endereco
+    * Laudo Medico
+    * Nota Fiscal
     * Autorizacao ANVISA
+    * Geral (para documentos nao classificados)
   - Formatos aceitos: PDF, JPG, JPEG, PNG.
 
 ----------------------------------------------------------
 FINANCEIRO
 ----------------------------------------------------------
 
-PAGAMENTOS (menu: Pagamentos | rota: /checkout)
+PAGAMENTOS (menu: Pagamentos | rota: /pagamentos)
   Gerenciamento de pagamentos e links de cobranca.
   - Integracao com GlobalPay para geracao de links.
+  - Colunas: Invoice, Valor, Cliente, Representante, Data,
+    Status.
+  - Invoice no formato ETGANS##### (ex: ETGAMB00042).
+  - Busca por invoice, representante, cliente ou medico.
+  - Filtro por status: Pendente, Pago, Expirado, Cancelado,
+    Falhou.
+  - Cards de resumo: Total, Pendentes, Pagos.
+  - Botao "Sincronizar GlobalPay" para atualizar status.
   - Moedas: BRL, USD.
-  - Status de pagamento: pendente, pago, cancelado.
-  - Historico de transacoes.
   - Webhook automatico atualiza status ao receber
     confirmacao do GlobalPay.
 
@@ -267,11 +358,15 @@ MODELO SOLICITANTE (menu: Modelo Solicitante | rota: /anvisa/perfil)
   Perfil padrao do solicitante para solicitacoes ANVISA.
   - Dados pre-preenchidos do solicitante (quem faz a
     solicitacao junto a ANVISA em nome do paciente).
-  - Campos: Nome, Email, RG, Endereco, CEP, Telefone,
-    Telefone Fixo.
+  - Campos: Nome, Email, RG, Sexo/Genero, Data de
+    Nascimento, Endereco, CEP, Estado (UF), Municipio,
+    Celular, Telefone Fixo.
+  - Estado e municipio usados no formulario ANVISA para
+    preencher os dados do solicitante (nao do paciente).
   - Editavel pelo usuario.
   - Incluido automaticamente no payload enviado para
-    a extensao.
+    a extensao. Os dados do solicitante sao separados
+    dos dados do paciente (extraidos por OCR).
 
 ----------------------------------------------------------
 ADMINISTRACAO
@@ -306,6 +401,10 @@ AUTENTICACAO
   - Sessao mantida automaticamente.
   - Niveis: Admin (acesso total), User (operacoes padrao),
     View Only (somente leitura).
+  - Erros de autenticacao exibem um codigo unico no formato
+    AUTH-YYYYMMDDHHMMSS-modulo (ex: AUTH-20260325143012-
+    api-ai-extract-prescription). Copie e envie ao
+    administrador para diagnostico rapido.
 
 PERMISSOES
   Funcionalidade              Admin  User  View Only
@@ -430,12 +529,34 @@ DADOS ENVIADOS PARA A EXTENSAO
   - Nome
   - Email
   - RG
+  - Sexo / Genero
+  - Data de Nascimento
   - Endereco / CEP
-  - Telefone / Telefone fixo
+  - Estado / Municipio
+  - Celular / Telefone fixo
 
 ----------------------------------------------------------
 SOLUCAO DE PROBLEMAS
 ----------------------------------------------------------
+
+  Mensagem com "Codigo: AUTH-XXXXXX-...":
+  - Indica falha de autenticacao ao acessar uma funcao
+    do sistema (ex: upload de receita, envio de remessa).
+  - Primeiro, recarregue a pagina (F5) e tente novamente.
+    Sessoes expiradas sao reativadas automaticamente apos
+    o recarregamento.
+  - Se o erro persistir, copie o codigo exibido e envie
+    para o administrador. O codigo identifica exatamente
+    qual operacao falhou e quando, permitindo diagnostico
+    rapido.
+  - Exemplo de codigo: AUTH-20260325143012-api-ai-extract-prescription
+
+  Pagina de pagamento mostra "Erro ao carregar":
+  - Indica problema de conexao ao buscar os dados, NAO
+    ausencia do registro.
+  - Clique em "Recarregar pagina" exibido na tela.
+  - Se o erro persistir, verifique sua conexao com a
+    internet e tente novamente.
 
   "Extensao nao respondeu" (apos 2 segundos):
   - Verifique se a extensao esta instalada e ativada.
@@ -487,7 +608,7 @@ PROTOCOLO DE COMUNICACAO (TECNICO)
 ==========================================================
 ENTOURAGE LAB - REQUISITOS DE NEGOCIO
 ==========================================================
-Atualizado em: 03/03/2026
+Atualizado em: 25/03/2026
 Reflete o estado atual do aplicativo e banco de dados.
 
 ----------------------------------------------------------
@@ -636,7 +757,8 @@ STATUS E FLUXOS
 
   Tipos de Documento (DocumentType):
     prescription, identity, medical_report,
-    proof_of_address, invoice, anvisa_authorization
+    proof_of_address, invoice, anvisa_authorization,
+    general
 
   Status de Pagamento:
     created -> pending -> processing -> approved
@@ -650,7 +772,7 @@ STATUS E FLUXOS
     pending -> sent -> delivered (returned)
 
   Metodos de Envio:
-    TRISTAR, LOCAL_MAIL (Correios), MOTOBOY
+    TRISTAR, LOCAL_MAIL (Correios), MOTOBOY, OTHER
 
 ----------------------------------------------------------
 INTEGRACOES EXTERNAS

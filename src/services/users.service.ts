@@ -1,9 +1,11 @@
 import {
-  collection, doc, updateDoc, getDoc, getDocs, setDoc, deleteDoc,
-  query, where, orderBy, serverTimestamp, writeBatch,
+  collection, doc, updateDoc, getDoc, getDocs, setDoc,
+  query, where, orderBy, limit, serverTimestamp, writeBatch,
   Firestore, Query,
 } from 'firebase/firestore';
 import type { User, UserProfile } from '@/types';
+import { ANVISA_COLLECTIONS } from '@/lib/anvisa-paths';
+import { writeAuditLog } from './audit.service';
 
 // ---------------------------------------------------------------------------
 // Pre-registration collection (keyed by email)
@@ -33,15 +35,18 @@ export async function createPreregistration(
   db: Firestore,
   email: string,
   groupId: string,
+  performedById: string,
   options?: { isRepresentante?: boolean; displayName?: string },
 ): Promise<void> {
-  await setDoc(getPreregistrationRef(db, email), {
+  const ref = getPreregistrationRef(db, email);
+  await setDoc(ref, {
     email,
     groupId,
     ...(options?.isRepresentante ? { isRepresentante: true } : {}),
     ...(options?.displayName ? { displayName: options.displayName } : {}),
     createdAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'create', collection: 'preregistrations', documentId: ref.id, performedById, changes: { email, groupId, ...options } });
 }
 
 /**
@@ -145,6 +150,28 @@ export async function ensureUser(
   });
 
   await batch.commit();
+
+  // Auto-create ANVISA solicitante profile from the default (Caio's) profile.
+  // Done after the main batch so a read-then-write is safe.
+  try {
+    const defaultPointerRef = doc(db, ANVISA_COLLECTIONS.defaultProfile, 'current');
+    const defaultPointerSnap = await getDoc(defaultPointerRef);
+    if (defaultPointerSnap.exists()) {
+      const sourceUid = (defaultPointerSnap.data() as { userId?: string }).userId;
+      if (sourceUid) {
+        const sourceProfileRef = doc(db, ANVISA_COLLECTIONS.userProfiles, sourceUid);
+        const sourceSnap = await getDoc(sourceProfileRef);
+        if (sourceSnap.exists()) {
+          const anvisaProfileRef = doc(db, ANVISA_COLLECTIONS.userProfiles, uid);
+          await setDoc(anvisaProfileRef, sourceSnap.data()!);
+        }
+      }
+    }
+  } catch (err) {
+    // Non-fatal — the user can still fill it manually via /anvisa/perfil
+    console.warn('[ensureUser] Failed to auto-create ANVISA profile:', err);
+  }
+
   return true;
 }
 
@@ -156,12 +183,14 @@ export async function updateUser(
   db: Firestore,
   userId: string,
   data: Partial<Omit<User, 'id' | 'createdAt'>>,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
     ...data,
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'update', collection: 'users', documentId: userId, performedById, changes: data as unknown as Record<string, unknown> });
 }
 
 /**
@@ -170,6 +199,7 @@ export async function updateUser(
 export async function softDeleteUser(
   db: Firestore,
   userId: string,
+  performedById: string,
 ): Promise<void> {
   const userRef = getUserRef(db, userId);
   await updateDoc(userRef, {
@@ -177,6 +207,7 @@ export async function softDeleteUser(
     removedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await writeAuditLog(db, { action: 'soft_delete', collection: 'users', documentId: userId, performedById, changes: { active: false } });
 }
 
 /**
@@ -236,12 +267,13 @@ export async function getUserProfiles(
 /**
  * Return a Firestore query for all active users who are sales reps.
  */
-export function getActiveRepUsersQuery(db: Firestore): Query {
+export function getActiveRepUsersQuery(db: Firestore, maxResults = 200): Query {
   return query(
     getUsersRef(db),
     where('isRepresentante', '==', true),
     where('active', '==', true),
     orderBy('displayName', 'asc'),
+    limit(maxResults),
   );
 }
 

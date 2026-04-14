@@ -17,6 +17,15 @@
       ]
     },
     {
+      "collectionGroup": "doctors",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "repUserId", "order": "ASCENDING" },
+        { "fieldPath": "active",    "order": "ASCENDING" },
+        { "fieldPath": "fullName",  "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "products",
       "queryScope": "COLLECTION",
       "fields": [
@@ -41,6 +50,24 @@
       ]
     },
     {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isRepresentante", "order": "ASCENDING" },
+        { "fieldPath": "active",          "order": "ASCENDING" },
+        { "fieldPath": "displayName",     "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "groupId",   "order": "ASCENDING" },
+        { "fieldPath": "active",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "orders",
       "queryScope": "COLLECTION",
       "fields": [
@@ -55,7 +82,71 @@
         { "fieldPath": "createdById", "order": "ASCENDING" },
         { "fieldPath": "createdAt",   "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientUserId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt",       "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "recipientUserId", "order": "ASCENDING" },
+        { "fieldPath": "read",            "order": "ASCENDING" },
+        { "fieldPath": "createdAt",       "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "audit_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "creatingUserId", "order": "ASCENDING" },
+        { "fieldPath": "status",         "order": "ASCENDING" },
+        { "fieldPath": "createdAt",      "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentLinks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "orderId",   "order": "ASCENDING" },
+        { "fieldPath": "status",    "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stockProducts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "stockId",   "order": "ASCENDING" },
+        { "fieldPath": "productId", "order": "ASCENDING" }
+      ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "paymentLinks",
+      "fieldPath": "createdAt",
+      "indexes": [
+        { "order": "ASCENDING",  "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING",  "queryScope": "COLLECTION_GROUP" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentLinks",
+      "fieldPath": "status",
+      "indexes": [
+        { "order": "ASCENDING",  "queryScope": "COLLECTION" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING",  "queryScope": "COLLECTION_GROUP" },
+        { "order": "DESCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }
