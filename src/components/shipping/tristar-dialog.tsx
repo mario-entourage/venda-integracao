@@ -11,8 +11,10 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
+import { ref as storageRef, getDownloadURL, uploadString } from 'firebase/storage';
 import { saveShippingRecord, deductInventoryOnShip } from '@/services/shipping.service';
 import { notifyShipmentTracking } from '@/services/notifications.service';
+import { getDocumentRecordsByOrderId } from '@/services/documents.service';
 import { SHIPPING_API_ROUTES } from '@/lib/shipping-routes';
 import {
   TRISTAR_ITEM_TYPES,
@@ -99,7 +101,7 @@ export function TriStarDialog({
   repEmail,
   repInvoice,
 }: TriStarDialogProps) {
-  const { firestore, user } = useFirebase();
+  const { firestore, storage, user } = useFirebase();
   const authFetch = useAuthFetch();
 
   // Item list state — starts with one item pre-filled with the order amount
@@ -135,6 +137,108 @@ export function TriStarDialog({
       if (prev.length <= 1) return prev; // always keep at least one item
       return prev.filter((item) => item.id !== id);
     });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Attach order documents to TriStar shipment (fire-and-forget)
+  // ---------------------------------------------------------------------------
+
+  const attachDocumentsToShipment = async (shipmentId: string) => {
+    if (!firestore || !user) return;
+
+    try {
+      // 1. Fetch all document records linked to this order
+      const docs = await getDocumentRecordsByOrderId(firestore, order.id);
+
+      // Map document types to their URLs
+      const urlByType: Record<string, string> = {};
+      for (const d of docs) {
+        const url = (d.metadata?.url as string) || '';
+        if (!url) continue;
+        // Normalize type to match what we store (e.g. "receita_medica", "patient_doc", "address_doc")
+        const t = (d.type || '').toLowerCase();
+        if (t.includes('receita') || t.includes('prescription')) urlByType.prescription = url;
+        else if (t.includes('patient') || t.includes('identidade') || t.includes('rg')) urlByType.patientId = url;
+        else if (t.includes('address') || t.includes('residencia') || t.includes('comprovante_res')) urlByType.proofOfAddress = url;
+        else if (t.includes('guardian') || t.includes('vinculo') || t.includes('relationship')) urlByType.proofOfRelationship = url;
+      }
+
+      // 2. If prescription URL is missing, try to get it from the order's prescriptionDocId (storage path)
+      if (!urlByType.prescription && order.prescriptionDocId) {
+        try {
+          const prescRef = storageRef(storage, order.prescriptionDocId);
+          urlByType.prescription = await getDownloadURL(prescRef);
+        } catch {
+          console.warn('[TriStarDialog] Could not get prescription download URL');
+        }
+      }
+
+      // 3. Generate a simple invoice text file and upload to Storage
+      let invoiceUrl: string | undefined;
+      if (order.invoice) {
+        try {
+          const invoiceContent = [
+            `INVOICE / FATURA`,
+            `================`,
+            ``,
+            `Invoice Number: ${order.invoice}`,
+            `Date: ${new Date().toISOString().split('T')[0]}`,
+            ``,
+            `Sender: Entourage Lab`,
+            `Recipient: ${customer?.name || 'N/A'}`,
+            `Document: ${customer?.document || 'N/A'}`,
+            ``,
+            `This document serves as a commercial invoice reference`,
+            `for customs clearance purposes.`,
+          ].join('\n');
+
+          const invoicePath = `documents/invoices/${order.id}_invoice.txt`;
+          const invoiceRef = storageRef(storage, invoicePath);
+          await uploadString(invoiceRef, invoiceContent);
+          invoiceUrl = await getDownloadURL(invoiceRef);
+        } catch {
+          console.warn('[TriStarDialog] Could not generate invoice file');
+        }
+      }
+
+      // 4. Send to TriStar attach-documents API
+      const attachPayload: Record<string, string | undefined> = {
+        shipmentIdentification: shipmentId,
+        prescriptionUrl: urlByType.prescription,
+        patientIdUrl: urlByType.patientId,
+        proofOfAddressUrl: urlByType.proofOfAddress,
+        invoiceNumber: order.invoice || undefined,
+      };
+
+      // Only include proof of relationship when order has a legal guardian
+      if (order.legalGuardian && urlByType.proofOfRelationship) {
+        attachPayload.proofOfRelationshipUrl = urlByType.proofOfRelationship;
+      }
+
+      // TODO: anvisaAuthUrl — link from the ANVISA module when available
+      // if (order.anvisaRequestId) { ... fetch ANVISA authorization PDF URL ... }
+
+      // Clean undefined values
+      const cleanPayload = Object.fromEntries(
+        Object.entries(attachPayload).filter(([, v]) => v !== undefined),
+      );
+
+      const res = await authFetch(SHIPPING_API_ROUTES.attachDocuments, {
+        method: 'POST',
+        body: JSON.stringify(cleanPayload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.warn('[TriStarDialog] Document attachment failed:', errData);
+      } else {
+        const result = await res.json().catch(() => ({}));
+        console.log(`[TriStarDialog] Attached ${result.attachmentCount} document(s) to shipment ${shipmentId}`);
+      }
+    } catch (err) {
+      // Fire-and-forget — don't block shipment success on attachment failure
+      console.warn('[TriStarDialog] Document attachment error:', err);
+    }
   };
 
   // ---------------------------------------------------------------------------
@@ -208,6 +312,11 @@ export function TriStarDialog({
           address: shippingAddress,
         },
         user.uid,
+      );
+
+      // Attach order documents to TriStar shipment (fire-and-forget)
+      attachDocumentsToShipment(String(responseData.id)).catch((e) =>
+        console.warn('[TriStarDialog] document attachment failed:', e),
       );
 
       // Deduct inventory from Miami stock (fire-and-forget)
