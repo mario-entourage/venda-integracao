@@ -1103,8 +1103,26 @@ export function StepIdentificacao({
         )}
 
         {state.products.length === 0 ? (
-          <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center">
-            <p className="text-sm text-muted-foreground">Envie uma receita acima para preencher os produtos automaticamente.</p>
+          <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 px-6 py-8 text-center space-y-3">
+            {extractionMsg && (extractionMsg.includes('Falha') || extractionMsg.includes('falhou') || extractionMsg.includes('parcial')) ? (
+              <>
+                <div className="flex items-center justify-center gap-2 text-amber-600">
+                  <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  <p className="text-sm font-medium">Não foi possível extrair os dados automaticamente.</p>
+                </div>
+                <p className="text-xs text-muted-foreground">Insira os produtos manualmente.</p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Envie uma receita acima ou adicione produtos manualmente.</p>
+            )}
+            <Button type="button" variant="outline" size="sm" onClick={addProductLine}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="mr-1.5 h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Adicionar produto
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">
@@ -1208,6 +1226,14 @@ export function StepIdentificacao({
                 </Button>
               </div>
             ))}
+
+            {/* Add product button */}
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={addProductLine}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="mr-1.5 h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Adicionar produto
+            </Button>
 
             {/* Total — editable, distributes changes equally across product lines */}
             <div className="flex items-center justify-end gap-2 border-t pt-3 pr-2">
