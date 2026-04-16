@@ -107,7 +107,7 @@ export function AppHeader() {
                 ) : (
                   <>
                     <AvatarImage src={user?.photoURL || undefined} alt={user?.displayName || ''} />
-                    <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+                    <AvatarFallback className="text-xs font-semibold bg-slate-200 text-[#093e5d]">{initials}</AvatarFallback>
                   </>
                 )}
               </Avatar>
