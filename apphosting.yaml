@@ -44,13 +44,8 @@ env:
   - variable: ZAPSIGN_API_KEY
     secret: ZAPSIGN_API_KEY
 
-  # TriStar Express shipping
-  # Sandbox: https://sandbox.tristarexpress.com/v1/
-  # Production: https://api.tristarexpress.com/v1/
-  - variable: TRISTAR_API_URL
-    value: "https://sandbox.tristarexpress.com/v1/"
-  - variable: TRISTAR_API_KEY
-    secret: TRISTAR_API_KEY
+  # Logistics provider env vars were removed when TriStar was retired.
+  # New MEMPHIS_* variables will be added here when that integration lands.
 
   # Resend (email notifications for payment + shipping)
   - variable: RESEND_API_KEY

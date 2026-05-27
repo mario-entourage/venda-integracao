@@ -1,10 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { MoreHorizontal, RefreshCw } from 'lucide-react';
-import { friendlyError } from '@/lib/friendly-error';
+import { MoreHorizontal } from 'lucide-react';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
-import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import {
   getActiveProductsQuery,
@@ -14,12 +12,10 @@ import {
   softDeleteProduct,
   createStock,
 } from '@/services/products.service';
-import { SHIPPING_API_ROUTES } from '@/lib/shipping-routes';
 import { DataTable, type ColumnDef } from '@/components/shared/data-table';
 import { PageHeader } from '@/components/shared/page-header';
 import { ProductForm } from '@/components/forms/product-form';
 import { StockLocationView } from '@/components/estoque/stock-location-view';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -40,7 +36,6 @@ import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import type { Product, Stock } from '@/types/product';
 import type { ProductFormValues } from '@/types/forms';
-import type { TriStarStockItem } from '@/types/shipping';
 
 // ─── page component ───────────────────────────────────────────────────────────
 
@@ -51,7 +46,6 @@ type DialogMode = 'create' | 'edit' | null;
 
 export default function EstoquePage() {
   const db = useFirestore();
-  const authFetch = useAuthFetch();
   const { toast } = useToast();
 
   // ── Firestore subscriptions ────────────────────────────────────────────────
@@ -101,15 +95,6 @@ export default function EstoquePage() {
       setCreatingLocation(false);
     }
   };
-
-  // ── Tristar sync state ────────────────────────────────────────────────────
-  const [syncing, setSyncing] = useState(false);
-  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<{
-    matched: number;
-    unmatched: string[];
-    updated: number;
-  } | null>(null);
 
   // ── handlers ───────────────────────────────────────────────────────────────
 
@@ -167,86 +152,8 @@ export default function EstoquePage() {
     }
   };
 
-  /**
-   * Sync inventory from TriStar Express API.
-   * Matches TriStar items to local products by SKU, then updates the
-   * `inventory` field on each matched product.
-   */
-  const handleTristarSync = async () => {
-    setSyncing(true);
-    setSyncResult(null);
-    try {
-      const res = await authFetch(SHIPPING_API_ROUTES.inventory);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const json = await res.json();
-      const tristarItems: TriStarStockItem[] = json.data ?? [];
-
-      if (tristarItems.length === 0) {
-        toast({ title: 'Nenhum item de estoque retornado pela Tristar.' });
-        setSyncing(false);
-        return;
-      }
-
-      // Build a map of local products by SKU (case-insensitive)
-      const localProducts = (products as ProductWithId[]) ?? [];
-      const skuMap = new Map<string, ProductWithId>();
-      for (const p of localProducts) {
-        if (p.sku) skuMap.set(p.sku.trim().toLowerCase(), p);
-      }
-
-      let matched = 0;
-      let updated = 0;
-      const unmatched: string[] = [];
-
-      for (const item of tristarItems) {
-        const sku = (item.sku ?? '').trim().toLowerCase();
-        if (!sku) {
-          unmatched.push(item.product_name || `ID ${item.id}`);
-          continue;
-        }
-
-        const local = skuMap.get(sku);
-        if (!local) {
-          unmatched.push(`${item.product_name || 'Sem nome'} (${item.sku})`);
-          continue;
-        }
-
-        matched++;
-        const tristarQty = item.available ?? item.quantity ?? 0;
-
-        // Only update if quantity actually changed
-        if (local.inventory !== tristarQty) {
-          await updateProduct(db, local.id, { inventory: tristarQty });
-          updated++;
-        }
-      }
-
-      const syncTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      setLastSyncAt(syncTime);
-      setSyncResult({ matched, unmatched, updated });
-
-      if (updated > 0) {
-        toast({ title: `Estoque sincronizado: ${updated} produto(s) atualizado(s).` });
-      } else if (matched > 0) {
-        toast({ title: 'Estoque ja esta atualizado com a Tristar.' });
-      } else {
-        toast({ title: 'Nenhum produto correspondente encontrado.', variant: 'destructive' });
-      }
-    } catch (err) {
-      console.error('[tristar-sync]', err);
-      toast({
-        title: 'Erro ao sincronizar estoque com a Tristar.',
-        description: friendlyError(err),
-        variant: 'destructive',
-      });
-    } finally {
-      setSyncing(false);
-    }
-  };
+  // NOTE: Carrier-driven inventory sync was removed with TriStar.
+  // When the Memphis integration lands, re-add a sync handler here.
 
   // ── columns ────────────────────────────────────────────────────────────────
 
@@ -323,13 +230,13 @@ export default function EstoquePage() {
 
       <Tabs defaultValue="miami">
         <TabsList>
-          <TabsTrigger value="miami">Miami (Tristar)</TabsTrigger>
+          <TabsTrigger value="miami">Miami</TabsTrigger>
           <TabsTrigger value="brasil">Brasil</TabsTrigger>
           <TabsTrigger value="catalogo">Catalogo</TabsTrigger>
           <TabsTrigger value="locais">Locais de Estoque</TabsTrigger>
         </TabsList>
 
-        {/* ── Miami (Tristar) ────────────────────────────────────────────── */}
+        {/* ── Miami ──────────────────────────────────────────────────────── */}
         <TabsContent value="miami" className="mt-4">
           {stocksLoading ? (
             <div className="space-y-3">
@@ -342,19 +249,18 @@ export default function EstoquePage() {
               stockId={miamiStock.id}
               products={(products as ProductWithId[]) ?? []}
               productsLoading={productsLoading}
-              showTristarSync
             />
           ) : (
             <Card>
               <CardContent className="py-12 text-center">
                 <p className="text-sm text-muted-foreground mb-4">
-                  O local &ldquo;Miami (Tristar)&rdquo; ainda nao foi criado.
+                  O local &ldquo;Miami&rdquo; ainda nao foi criado.
                 </p>
                 <Button
-                  onClick={() => handleCreateKnownLocation('Miami (Tristar)')}
+                  onClick={() => handleCreateKnownLocation('Miami')}
                   disabled={creatingLocation}
                 >
-                  {creatingLocation ? 'Criando...' : 'Criar Local Miami (Tristar)'}
+                  {creatingLocation ? 'Criando...' : 'Criar Local Miami'}
                 </Button>
               </CardContent>
             </Card>
@@ -394,57 +300,11 @@ export default function EstoquePage() {
 
         {/* ── Catalogo (products CRUD) ───────────────────────────────────── */}
         <TabsContent value="catalogo" className="mt-4 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                onClick={handleTristarSync}
-                disabled={syncing || productsLoading}
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Sincronizando...' : 'Sincronizar Tristar'}
-              </Button>
-              {lastSyncAt && (
-                <span className="text-xs text-muted-foreground">
-                  Ultima sinc.: {lastSyncAt}
-                </span>
-              )}
-            </div>
+          <div className="flex items-center justify-end gap-2">
             <Button onClick={() => setProductDialog({ mode: 'create' })}>
               + Novo Produto
             </Button>
           </div>
-
-          {/* Sync result summary */}
-          {syncResult && (
-            <div className="rounded-md border bg-muted/50 p-3 text-sm space-y-1">
-              <div className="flex items-center gap-4">
-                <span>
-                  <strong>{syncResult.matched}</strong> produto(s) correspondente(s)
-                </span>
-                <span>
-                  <strong>{syncResult.updated}</strong> atualizado(s)
-                </span>
-                {syncResult.unmatched.length > 0 && (
-                  <Badge variant="secondary">
-                    {syncResult.unmatched.length} sem correspondencia
-                  </Badge>
-                )}
-              </div>
-              {syncResult.unmatched.length > 0 && (
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer hover:underline">
-                    Ver itens sem correspondencia
-                  </summary>
-                  <ul className="mt-1 ml-4 list-disc space-y-0.5">
-                    {syncResult.unmatched.map((name, i) => (
-                      <li key={i}>{name}</li>
-                    ))}
-                  </ul>
-                </details>
-              )}
-            </div>
-          )}
 
           <DataTable<ProductWithId>
             columns={productColumns}

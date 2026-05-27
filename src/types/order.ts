@@ -35,7 +35,6 @@ export interface Order {
   /** Shipping cost added to the payment link (BRL) */
   frete?: number;
   documentsComplete: boolean;
-  tristarShipmentId?: string;
   prescriptionDocId?: string;
   /** SHA-256 hex hash of the prescription file (for duplicate detection) */
   prescriptionHash?: string;
@@ -58,7 +57,7 @@ export interface Order {
   statusOrcamento?: string;
   /** Lead (Primeira compra, Recompra, etc.) */
   lead?: string;
-  /** Forma de envio (Loggi, TriStar, SEDEX, etc.) */
+  /** Forma de envio (Loggi, Memphis, SEDEX, etc.) */
   formaEnvio?: string;
   /** Lote / batch number */
   lote?: string;

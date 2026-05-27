@@ -104,7 +104,7 @@ export async function markAllNotificationsRead(
 // ---------------------------------------------------------------------------
 
 /**
- * Notify a rep that a TriStar shipment was created and include the tracking code.
+ * Notify a rep that a shipment was created and include the tracking code.
  */
 export async function notifyShipmentTracking(
   db: Firestore,
@@ -119,7 +119,7 @@ export async function notifyShipmentTracking(
 ): Promise<void> {
   const ref = opts.invoiceNumber || opts.orderId.slice(0, 8).toUpperCase();
   const title = 'Remessa criada — código de rastreio disponível';
-  const body = `Pedido ${ref} — Rastreio TriStar: ${opts.trackingCode}`;
+  const body = `Pedido ${ref} — Código de rastreio: ${opts.trackingCode}`;
 
   await createNotification(db, {
     recipientUserId: opts.recipientUserId,
@@ -137,7 +137,7 @@ export async function notifyShipmentTracking(
       body: JSON.stringify({
         to: opts.recipientEmail,
         subject: `${title} — Pedido ${ref}`,
-        html: `<p>Olá,</p><p>A remessa TriStar do pedido <strong>${ref}</strong> foi criada com sucesso.</p><p><strong>Código de rastreio:</strong> ${opts.trackingCode}</p><p>Acesse o sistema para baixar a etiqueta.</p>`,
+        html: `<p>Olá,</p><p>A remessa do pedido <strong>${ref}</strong> foi criada com sucesso.</p><p><strong>Código de rastreio:</strong> ${opts.trackingCode}</p><p>Acesse o sistema para baixar a etiqueta.</p>`,
       }),
     });
   } catch {

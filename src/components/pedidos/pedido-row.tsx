@@ -48,7 +48,6 @@ import {
   isReadyToShip,
 } from '@/lib/order-status-helpers';
 import { OrderStatus, AnvisaOption } from '@/types/enums';
-import { TriStarDialog } from '@/components/shipping/tristar-dialog';
 import { LocalMailDialog } from '@/components/shipping/local-mail-dialog';
 import { MotoboyDialog } from '@/components/shipping/motoboy-dialog';
 import type { Order, OrderCustomer, OrderShipping, ShippingAddress } from '@/types';
@@ -114,7 +113,7 @@ const BASE_STATUS_LABELS: Record<string, string> = {
 
 // ─── PedidoRow ───────────────────────────────────────────────────────────────
 
-type DialogType = 'tristar' | 'local_mail' | 'motoboy' | null;
+type DialogType = 'local_mail' | 'motoboy' | null;
 
 export interface PedidoRowProps {
   order: Order;
@@ -420,13 +419,15 @@ export function PedidoRow({
         {/* Shipping buttons (only when ready to ship) */}
         {ready && (
           <div className="flex gap-2 flex-shrink-0">
+            {/* Internacional: indisponível até integração com Memphis */}
             <Button
               size="sm"
               variant="outline"
-              className="text-blue-600 border-blue-200 hover:bg-blue-50"
-              onClick={() => setOpenDialog('tristar')}
+              className="text-muted-foreground border-muted"
+              disabled
+              title="Indisponível — aguardando integração com a Memphis"
             >
-              TriStar
+              Internacional
             </Button>
             <Button
               size="sm"
@@ -550,14 +551,6 @@ export function PedidoRow({
       {/* Shipping dialogs (only when ready) */}
       {ready && (
         <>
-          <TriStarDialog
-            open={openDialog === 'tristar'}
-            onOpenChange={(o) => !o && setOpenDialog(null)}
-            order={order}
-            customer={customer}
-            shippingAddress={shippingAddress}
-            onSuccess={handleShipSuccess}
-          />
           <LocalMailDialog
             open={openDialog === 'local_mail'}
             onOpenChange={(o) => !o && setOpenDialog(null)}

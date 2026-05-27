@@ -88,7 +88,7 @@ const LEAD_OPTIONS = [
 
 const FORMA_ENVIO_OPTIONS = [
   { value: 'Loggi', label: 'Loggi' },
-  { value: 'TriStar', label: 'TriStar' },
+  { value: 'Memphis', label: 'Memphis' },
   { value: 'Motoboy', label: 'Motoboy' },
   { value: 'SEDEX', label: 'SEDEX' },
   { value: 'SEDEX 10', label: 'SEDEX 10' },

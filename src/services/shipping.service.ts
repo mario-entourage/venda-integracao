@@ -80,9 +80,13 @@ export async function getShippingRecord(
 /**
  * Deduct inventory for all products in an order from the correct stock location.
  *
- * - TRISTAR  → stock whose name contains "miami"
  * - LOCAL_MAIL → stock whose name contains "brasil"
  * - OTHER / MOTOBOY → no deduction
+ *
+ * NOTE: International (US-warehouse) shipping previously routed through TriStar
+ * has been removed pending integration with the new logistics provider (Memphis).
+ * When that lands, add the corresponding case here and route to the "miami"
+ * stock location.
  */
 export async function deductInventoryOnShip(
   db: Firestore,
@@ -91,7 +95,7 @@ export async function deductInventoryOnShip(
 ): Promise<void> {
   if (method === 'OTHER' || method === 'MOTOBOY') return;
 
-  const nameFragment = method === 'TRISTAR' ? 'miami' : 'brasil';
+  const nameFragment = 'brasil';
 
   // Find the target stock by name pattern
   const stocksSnap = await getDocs(collection(db, 'stocks'));
@@ -134,22 +138,3 @@ export async function deductInventoryOnShip(
   }
 }
 
-/**
- * Update just the TriStar status on an existing shipping record.
- * Used after confirming or tracking a TriStar shipment.
- */
-export async function updateTriStarShipmentStatus(
-  db: Firestore,
-  orderId: string,
-  tristarStatus: number,
-): Promise<void> {
-  const shippingRef = getOrderSubcollectionRef(db, orderId, 'shipping');
-  const snap = await getDocs(query(shippingRef, limit(1)));
-
-  if (snap.empty) return;
-
-  await updateDoc(snap.docs[0].ref, {
-    tristarStatus,
-    updatedAt: serverTimestamp(),
-  });
-}
