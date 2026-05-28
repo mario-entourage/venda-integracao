@@ -6,7 +6,7 @@ import { Josefin_Sans } from 'next/font/google';
 import {
   Home, Users, UserCheck, Stethoscope, Package,
   ClipboardList, Send, FileText, CreditCard, User, UserPlus,
-  Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign,
+  Shield, Upload, Truck, HelpCircle, Chrome, Eye, DollarSign, Key,
 } from 'lucide-react';
 import { useAuditMode } from '@/contexts/audit-mode-context';
 import { useDashboardLang, translateSidebar } from '@/contexts/dashboard-lang-context';
@@ -65,6 +65,7 @@ const adminNavItems = [
   { href: '/usuarios', icon: UserPlus, label: 'Usuarios' },
   { href: '/auditoria', icon: Eye, label: 'Auditoria' },
   { href: '/importar', icon: Upload, label: 'Importar CSV' },
+  { href: '/api-keys', icon: Key, label: 'Chaves de API' },
 ];
 
 const helpNavItems = [
