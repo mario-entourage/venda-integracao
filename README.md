@@ -22,7 +22,7 @@ Internal sales management platform for Entourage PhytoLab. Manages the full orde
 | **GlobalPay** | Payment link generation and webhook-based payment confirmation |
 | **ZapSign** | Electronic document signing (Comprovante de Vínculo) |
 | **BCB PTAX** | Daily USD → BRL exchange rates from the Central Bank of Brazil |
-| **TriStar Express** | Shipment creation, tracking, and label generation |
+| **Memphis** (pending) | International shipment creation, tracking, and label generation — TriStar integration was retired and Memphis replacement is in progress |
 | **Google Gemini** | AI-powered document classification and OCR extraction |
 
 ## Getting Started

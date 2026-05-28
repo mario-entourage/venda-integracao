@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { Plane, Mail, Bike } from 'lucide-react';
 import type { Timestamp } from 'firebase/firestore';
 import { Card, CardContent } from '@/components/ui/card';
-import { TriStarDialog } from '@/components/shipping/tristar-dialog';
 import { LocalMailDialog } from '@/components/shipping/local-mail-dialog';
 import { MotoboyDialog } from '@/components/shipping/motoboy-dialog';
 import type { Order, OrderCustomer, ShippingAddress } from '@/types';
@@ -13,7 +12,7 @@ import { OrderStatus, OrderType } from '@/types/enums';
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
-type OpenDialog = 'tristar' | 'local_mail' | 'motoboy' | null;
+type OpenDialog = 'local_mail' | 'motoboy' | null;
 
 interface StepEnvioProps {
   orderId: string;
@@ -22,9 +21,13 @@ interface StepEnvioProps {
   clientDocument: string;
   /** The client's address from the Firestore `clients` collection, used to pre-fill the shipping address. */
   clientAddress?: ClientAddress;
+  /**
+   * NOTE: repUserId / repEmail / repInvoice were previously consumed by the
+   * TriStar shipping dialog for tracking-code notifications. They will be
+   * re-wired here when the Memphis logistics integration lands.
+   */
   repUserId?: string;
   repEmail?: string;
-  /** Invoice number (e.g. "ETGA CA 00001") to include in the rep's notification. */
   repInvoice?: string;
 }
 
@@ -36,9 +39,6 @@ export function StepEnvio({
   clientName,
   clientDocument,
   clientAddress,
-  repUserId,
-  repEmail,
-  repInvoice,
 }: StepEnvioProps) {
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null);
   const [shipped, setShipped] = useState(false);
@@ -119,16 +119,13 @@ export function StepEnvio({
 
       {/* Method cards */}
       <div className="grid gap-3 sm:grid-cols-3">
-        {/* TriStar Express */}
-        <Card
-          className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-          onClick={() => setOpenDialog('tristar')}
-        >
+        {/* International — pending new provider integration */}
+        <Card className="opacity-60 pointer-events-none" aria-disabled>
           <CardContent className="pt-5 pb-4 flex flex-col items-center text-center gap-2">
-            <Plane className="h-7 w-7 text-primary" />
-            <p className="font-semibold">TriStar Express</p>
+            <Plane className="h-7 w-7 text-muted-foreground" />
+            <p className="font-semibold">Envio internacional</p>
             <p className="text-xs text-muted-foreground">
-              Envio internacional do estoque de Miami
+              Indisponível — aguardando integração com a Memphis.
             </p>
           </CardContent>
         </Card>
@@ -167,17 +164,6 @@ export function StepEnvio({
       </p>
 
       {/* Shipping dialogs */}
-      <TriStarDialog
-        open={openDialog === 'tristar'}
-        onOpenChange={(o) => !o && setOpenDialog(null)}
-        order={orderForDialog}
-        customer={customerForDialog}
-        shippingAddress={shippingAddress}
-        onSuccess={handleShipSuccess}
-        repUserId={repUserId}
-        repEmail={repEmail}
-        repInvoice={repInvoice}
-      />
       <LocalMailDialog
         open={openDialog === 'local_mail'}
         onOpenChange={(o) => !o && setOpenDialog(null)}

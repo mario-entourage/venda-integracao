@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { RefreshCw, Check, X, Plus, Pencil } from 'lucide-react';
+import { Check, X, Plus, Pencil } from 'lucide-react';
 import { useFirestore, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase';
 import {
@@ -29,7 +29,6 @@ interface StockLocationViewProps {
   stockId: string;
   products: ProductWithId[];
   productsLoading: boolean;
-  showTristarSync?: boolean;
 }
 
 // ─── joined row type ─────────────────────────────────────────────────────────
@@ -46,7 +45,6 @@ export function StockLocationView({
   stockId,
   products,
   productsLoading,
-  showTristarSync,
 }: StockLocationViewProps) {
   const db = useFirestore();
   const { toast } = useToast();
@@ -147,23 +145,6 @@ export function StockLocationView({
   return (
     <TooltipProvider delayDuration={300}>
       <div className="space-y-4">
-        {/* Tristar sync button (placeholder) */}
-        {showTristarSync && (
-          <div className="flex justify-end">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button variant="outline" size="sm" disabled className="gap-2 opacity-60">
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Sincronizar com Tristar
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>Em breve</TooltipContent>
-            </Tooltip>
-          </div>
-        )}
-
         {/* Products table */}
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/25 px-6 py-12 text-center">

@@ -83,17 +83,14 @@ export function ShippingChoiceDialog({
 
         <div className="grid gap-3 sm:grid-cols-2 py-2">
           <Card
-            className="cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors"
-            onClick={() => {
-              // Navigate to the order detail shipping step (TriStar is handled there)
-              window.location.href = `/remessas?resume=${orderId}`;
-            }}
+            className="cursor-pointer opacity-60 pointer-events-none"
+            aria-disabled
           >
             <CardContent className="pt-5 pb-4 flex flex-col items-center text-center gap-2">
-              <Plane className="h-7 w-7 text-primary" />
-              <p className="font-semibold text-sm">TriStar Express</p>
+              <Plane className="h-7 w-7 text-muted-foreground" />
+              <p className="font-semibold text-sm">Envio internacional</p>
               <p className="text-xs text-muted-foreground">
-                Envio internacional de Miami
+                Indisponível — aguardando nova integração logística (Memphis).
               </p>
             </CardContent>
           </Card>

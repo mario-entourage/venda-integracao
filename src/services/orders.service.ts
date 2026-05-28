@@ -127,7 +127,6 @@ export async function createOrder(
     exchangeRate: orderData.exchangeRate || null,
     exchangeRateDate: orderData.exchangeRateDate || null,
     documentsComplete: false,
-    tristarShipmentId: '',
     prescriptionDocId: orderData.prescriptionDocId || '',
     prescriptionHash: orderData.prescriptionHash || '',
     prescriptionDate: orderData.prescriptionDate || '',

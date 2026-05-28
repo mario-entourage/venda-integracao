@@ -114,6 +114,14 @@ function NavGroup({
                 >
                   <item.icon className="h-4 w-4" />
                   <span>{translateSidebar(item.label, lang)}</span>
+                  {item.href === '/pedidos' && (
+                    <span
+                      className="ml-1.5 text-[10px] uppercase tracking-wide opacity-70"
+                      aria-label="Transição de provedor logístico: TriStar para Memphis"
+                    >
+                      (<s>TriStar</s> Memphis)
+                    </span>
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

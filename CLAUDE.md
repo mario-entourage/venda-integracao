@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Internal sales management platform for Entourage Lab. Handles orders, prescriptions, payments, TriStar Express shipping, and ANVISA compliance for pharmaceutical products.
+Internal sales management platform for Entourage Lab. Handles orders, prescriptions, payments, shipping (international logistics provider integration in transition), and ANVISA compliance for pharmaceutical products.
 
 **Tech stack:** Next.js 15 (App Router), TypeScript, Firebase (Auth + Firestore + Storage), Tailwind CSS, shadcn/ui
 
@@ -62,7 +62,7 @@ Build check: `npx next build`
 
 - `src/app/api/` — API route handlers (all require auth)
 - `src/components/vendas/` — Sales wizard steps
-- `src/components/shipping/` — TriStar shipping dialogs
+- `src/components/shipping/` — manual shipping dialogs (Correios, Motoboy). International carrier dialogs were removed with TriStar; a new Memphis dialog will live here when the integration lands.
 - `src/services/` — Firestore CRUD services
 - `src/server/actions/` — Next.js server actions (no auth header needed — server-side)
 - `src/hooks/` — React hooks including `useAuthFetch`
