@@ -51,7 +51,7 @@ export interface Order {
   // ── Controle module — editable fields ──────────────────────────────────
   /** Nº Invoice (Correção / Duplicata) */
   invoiceCorrecao?: string;
-  /** Meio de pagamento (Global Pays, Infinity Pays, PIX, Brazil Pays) */
+  /** Meio de pagamento (PayCo, Infinity Pays, PIX, Brazil Pays) */
   meioPagamento?: string;
   /** Status do orçamento */
   statusOrcamento?: string;

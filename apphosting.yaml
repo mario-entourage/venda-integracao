@@ -18,21 +18,14 @@ env:
   # Default values — override per-environment if needed
   - variable: PAYMENT_LINK_EXPIRATION_HOURS
     value: "24"
-  - variable: GLOBALPAYS_MERCHANT_CODE
-    value: "4912"
 
   # ── Secrets — create with: firebase apphosting:secrets:set <NAME> ────────────
   # Google AI (Gemini) — required for AI prescription & document features
   - variable: GOOGLE_API_KEY
     secret: GOOGLE_API_KEY
 
-  # GlobalPay
-  # Sandbox: https://apihml.tryglobalpays.com/v1
-  # Production: https://api.tryglobalpays.com/v1
-  - variable: GLOBALPAY_API_URL
-    secret: GLOBALPAY_API_URL
-  - variable: GLOBALPAY_PUB_KEY
-    secret: GLOBALPAY_PUB_KEY
+  # Payment provider env vars were removed when GlobalPay was retired.
+  # New PAYCO_* variables will be added here when that integration lands.
 
   # ZapSign
   # Sandbox: https://sandbox.api.zapsign.com.br
@@ -52,7 +45,6 @@ env:
     secret: RESEND_API_KEY
 
   # Webhook authentication
-  - variable: GLOBALPAY_WEBHOOK_SECRET
-    secret: GLOBALPAY_WEBHOOK_SECRET
+  # GlobalPay webhook secret retired; PayCo webhook secret will go here.
   - variable: ZAPSIGN_WEBHOOK_TOKEN
     secret: ZAPSIGN_WEBHOOK_TOKEN

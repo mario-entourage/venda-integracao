@@ -272,37 +272,13 @@ export default function OrderDetailPage() {
     }
   };
 
-  // ── GlobalPay payment sync ───────────────────────────────────────────────────
-  const [isSyncing, setIsSyncing] = useState(false);
+  // ── Payment provider sync (disabled during GlobalPay → PayCo migration) ────
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const handlePaymentSync = async () => {
-    setIsSyncing(true);
-    setSyncMsg(null);
-    try {
-      const res = await authFetch('/api/payments/sync', {
-        method: 'POST',
-        body: JSON.stringify({ orderId }),
-        timeout: 120_000, // 2 min — GlobalPay API can be slow
-      });
-      const data = await res.json() as { ok?: boolean; checked?: number; approved?: number; errors?: number; error?: string; details?: string };
-      if (!res.ok || !data.ok) {
-        throw new Error(data.details || data.error || `HTTP ${res.status}`);
-      }
-      if (data.approved) {
-        setSyncMsg(`✓ Pagamento confirmado!`);
-      } else if (data.errors) {
-        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s), ${data.errors} erro(s) ao consultar GlobalPay.`);
-      } else {
-        setSyncMsg(`${data.checked ?? 0} link(s) verificado(s) — nenhum pagamento novo.`);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[controle/sync] Error:', msg);
-      setSyncMsg(`Não foi possível sincronizar o pagamento: ${msg}`);
-    } finally {
-      setIsSyncing(false);
-    }
+    setSyncMsg(
+      'Indisponível — aguardando integração com a PayCo. Não é possível consultar o provedor neste momento.',
+    );
   };
 
   // ── representative change ───────────────────────────────────────────────────
@@ -681,7 +657,7 @@ export default function OrderDetailPage() {
         </CardContent>
       </Card>
 
-      {/* ── GlobalPay payment sync ── */}
+      {/* ── Payment provider sync (disabled during GlobalPay → PayCo migration) ── */}
       {canMarkAsPaid && (
         <Card>
           <CardHeader>
@@ -689,16 +665,17 @@ export default function OrderDetailPage() {
           </CardHeader>
           <CardContent className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Consulta o GlobalPay e atualiza o status do link de pagamento pendente.
+              Consulta o provedor de pagamento e atualiza o status do link pendente.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={isSyncing}
+                disabled
+                title="Indisponível — aguardando integração com a PayCo"
                 onClick={handlePaymentSync}
               >
-                {isSyncing ? 'Sincronizando…' : '↻ Sincronizar GlobalPay'}
+                ↻ Sincronizar PayCo
               </Button>
               {syncMsg && (
                 <p className="text-sm text-muted-foreground">{syncMsg}</p>

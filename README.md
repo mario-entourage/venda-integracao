@@ -19,7 +19,7 @@ Internal sales management platform for Entourage PhytoLab. Manages the full orde
 
 | Service | Purpose |
 |---------|---------|
-| **GlobalPay** | Payment link generation and webhook-based payment confirmation |
+| **PayCo** (pending) | Payment link generation and webhook-based payment confirmation — GlobalPay integration was retired and PayCo replacement is in progress |
 | **ZapSign** | Electronic document signing (Comprovante de Vínculo) |
 | **BCB PTAX** | Daily USD → BRL exchange rates from the Central Bank of Brazil |
 | **Memphis** (pending) | International shipment creation, tracking, and label generation — TriStar integration was retired and Memphis replacement is in progress |
@@ -92,7 +92,7 @@ src/
 ├── services/               # Firestore CRUD service functions
 ├── server/
 │   ├── actions/            # Next.js server actions
-│   └── integrations/       # External API clients (GlobalPay, ZapSign, etc.)
+│   └── integrations/       # External API clients (ZapSign, etc.; payment provider in transition)
 ├── lib/                    # Utilities, constants, helpers
 ├── types/                  # TypeScript type definitions
 ├── hooks/                  # Custom React hooks

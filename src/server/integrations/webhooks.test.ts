@@ -268,23 +268,8 @@ describe('ZapSign Webhook Logic', () => {
 // ─── Webhook Payload Parsing Edge Cases ─────────────────────────────────────
 
 describe('Webhook Payload Parsing', () => {
-  it('handles GlobalPay payload with both invoice and orderId', () => {
-    const body: Record<string, unknown> = {
-      invoice: 'entourage-order-001',
-      orderId: 'gp-txn-9999',
-      status: 'approved',
-      amount: 250.50,
-      currency: 'USD',
-    };
-
-    // invoice maps to our orderId
-    const ourOrderId = String(body.invoice ?? body.referenceId ?? '').trim();
-    // orderId maps to GlobalPay's transaction ID
-    const gpOrderId = String(body.orderId ?? body.gpOrderId ?? '').trim();
-
-    expect(ourOrderId).toBe('entourage-order-001');
-    expect(gpOrderId).toBe('gp-txn-9999');
-  });
+  // NOTE: Payment-provider webhook parsing test was removed with GlobalPay.
+  // A replacement test should be added when the PayCo integration lands.
 
   it('handles ZapSign payload structure', () => {
     const body = {

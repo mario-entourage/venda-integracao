@@ -7,7 +7,7 @@ import { adminDb } from '@/firebase/admin';
  * where:
  *   E = Entourage
  *   T = (brand)
- *   G = GlobalPay
+ *   G = (payment provider initial — historically GlobalPay; transitioning to PayCo)
  *   A = Automated
  *   N = first letter of rep's first name (uppercase)
  *   S = first letter of rep's last name / surname (uppercase)

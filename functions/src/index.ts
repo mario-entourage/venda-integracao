@@ -177,4 +177,5 @@ export const anvisaProcessDocumentOnUpload = functions
 export const anvisaListUsers = listUsersFunction;
 
 // ── Scheduled payment checker ─────────────────────────────────────────
-export { checkPendingPayments } from './check-payments';
+// Removed with GlobalPay. A new checker tied to the PayCo integration
+// will be added when that lands.

@@ -10,7 +10,8 @@ import { validateBody } from '../../_validate';
  *
  * Admin-only. Updates the denormalized metadata fields on a payment link.
  * Only clientName, repName, and invoice are mutable — amount, currency,
- * referenceId, and paymentUrl are fixed at creation time by GlobalPay.
+ * referenceId, and paymentUrl are fixed at creation time by the payment
+ * provider (historically GlobalPay; transitioning to PayCo).
  *
  * Body: { linkId, orderId, clientName?, repName?, invoice? }
  *   linkId  — Firestore document ID of the payment link
