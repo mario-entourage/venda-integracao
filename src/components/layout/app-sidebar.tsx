@@ -122,6 +122,14 @@ function NavGroup({
                       (<s>TriStar</s> Memphis)
                     </span>
                   )}
+                  {item.href === '/pagamentos' && (
+                    <span
+                      className="ml-1.5 text-[10px] uppercase tracking-wide opacity-70"
+                      aria-label="Transição de provedor de pagamento: GlobalPay para PayCo"
+                    >
+                      (<s>GlobalPay</s> PayCo)
+                    </span>
+                  )}
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

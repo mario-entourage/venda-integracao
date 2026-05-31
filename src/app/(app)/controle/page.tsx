@@ -60,7 +60,7 @@ import type { Client } from '@/types/client';
 // ---------------------------------------------------------------------------
 
 const MEIO_PAGAMENTO_OPTIONS = [
-  { value: 'Global Pays', label: 'Global Pays' },
+  { value: 'PayCo', label: 'PayCo' },
   { value: 'Infinity Pays', label: 'Infinity Pays' },
   { value: 'PIX', label: 'PIX' },
   { value: 'Brazil Pays', label: 'Brazil Pays' },
@@ -534,7 +534,7 @@ export default function ControlePage() {
       { key: 'representante', header: 'Representante' },
       { key: 'dataOrcamento', header: 'Data Orçamento' },
       { key: 'dataVenda', header: 'Data Venda' },
-      { key: 'invoiceGlobalPays', header: 'Nº Invoice (Global Pays)' },
+      { key: 'invoiceGlobalPays', header: 'Nº Invoice (PayCo)' },
       { key: 'invoiceCorrecao', header: 'Nº Invoice (Correção)' },
       ...PRODUCT_COLUMNS.map((c) => ({
         key: c.key,
@@ -640,7 +640,7 @@ export default function ControlePage() {
                     <TableHead className="sticky left-0 z-10 bg-muted/50 min-w-[140px]">Representante</TableHead>
                     <TableHead className="min-w-[110px]">Data Orçamento</TableHead>
                     <TableHead className="min-w-[110px]">Data Venda</TableHead>
-                    <TableHead className="min-w-[150px]">Nº Invoice (Global Pays)</TableHead>
+                    <TableHead className="min-w-[150px]">Nº Invoice (PayCo)</TableHead>
                     <TableHead className="min-w-[170px]">Nº Invoice (Correção Duplicata)</TableHead>
 
                     {/* ── Produtos ── */}
@@ -694,7 +694,7 @@ export default function ControlePage() {
                       {/* Data Venda */}
                       <TableCell>{row.dataVenda}</TableCell>
 
-                      {/* Nº Invoice (Global Pays) — editable */}
+                      {/* Nº Invoice (PayCo) — editable */}
                       <TableCell>
                         <InlineText
                           value={row.invoiceGlobalPays}

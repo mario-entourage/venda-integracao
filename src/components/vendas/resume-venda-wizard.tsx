@@ -17,7 +17,7 @@ import type { Order, OrderCustomer, OrderDoctor } from '@/types';
 // ─── constants ────────────────────────────────────────────────────────────────
 
 const RESUME_STEPS = [
-  { label: 'Pagamento', description: 'Gerar link GlobalPay' },
+  { label: 'Pagamento', description: 'Gerar link de pagamento (PayCo, em transição)' },
   { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
   { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
 ];

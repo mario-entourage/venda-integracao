@@ -117,7 +117,7 @@ export function StepPagamento({
           currency,
           referenceId: result.gpOrderId,
           paymentUrl: result.paymentUrl,
-          provider: 'globalpay',
+          provider: 'payco',
           expiresAt,
           // Denormalized metadata for Pagamentos page
           repName: repDisplayName,
@@ -253,7 +253,7 @@ export function StepPagamento({
         {isGenerating && (
           <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent flex-shrink-0" />
-            <p className="text-sm text-primary">Gerando link via GlobalPay…</p>
+            <p className="text-sm text-primary">Gerando link via provedor de pagamento (PayCo)…</p>
           </div>
         )}
 
@@ -277,7 +277,7 @@ export function StepPagamento({
             <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="text-xs font-semibold text-blue-700 uppercase tracking-wide shrink-0">
-                  GlobalPay Link
+                  Link do provedor (PayCo)
                 </span>
                 {gpOrderId && (
                   <span className="rounded bg-blue-200 px-2 py-0.5 text-[11px] font-mono font-medium text-blue-800">

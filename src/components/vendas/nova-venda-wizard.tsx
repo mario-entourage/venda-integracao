@@ -77,7 +77,7 @@ interface WizardState {
   assignedPaymentUrl: string;
   assignedPaymentInvoice: string;
   assignedPaymentAmount: number;
-  // Frete (entered in step 0 — Identificação; included in GlobalPay link amount)
+  // Frete (entered in step 0 — Identificação; included in the payment-provider link amount)
   frete: number;
   // PTAX exchange rate (fetched once on mount)
   exchangeRate: number;
@@ -136,7 +136,7 @@ const INITIAL_STATE: WizardState = {
 const STEPS = [
   { label: 'Identificação', description: 'Paciente, médico e produtos' },
   { label: 'Confirmação', description: 'Resumo do pedido' },
-  { label: 'Pagamento', description: 'Gerar link GlobalPay' },
+  { label: 'Pagamento', description: 'Gerar link de pagamento (PayCo, em transição)' },
   { label: 'Confirmação', description: 'Resumo do pagamento' },
   { label: 'Documentos ZapSign', description: 'Procuração e Comprovante' },
   { label: 'Enviar ao Cliente', description: 'Enviar links ao cliente' },
