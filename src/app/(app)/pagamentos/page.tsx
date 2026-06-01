@@ -133,19 +133,42 @@ export default function PagamentosPage() {
 
   // ── Sync all ──────────────────────────────────────────────────────────────
 
-  // NOTE: Provider-side sync was removed with GlobalPay. The button below
-  // surfaces a toast until the PayCo integration lands and a new
-  // /api/payments/sync route is restored.
   const handleSync = async () => {
-    toast({
-      title: 'Sincronização indisponível',
-      description:
-        'Aguardando integração com a PayCo. Status dos links não pode ser consultado no provedor neste momento.',
-    });
+    setSyncing(true);
+    try {
+      const res = await authFetch('/api/payments/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        timeout: 120_000, // 2 min — sync checks each link against GlobalPay sequentially
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      setLastSync({ time, approved: data.approved, checked: data.checked });
+      if (data.approved > 0) {
+        toast({ title: `${data.approved} pagamento(s) confirmado(s) e pedido(s) atualizado(s).` });
+      } else if (data.errors > 0) {
+        toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), ${data.errors} erro(s).`, variant: 'destructive' });
+      } else {
+        toast({ title: `Sincronizado — ${data.checked} link(s) verificado(s), nenhuma mudança.` });
+      }
+    } catch (err) {
+      toast({ title: 'Erro ao sincronizar pagamentos.', description: friendlyError(err), variant: 'destructive' });
+    } finally {
+      setSyncing(false);
+    }
   };
 
-  // Auto-sync on mount disabled while the payment provider is being migrated.
-  // Re-enable when /api/payments/sync is restored against PayCo.
+  // Auto-sync on mount — runs once when the page first loads.
+  // useRef guards against double-fire in React strict mode.
+  const didAutoSync = useRef(false);
+  useEffect(() => {
+    if (didAutoSync.current) return;
+    didAutoSync.current = true;
+    handleSync();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Create standalone ─────────────────────────────────────────────────────
 
@@ -210,14 +233,27 @@ export default function PagamentosPage() {
 
   // ── Verify single link ────────────────────────────────────────────────────
 
-  // NOTE: Per-link verification was removed with GlobalPay. Stub keeps the
-  // button visible but surfaces the PayCo placeholder message.
-  const handleVerify = async (_pl: PaymentLink) => {
-    toast({
-      title: 'Verificação indisponível',
-      description:
-        'Aguardando integração com a PayCo. Não é possível consultar o provedor neste momento.',
-    });
+  const handleVerify = async (pl: PaymentLink) => {
+    setActionLoading(pl.id);
+    try {
+      const res = await authFetch('/api/payments/verify-link', {
+        method: 'POST',
+        body: JSON.stringify({ linkId: pl.id, orderId: pl.orderId ?? '' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.details || data.error || `HTTP ${res.status}`);
+      if (data.approved) {
+        toast({ title: 'Pagamento confirmado!', description: `Status atualizado para: Pago.` });
+      } else if (data.terminal) {
+        toast({ title: `Status atualizado: ${data.newStatus}` });
+      } else {
+        toast({ title: `GlobalPay confirma: ainda pendente (${data.globalPayStatus || 'sem status'}).` });
+      }
+    } catch (err) {
+      toast({ title: 'Erro ao verificar link.', description: friendlyError(err), variant: 'destructive' });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   // ── Edit metadata ─────────────────────────────────────────────────────────
@@ -360,7 +396,7 @@ export default function PagamentosPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <PageHeader title="Pagamentos" description="Links de pagamento — aguardando integração com a PayCo" />
+        <PageHeader title="Pagamentos" description="Links de pagamento GlobalPay" />
         <div className="flex flex-col items-end gap-1 shrink-0">
           <div className="flex items-center gap-2">
             {isAdmin && (
@@ -371,7 +407,7 @@ export default function PagamentosPage() {
             )}
             <Button variant="outline" onClick={handleSync} disabled={syncing}>
               <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Sincronizando...' : 'Sincronizar PayCo'}
+              {syncing ? 'Sincronizando...' : 'Sincronizar GlobalPay'}
             </Button>
           </div>
           {lastSync && (
@@ -513,7 +549,7 @@ export default function PagamentosPage() {
                                 {pl.referenceId && (
                                   <DropdownMenuItem onClick={() => handleVerify(pl)}>
                                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                                    Verificar no provedor
+                                    Verificar no GlobalPay
                                   </DropdownMenuItem>
                                 )}
                                 <DropdownMenuItem onClick={() => openEdit(pl)}>
@@ -611,7 +647,7 @@ export default function PagamentosPage() {
                   <p>{fmtDateTime(viewLink.expiresAt)}</p>
                 </div>
                 <div className="col-span-2">
-                  <p className="text-xs text-muted-foreground">Referência do provedor</p>
+                  <p className="text-xs text-muted-foreground">Referência GlobalPay</p>
                   <p className="font-mono text-xs break-all">{viewLink.referenceId || '—'}</p>
                 </div>
               </div>
@@ -700,7 +736,7 @@ export default function PagamentosPage() {
           <DialogHeader>
             <DialogTitle>Novo Pagamento Avulso</DialogTitle>
             <DialogDescription>
-              Cria um link de pagamento (PayCo, em transição) sem vínculo com nenhum pedido. Invoice: ETGM#####
+              Cria um link de pagamento GlobalPay sem vínculo com nenhum pedido. Invoice: ETGM#####
             </DialogDescription>
           </DialogHeader>
 

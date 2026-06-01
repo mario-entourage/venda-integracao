@@ -154,7 +154,7 @@ interface StepIdentificacaoProps {
   selectedRepresentanteId: string;
   /** Called when the user picks a rep */
   onRepresentanteChange: (id: string, name: string) => void;
-  /** Frete (shipping cost, BRL) — entered here so it's included in the payment-provider link */
+  /** Frete (shipping cost, BRL) — entered here so it's included in the GlobalPay link */
   frete: number;
   onFreteChange: (value: number) => void;
   /** Retry PTAX fetch */
@@ -1298,7 +1298,7 @@ export function StepIdentificacao({
       <div className="space-y-2">
         <Label htmlFor="frete-input-standalone" className="text-sm font-semibold">Frete (R$)</Label>
         <p className="text-xs text-muted-foreground">
-          Custo de envio incluído no valor do link de pagamento (PayCo).
+          Custo de envio incluído no valor do link de pagamento GlobalPay.
         </p>
         <Input
           id="frete-input-standalone"
@@ -1386,7 +1386,7 @@ export function StepIdentificacao({
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/50 p-4">
           <Label className="text-sm font-semibold">Vincular Pagamento Avulso</Label>
           <p className="text-xs text-muted-foreground">
-            Vincule um pagamento já criado a esta venda. O sistema não gerará um novo link no provedor (PayCo).
+            Vincule um pagamento já criado a esta venda. O sistema não gerará um novo link GlobalPay.
           </p>
           <Select
             value={selectedUnassignedPaymentId || '__none__'}
