@@ -261,7 +261,7 @@ export function PedidoRow({
         currency: order.currency || 'USD',
         referenceId: result.invoiceNumber || result.gpOrderId,
         paymentUrl: result.paymentUrl,
-        provider: 'payco',
+        provider: 'globalpay',
         expiresAt,
         repName: repName || undefined,
         invoice: result.invoiceNumber,
