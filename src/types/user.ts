@@ -10,6 +10,15 @@ export interface User {
   displayName?: string;
   /** Whether this user is a sales rep (representante). */
   isRepresentante?: boolean;
+  /**
+   * True for sales reps who exist only to receive sales credit and have no
+   * Firebase Auth identity (e.g. third-party reps without an @entouragelab.com
+   * email). These users can NEVER sign in — `groupId` is set to 'user' as a
+   * placeholder. Always paired with `isRepresentante === true`.
+   */
+  external?: boolean;
+  /** UF / two-letter state code. Captured for external reps; optional. */
+  state?: string;
   /** Legacy representante doc ID (for migration traceability). */
   legacyRepresentanteId?: string;
   /** Notification preferences (defaults to all true if absent). */
