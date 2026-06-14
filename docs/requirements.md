@@ -293,6 +293,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-04.9 | Validation warns when Modelo Solicitante is not configured. |
 | FR-04.10 | Search/filter by patient name: The Solicitações dashboard includes a search input that filters requests by patient display name in real time. |
 | FR-04.11 | Auto-fill from database: When the system recognizes a client during the ANVISA wizard (via sales integration check), the verification form fields are auto-filled from the client's database profile. OCR-extracted data takes priority; database values are used as fallback for empty fields. |
+| FR-04.12 | **One-click ANVISA submission (CEO priority).** Reduce ANVISA import-authorization filing to a single click. The automation must, end to end and without manual intervention: (a) fill *every* field on each page of the gov.br portal form — text inputs, native selects, DS Gov `br-select` and react-select dropdowns, and cascading state/city selectors — using OCR-extracted and database data; (b) advance automatically from page to page; (c) keep the gov.br session alive so the sign-in does not time out mid-flow; (d) upload all required files (RG, comprovante, receita, procuração); and (e) submit the completed request. This supersedes the current behavior (FR-04.8, INT-07), where the Chrome extension auto-fills ~75% of fields on a single page and the operator still navigates, manages the session, and submits. Open questions / TBD: (1) CAPTCHA and bot detection on gov.br — the current extension cannot handle these and they are the primary blocker to full automation; (2) keeping the gov.br session token alive across pages without tripping security controls; (3) architecture — enhanced Chrome extension (recommended: lowest cost, leverages existing architecture) vs. server-side browser automation (Playwright/Selenium: higher cost, maintenance burden, bot-detection risk) vs. hybrid; (4) error recovery when the portal DOM changes or a field fails to fill; (5) audit trail of what was submitted on the operator's behalf. |
 
 #### **FR-05 Clients / Doctors / Representatives**
 
@@ -565,6 +566,27 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Use cases | (1) "Enviar do Brasil" notification to adm@entouragelab.com with order summary when Brazil-origin shipping is selected. (2) TriStar shipment rep notifications — when a rep-assigned order ships via TriStar, the rep receives an email with tracking code and order details. |
 | Graceful degradation | If RESEND\_API\_KEY is not configured, the endpoint logs a warning and returns `{ sent: false, reason: 'no_api_key' }`. No error is thrown. |
 | Env vars | RESEND\_API\_KEY (secret) |
+
+#### **INT-09 Memphis — Shipping & Logistics (PLACEHOLDER — pending documentation)**
+
+> **Status:** Memphis is the intended replacement for the retired TriStar Express integration (see INT-04). The integration has not yet been built and Memphis has not yet provided API documentation. The fields below are placeholders capturing what we will need to document once details are available. **Everything in this section is TBD and must be confirmed with Memphis.**
+
+| Attribute | Value |
+| :---- | :---- |
+| Purpose | Create international shipments, generate labels, and track delivery — replacing the retired TriStar integration. |
+| Base URL | _TBD — awaiting Memphis (sandbox + production URLs)._ |
+| Authentication | _TBD — auth scheme, credentials, token lifecycle, required headers (note TriStar required `Accept: application/json` to avoid 302 redirects — confirm Memphis equivalents)._ |
+| Endpoints | _TBD — create shipment, track status, generate label, confirm dispatch, cancel._ |
+| Payload format | _TBD — recipient / sender / item field names and codes. Must map our order data model to Memphis fields (cf. TriStar `to_*` / `from_*` / item structure)._ |
+| HS codes by item type | _TBD — confirm whether Memphis requires HS tariff codes per item and the expected values (cf. TriStar HSCODE\_BY\_ITEM\_TYPE map)._ |
+| ANVISA / controlled-substance fields | _TBD — how to supply ANVISA import authorization number and product commercial name for CBD/THC items._ |
+| Multi-item support | _TBD — confirm multiple items per shipment._ |
+| Sender config | _TBD — static sender (Entourage Lab warehouse) configuration; confirm origin (Miami vs Brazil) and whether sender is injected server-side._ |
+| Webhook / tracking updates | _TBD — does Memphis push status events, or must we poll? Confirm idempotency and correlation key (cf. external\_id = orderId pattern)._ |
+| Rep / customer notifications | _TBD — reuse Resend flow (INT-08) for tracking-code emails once shipment creation works._ |
+| Error handling | _TBD — error code catalog and Portuguese message mapping._ |
+| Homologation status | _TBD — sandbox test shipments not yet created._ |
+| Env vars | _TBD — anticipate MEMPHIS\_API\_URL, MEMPHIS\_API\_KEY (secret), MEMPHIS\_FROM\_\* sender vars, MEMPHIS\_INTEGRATION\_CODE (final names to be confirmed)._ |
 
 ---
 
@@ -922,9 +944,9 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 
 | Feature | Priority | Description |
 | :---- | :---- | :---- |
+| Payment processor migration — Brazil-based provider | High | **PLACEHOLDER — to be scoped.** GlobalPay (INT-01) remains the active payment processor for now. The plan is to migrate to a payment processor based in Brazil to avoid USD↔BRL exchange fees on transactions. TBD: (1) processor selection and commercial terms; (2) new integration spec (auth, payment-link creation, status query, cancel, webhook events — cf. INT-01); (3) order data model mapping; (4) dual-run / cutover strategy so in-flight orders are not disrupted; (5) reconciliation and idempotency for the new webhook; (6) whether BCB PTAX exchange-rate lookups (INT-03) are still needed once pricing is BRL-native. No code change yet — GlobalPay stays in place until the replacement is ready. |
 | TriStar inventory sync | High | Implement real-time or daily inventory sync between the platform and TriStar Express warehouse in Miami. A placeholder API route exists at /api/tristar/inventory/route.ts. The TriStar inventory API endpoint is not yet documented — research required. |
 | TriStar production migration | High | Switch TRISTAR\_API\_URL from sandbox to production (https://api.tristarexpress.com/v1/). Validate all shipment creation, tracking, and label flows against real shipments. |
-| Enhanced ANVISA automation | High | The Chrome extension currently handles approximately 75% of ANVISA form fields. Remaining gaps include some dropdown menus and file uploads on the gov.br portal. Options explored: (1) Enhanced Chrome Extension (recommended — lowest cost, leverages existing architecture), (2) Selenium/Playwright server-side automation (higher cost, maintenance burden, bot detection risk), (3) Hybrid approach. |
 | Staging environment | Medium | Create a separate Firebase project for development/staging with isolated Firestore, Auth, and Storage. Currently all development tests against production. |
 | LGPD compliance | Medium | Implement explicit consent workflow for patient data, data retention policies, right-to-deletion support, and breach notification procedures. |
 | Chrome Web Store publication | Medium | Publish the ANVISA extension to the Chrome Web Store for automatic updates instead of manual .zip distribution. |
