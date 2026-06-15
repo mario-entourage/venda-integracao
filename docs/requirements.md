@@ -569,24 +569,31 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 
 #### **INT-09 Memphis — Shipping & Logistics (PLACEHOLDER — pending documentation)**
 
-> **Status:** Memphis is the intended replacement for the retired TriStar Express integration (see INT-04). The integration has not yet been built and Memphis has not yet provided API documentation. The fields below are placeholders capturing what we will need to document once details are available. **Everything in this section is TBD and must be confirmed with Memphis.**
+> **Status:** Memphis (vendor platform: **Licons**) is the intended replacement for the retired TriStar Express integration (see INT-04). The integration has not yet been built. Memphis has provided initial answers on webhooks, security, environments, API stability, and payload structure (summarized below), plus a Postman collection. Shipment-creation request/response details still need to be mapped from the Postman docs. Fields still marked _TBD_ must be confirmed with Memphis. (Vendor answers were provided in Spanish against Portuguese questions; captured here in English.)
 
 | Attribute | Value |
 | :---- | :---- |
 | Purpose | Create international shipments, generate labels, and track delivery — replacing the retired TriStar integration. |
-| Base URL | _TBD — awaiting Memphis (sandbox + production URLs)._ |
-| Authentication | _TBD — auth scheme, credentials, token lifecycle, required headers (note TriStar required `Accept: application/json` to avoid 302 redirects — confirm Memphis equivalents)._ |
-| Endpoints | _TBD — create shipment, track status, generate label, confirm dispatch, cancel._ |
-| Payload format | _TBD — recipient / sender / item field names and codes. Must map our order data model to Memphis fields (cf. TriStar `to_*` / `from_*` / item structure)._ |
+| Vendor / platform | Memphis, running on the **Licons** platform. |
+| API documentation | Postman collection: https://documenter.getpostman.com/view/8631326/SVfRsSYV?version=latest#92e4aed2-6451-43d8-8c3d-944092b993c5 |
+| Sandbox / environments | Sandbox available at https://sandboxweb.licons.pe/ — Thais can request that Memphis provision access credentials. Separate sandbox and production environments (not production-only). |
+| Base URL | _TBD — derive production + sandbox API base URLs from the Postman collection / sandbox access._ |
+| Authentication | Confirmed: an authentication token can be sent either as a request **header** or as a **URL query parameter** on the endpoint. Exact token format, issuance, and lifecycle: _TBD (from Postman docs)._ |
+| IP allow-listing | Supported. Memphis sends webhooks from **3 fixed IPs only** — we can restrict inbound webhook requests to those IPs. _Obtain the IP list from Memphis._ |
+| Endpoints | _TBD — create shipment, track status, generate label, confirm dispatch, cancel (map from Postman collection)._ |
+| Payload format | Fixed webhook payload schema documented in the Postman collection (link above). Outbound shipment-creation payload (recipient / sender / item fields, cf. TriStar `to_*` / `from_*` / item structure): _TBD — map from Postman docs._ |
 | HS codes by item type | _TBD — confirm whether Memphis requires HS tariff codes per item and the expected values (cf. TriStar HSCODE\_BY\_ITEM\_TYPE map)._ |
 | ANVISA / controlled-substance fields | _TBD — how to supply ANVISA import authorization number and product commercial name for CBD/THC items._ |
 | Multi-item support | _TBD — confirm multiple items per shipment._ |
 | Sender config | _TBD — static sender (Entourage Lab warehouse) configuration; confirm origin (Miami vs Brazil) and whether sender is injected server-side._ |
-| Webhook / tracking updates | _TBD — does Memphis push status events, or must we poll? Confirm idempotency and correlation key (cf. external\_id = orderId pattern)._ |
+| Webhooks — events & idempotency | Memphis pushes status events (no polling required). Each event carries a **unique event ID**, usable as the idempotency/identity key. Events are normally sent once, but if Memphis does not receive a success response it will resend. **Our webhook handler must be idempotent and key off the event ID.** |
+| Webhooks — retry policy | If no success response is received, Memphis retries **every 30 minutes for up to 15 days**. |
+| Webhooks — security | Auth token can be sent in the webhook request header or as a URL query parameter (our choice). Combine with the 3-IP allow-list above. _Decide on header vs. query-param token and document the secret name._ |
 | Rep / customer notifications | _TBD — reuse Resend flow (INT-08) for tracking-code emails once shipment creation works._ |
-| Error handling | _TBD — error code catalog and Portuguese message mapping._ |
-| Homologation status | _TBD — sandbox test shipments not yet created._ |
-| Env vars | _TBD — anticipate MEMPHIS\_API\_URL, MEMPHIS\_API\_KEY (secret), MEMPHIS\_FROM\_\* sender vars, MEMPHIS\_INTEGRATION\_CODE (final names to be confirmed)._ |
+| API stability / versioning | Memphis does **not** version the API (no v1/v2). They commit to **no breaking changes**: fields may be **added** to payloads but existing fields are never changed or removed; when large changes are truly needed, they create **new endpoints** and notify affected clients. Our parser should tolerate unknown/extra fields. |
+| Error handling | _TBD — error code catalog and Portuguese message mapping (map from Postman docs)._ |
+| Homologation status | _TBD — sandbox access not yet provisioned; no test shipments created._ |
+| Env vars | _TBD — anticipate MEMPHIS\_API\_URL, MEMPHIS\_API\_KEY (secret), MEMPHIS\_WEBHOOK\_TOKEN (secret), MEMPHIS\_FROM\_\* sender vars (final names to be confirmed)._ |
 
 ---
 
