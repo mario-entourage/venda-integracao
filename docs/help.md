@@ -397,6 +397,15 @@ USUARIOS (menu: Usuarios | rota: /usuarios)
   - Ativar/desativar usuarios.
   - Usuarios criados automaticamente no primeiro login
     via Google OAuth com dominio @entouragelab.com.
+  - Coluna Representante: marca o usuario como
+    representante comercial. O botao funciona inclusive
+    para usuarios "Pendente" (que ainda nao fizeram
+    login): ao marcar, o usuario fica selecionavel como
+    representante de imediato, sem precisar esperar o
+    primeiro login. Quando a pessoa fizer login, os
+    registros sao fundidos automaticamente (sem
+    duplicar). NAO e obrigatorio que representantes usem
+    o aplicativo.
 
 ----------------------------------------------------------
 PERFIL
