@@ -64,6 +64,24 @@ export async function GET(request: NextRequest) {
       repMap.set(doc.id, data.displayName || data.email || doc.id);
     }
 
+    // Resolve a rep id to its surviving id. Orders created before a rep merge
+    // store the now-deactivated (random) id in their representative subcollection;
+    // follow the `mergedIntoUid` pointer so that credit rolls up to the rep who
+    // logged in. Cached to avoid repeat reads across orders.
+    const mergeResolveCache = new Map<string, string>();
+    async function resolveRepId(rawId: string): Promise<string> {
+      if (repMap.has(rawId)) return rawId; // active rep — no redirect
+      if (mergeResolveCache.has(rawId)) return mergeResolveCache.get(rawId)!;
+      let canonical = rawId;
+      try {
+        const uDoc = await db.collection('users').doc(rawId).get();
+        const mergedInto = uDoc.exists ? (uDoc.data() as { mergedIntoUid?: string }).mergedIntoUid : undefined;
+        if (mergedInto) canonical = mergedInto;
+      } catch { /* ignore — fall back to raw id */ }
+      mergeResolveCache.set(rawId, canonical);
+      return canonical;
+    }
+
     // ── 2. Get orders in date range ───────────────────────────────────────
     const ordersSnap = await db
       .collection('orders')
@@ -96,12 +114,15 @@ export async function GET(request: NextRequest) {
       }
 
       const repData = repSubSnap.docs[0].data();
-      const repUserId = repData.userId;
+      const rawRepUserId = repData.userId;
 
-      if (!repUserId) {
+      if (!rawRepUserId) {
         console.warn(`[commissions] Order ${orderDoc.id} representative missing userId, skipping`);
         continue;
       }
+
+      // Redirect credit to the surviving rep if this id was merged on login.
+      const repUserId = await resolveRepId(rawRepUserId);
 
       const amount = Number(order.amount) || 0;
       const existing = repSales.get(repUserId) || { grossSales: 0, orderCount: 0 };

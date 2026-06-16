@@ -80,11 +80,71 @@ export function getUserProfilesRef(db: Firestore, userId: string) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Fold any *other* user docs that share this email into the canonical,
+ * UID-keyed user doc.
+ *
+ * This handles the case where an admin designates a sales rep without a login
+ * (the external-rep flow writes a `users` doc with a random ID) and that rep
+ * later signs in — which would otherwise create a *second* user doc and a
+ * duplicate entry in every rep dropdown. We re-point `doctors.repUserId` from
+ * the old doc to the canonical UID and deactivate the old doc, leaving a
+ * `mergedIntoUid` pointer so historical order credit still resolves (the
+ * commissions API follows it). Also cleans up a stale duplicate left behind by
+ * a previous login.
+ *
+ * Best-effort: never throws — a login must not fail because a merge hiccuped.
+ *
+ * @returns rep attributes to carry onto the canonical doc.
+ */
+async function mergeDuplicateRepUsers(
+  db: Firestore,
+  uid: string,
+  email: string,
+): Promise<{ isRepresentante: boolean; state?: string; displayName?: string }> {
+  const carried: { isRepresentante: boolean; state?: string; displayName?: string } = {
+    isRepresentante: false,
+  };
+  try {
+    const dupSnap = await getDocs(query(getUsersRef(db), where('email', '==', email)));
+    for (const dup of dupSnap.docs) {
+      if (dup.id === uid) continue;
+      const data = dup.data() as Record<string, unknown>;
+      if (data.mergedIntoUid) continue; // already folded in by a prior login
+
+      if (data.isRepresentante === true) carried.isRepresentante = true;
+      if (!carried.state && typeof data.state === 'string' && data.state) carried.state = data.state;
+      if (!carried.displayName && typeof data.displayName === 'string' && data.displayName) {
+        carried.displayName = data.displayName;
+      }
+
+      const batch = writeBatch(db);
+      // Re-point doctor assignments from the old rep id to the canonical UID.
+      const assigned = await getDocs(query(collection(db, 'doctors'), where('repUserId', '==', dup.id)));
+      for (const docDoc of assigned.docs) {
+        batch.update(docDoc.ref, { repUserId: uid, updatedAt: serverTimestamp() });
+      }
+      // Deactivate the duplicate and point it at the survivor.
+      batch.update(dup.ref, {
+        active: false,
+        isRepresentante: false,
+        mergedIntoUid: uid,
+        updatedAt: serverTimestamp(),
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.warn('[ensureUser] rep merge skipped:', err);
+  }
+  return carried;
+}
+
+/**
  * Ensure a user document exists for the given Firebase Auth UID.
  *
- * Called on every login. If the user doc already exists the call is a no-op.
- * On first login it atomically creates the User document and a default
- * Profile sub-document, pre-populated with Caio's information.
+ * Called on every login. If the user doc already exists the call is a no-op
+ * (apart from rep-duplicate cleanup). On first login it atomically creates the
+ * User document and a default Profile sub-document, pre-populated with Caio's
+ * information.
  *
  * @returns true if a new user was created, false if it already existed.
  */
@@ -98,11 +158,16 @@ export async function ensureUser(
   const snap = await getDoc(userRef);
 
   if (snap.exists()) {
-    // Always update lastLogin + backfill active flag + displayName on every sign-in
+    // Always update lastLogin + backfill active flag + displayName on every sign-in.
+    // Also fold in any duplicate rep doc (e.g. an external-rep entry that
+    // predates this login) and inherit its rep status.
     const data = snap.data();
+    const merged = await mergeDuplicateRepUsers(db, uid, email);
     const updates: Record<string, unknown> = { lastLogin: serverTimestamp() };
     if (data.active !== true) updates.active = true;
     if (displayName && !data.displayName) updates.displayName = displayName;
+    if (merged.isRepresentante && data.isRepresentante !== true) updates.isRepresentante = true;
+    if (merged.state && !data.state) updates.state = merged.state;
     await updateDoc(userRef, updates);
     return false;
   }
@@ -113,13 +178,17 @@ export async function ensureUser(
   const preregData = preregSnap.exists() ? preregSnap.data() as Record<string, unknown> : null;
   const groupId = preregData?.groupId as string || 'user';
 
+  // Fold in any rep doc an admin created for this email without a login.
+  const merged = await mergeDuplicateRepUsers(db, uid, email);
+
   const batch = writeBatch(db);
 
   batch.set(userRef, {
     email,
     groupId,
-    displayName: displayName || '',
-    isRepresentante: preregData?.isRepresentante === true ? true : false,
+    displayName: displayName || merged.displayName || '',
+    isRepresentante: preregData?.isRepresentante === true || merged.isRepresentante ? true : false,
+    ...(merged.state ? { state: merged.state } : {}),
     active: true,
     lastLogin: serverTimestamp(),
     createdAt: serverTimestamp(),

@@ -35,9 +35,15 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isSignedIn() && isEntourageDomain();
       allow create: if isSignedIn() && isEntourageDomain() && request.auth.uid == userId;
-      // Users can update their own lastLogin/displayName; admins can update anything
+      // Users can update their own lastLogin/displayName; admins can update anything.
+      // A signed-in user may also update another user doc that shares their own
+      // email — this is the login-merge of a rep record created without a login
+      // (FR-05.10): the duplicate is, by definition, the same person. `create`
+      // still requires uid == userId, so a same-email doc cannot be forged here.
       allow update: if isAdmin()
-        || (isSignedIn() && request.auth.uid == userId);
+        || (isSignedIn() && request.auth.uid == userId)
+        || (isSignedIn() && isEntourageDomain()
+            && resource.data.email == request.auth.token.email);
       allow delete: if false;
     }
 

@@ -220,11 +220,29 @@ REPRESENTANTES (menu: Representantes | rota: /representantes)
   - Tabela: Nome, Codigo, Email, Telefone.
   - Botao "Novo Representante" (apenas administradores).
 
-  Novo Representante:
-  - Campos: Nome (obrigatorio), Codigo (obrigatorio),
-    Email (opcional), Telefone (opcional).
-  - Vincular a Usuario: opcao de associar o representante
-    a um usuario existente do sistema (selecao por email).
+  Novo Representante (apenas administradores):
+  O botao abre um menu com duas opcoes:
+  - Interno (Entourage Lab): leva a Usuarios para
+    pre-registrar uma pessoa com email @entouragelab.com
+    marcada como representante. NAO e preciso esperar a
+    pessoa fazer login: caso ja exista um representante com
+    o mesmo email (ver Externo), ele e selecionavel de
+    imediato; quando a pessoa finalmente fizer login, o
+    sistema funde os registros automaticamente (ver abaixo).
+  - Externo (sem login): abre o dialogo "Novo representante
+    externo" para cadastrar um representante que apenas
+    recebe credito de vendas e nunca faz login. Campos:
+    Nome (obrigatorio), Email (opcional), UF (opcional).
+    Aceita emails de qualquer dominio. Fica selecionavel
+    imediatamente nos dropdowns de representante.
+
+  Reuso de email / fusao no login:
+  - Um representante criado sem login (Externo) que mais
+    tarde faca login NAO gera um cadastro duplicado. No
+    primeiro login o sistema funde o registro antigo no
+    novo: reaponta os medicos vinculados, desativa o
+    registro antigo e mantem o credito de pedidos antigos
+    (a comissao continua sendo atribuida ao representante).
 
   Detalhes do Representante:
   - Visualizacao: Codigo, Email, Telefone, Usuario
