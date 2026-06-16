@@ -21,6 +21,13 @@ export interface User {
   state?: string;
   /** Legacy representante doc ID (for migration traceability). */
   legacyRepresentanteId?: string;
+  /**
+   * Set when this user doc was folded into another (canonical, UID-keyed) user
+   * on login — e.g. a rep that an admin created without a login (external-rep
+   * flow) who later signs in. The doc is deactivated and points here so
+   * historical order credit can still be resolved to the surviving user.
+   */
+  mergedIntoUid?: string;
   /** Notification preferences (defaults to all true if absent). */
   notificationPreferences?: NotificationPreferences;
   active: boolean;
