@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { useAuthFetch } from '@/hooks/use-auth-fetch';
 import { USER_GROUP_LABELS } from '@/lib/constants';
 import { UserGroupType } from '@/types/enums';
 import type { ColumnDef } from '@/components/shared/data-table';
@@ -90,6 +91,7 @@ export default function UsuariosPage() {
   const db = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
+  const authFetch = useAuthFetch();
 
   // Delete state
   const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
@@ -131,17 +133,28 @@ export default function UsuariosPage() {
     !isAdminLoading && isAdmin ? preregQuery : null,
   );
 
-  // Merge: show pre-registrations first (as pending rows), then actual users
+  // Merge: show pre-registrations first (as pending rows), then actual users.
+  // Hide a pre-registration once a user doc exists for that email — this
+  // happens after an admin activates a pending user as a rep (a `users` doc is
+  // provisioned) or after the person's first login, and avoids a duplicate row.
+  // Drop docs that were folded into another account on login (FR-05.10) — they
+  // are deactivated pointers, not real rows.
+  const visibleUsers = ((users || []) as (User & { id: string })[]).filter(
+    (u) => !u.mergedIntoUid,
+  );
+  const userEmails = new Set(visibleUsers.map((u) => u.email));
   const allRows: UserRow[] = [
-    ...(preregistrations || []).map((p) => ({
-      id: p.id,
-      email: p.email,
-      groupId: p.groupId,
-      active: false,
-      pending: true as const,
-      createdAt: p.createdAt,
-    })),
-    ...(users || []) as (User & { id: string })[],
+    ...(preregistrations || [])
+      .filter((p) => !userEmails.has(p.email))
+      .map((p) => ({
+        id: p.id,
+        email: p.email,
+        groupId: p.groupId,
+        active: false,
+        pending: true as const,
+        createdAt: p.createdAt,
+      })),
+    ...visibleUsers,
   ];
 
   const handleGroupChange = async (userId: string, newGroup: string) => {
@@ -182,6 +195,23 @@ export default function UsuariosPage() {
     } catch (err) {
       console.error(err);
       toast({ title: 'Erro ao atualizar representante.', variant: 'destructive' });
+    }
+  };
+
+  // For a pending (never-logged-in) pre-registration, there is no user doc to
+  // flag yet. Provision an active rep user doc via the Admin SDK so the person
+  // becomes selectable immediately; it merges into their account on first login.
+  const handlePendingRepActivate = async (email: string) => {
+    try {
+      const res = await authFetch('/api/admin/activate-rep', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+      if (!res.ok) throw new Error(`activate-rep failed: ${res.status}`);
+      toast({ title: 'Marcado como representante.' });
+    } catch (err) {
+      console.error(err);
+      toast({ title: 'Erro ao marcar como representante.', variant: 'destructive' });
     }
   };
 
@@ -263,8 +293,11 @@ export default function UsuariosPage() {
         <div onClick={(e) => e.stopPropagation()}>
           <Switch
             checked={!!item.isRepresentante}
-            onCheckedChange={(val) => handleRepToggle(item.id, val)}
-            disabled={!!item.pending}
+            onCheckedChange={(val) =>
+              item.pending
+                ? handlePendingRepActivate(item.email)
+                : handleRepToggle(item.id, val)
+            }
           />
         </div>
       ),
