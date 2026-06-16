@@ -193,6 +193,13 @@ CONTROLE (menu: Controle | rota: /controle)
   - Continuar wizard a partir do pedido existente.
   - CSV bulk import (admin): mapeamento de colunas,
     validacao, deteccao de duplicatas via batchImportId.
+    IMPORTANTE: o arquivo deve ter cabecalho na primeira
+    linha E estar codificado em UTF-8. Ao salvar pela
+    planilha escolha "CSV UTF-8" (Excel) ou codificacao
+    Unicode UTF-8 (Numbers: Exportar -> CSV -> Opcoes
+    Avancadas). Codificacao errada (ex.: Mac Roman) faz
+    todas as linhas falharem com "Nome/CRM obrigatorio" e
+    acentos aparecem corrompidos (ex.: "Andr?").
 
 CLIENTES (menu: Clientes | rota: /clientes)
   Cadastro e gerenciamento de pacientes.

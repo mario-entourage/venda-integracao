@@ -312,6 +312,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-05.11 | Commission continuity across merges. Commission aggregation credits the surviving rep even for orders created before a merge: when an order's stored `representative.userId` points to a deactivated doc, the commissions calculation follows its `mergedIntoUid` pointer so historical sales roll up to the rep who logged in. |
 |  | There should be an option for admins to upload CSVs with data for several clients, doctors, or sales representatives, to add new entries in bulk |
 |  | Admins should have access to sample documents to show the format for bulk upload |
+|  | Bulk-upload CSVs must have a header row on the first line **and be encoded in UTF-8**. The importer maps columns by header name and reads the file as UTF-8; a missing header or a non-UTF-8 encoding (e.g. Mac Roman / Latin-1, a common spreadsheet-export default on macOS) causes every row to fail validation ("Nome/CRM obrigatório") and corrupts accented characters. The import screen and sample files must state the UTF-8 requirement, and sample files must be saved as UTF-8. |
 
 #### **FR-06 Products & Inventory**
 
