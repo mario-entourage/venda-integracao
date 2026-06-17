@@ -366,7 +366,14 @@ export default function ImportarPage() {
                       Arraste um arquivo CSV aqui ou clique para selecionar
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Formato: CSV com cabeçalho na primeira linha
+                      Formato: CSV com cabeçalho na primeira linha,
+                      codificado em UTF-8
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ao exportar/salvar pela planilha, escolha
+                      &ldquo;CSV UTF-8&rdquo; (no Numbers: Exportar &rarr; CSV
+                      &rarr; codificação Unicode UTF-8). Acentos exibidos como
+                      &ldquo;Andr&#xFFFD;&rdquo; indicam codificação errada.
                     </p>
                   </div>
                 </CardContent>
