@@ -124,30 +124,19 @@ VENDAS (menu: Vendas | rota: /remessas)
 
 ENVIO (menu: Envio | rota: /envio)
   Gerenciamento de envios e rastreamento de entregas.
-  - Metodos: TriStar Express, Correios (Sedex/PAC), Motoboy.
+  - Metodos ativos: Correios (Sedex/PAC) e Motoboy.
+    O envio internacional de Miami esta INDISPONIVEL no
+    momento.
 
-  TriStar Express (envio internacional de Miami):
-  - Dialog de criacao de remessa com campos do destinatario
-    (nome, CPF, endereco, telefone, email).
-  - Suporte a MULTIPLOS ITENS por remessa: adicione linhas
-    com "+ Adicionar item". Cada item tem tipo, descricao,
-    quantidade e preco unitario.
-  - Tipos de item: Produtos (10), Livros (20), Medicamento
-    (30), CBD (40), THC (41), Outro (90).
-  - Para itens CBD (tipo 40): campos adicionais de numero
-    de autorizacao ANVISA e nome comercial do produto.
-  - Codigos aduaneiros (HS codes) sao inseridos
-    automaticamente pelo servidor por tipo de item —
-    nao e necessario preencher manualmente.
-  - Seguro: toggle para incluir seguro com valor declarado.
-  - Dados do remetente (Entourage Lab Miami, incluindo
-    CNPJ e nome fantasia) sao inseridos automaticamente
-    pelo servidor — nao e necessario preencher.
-  - Apos criar a remessa: exibe codigo de rastreamento,
-    ID da remessa, e botao para baixar etiqueta (PDF).
-  - Gera etiquetas de envio (PDF).
-  - Rastreamento de encomendas.
-  - Status de envio atualizado automaticamente.
+  Envio internacional de Miami (INDISPONIVEL — aguardando
+  integracao com a Memphis):
+  - A integracao anterior (TriStar Express) foi REMOVIDA.
+    A substituta, Memphis (plataforma Licons), ainda nao
+    foi construida.
+  - A opcao internacional aparece desabilitada com a
+    mensagem "Indisponivel — aguardando integracao com a
+    Memphis". Criacao de remessa, etiquetas e rastreamento
+    automatico voltarao quando a Memphis estiver pronta.
 
   Correios (envio nacional):
   - Entrada manual: codigo de rastreio, transportadora
@@ -670,7 +659,7 @@ COLECOES DO BANCO DE DADOS (FIRESTORE)
     Campos: id, status, invoice, legalGuardian, currency,
       amount, discount, type, anvisaOption, anvisaStatus,
       zapsignDocId, zapsignStatus, zapsignSignUrl,
-      documentsComplete, tristarShipmentId,
+      documentsComplete, anvisaRequestId,
       prescriptionDocId, softDeleted, createdById,
       updatedById, createdAt, updatedAt
     Subcolecoes:
@@ -679,13 +668,11 @@ COLECOES DO BANCO DE DADOS (FIRESTORE)
       doctor/      - id, name, crm, orderId, userId
       products/    - id, orderId, stockProductId, quantity,
                      price, discount
-      shipping/    - id, tracking, price, insurance,
-                     insuranceValue, orderId, address,
-                     method, tristarShipmentId,
-                     tristarStatus, tristarTrackingCode,
-                     tristarLabelUrl, carrier,
+      shipping/    - id, orderId, address, method
+                     (LOCAL_MAIL/MOTOBOY/OTHER), carrier,
                      trackingNumber, shipper, sendDate,
                      cost, notes, shippingStatus
+                     (TriStar fields removed; Memphis pending)
       documents/   - id, orderId, documentType, status,
                      requestedAt, receivedAt, documentId
       payments/    - id, provider, status, currency, amount,
@@ -805,8 +792,9 @@ STATUS E FLUXOS
   Status de Envio (ShippingStatus):
     pending -> sent -> delivered (returned)
 
-  Metodos de Envio:
-    TRISTAR, LOCAL_MAIL (Correios), MOTOBOY, OTHER
+  Metodos de Envio (ShippingMethod):
+    LOCAL_MAIL (Correios), MOTOBOY, OTHER
+    (TRISTAR removido; carrier internacional Memphis pendente)
 
 ----------------------------------------------------------
 INTEGRACOES EXTERNAS
@@ -845,21 +833,18 @@ INTEGRACOES EXTERNAS
       recebimento e transporte.
     - Validade: 1 ano ou ate conclusao dos objetivos.
 
-  TRISTAR (Logistica e Envio)
-    Fluxo:
-    1. Criar remessa: POST /shipments
-       Body: { recipient (nome, CPF, endereco),
-         items (tipo, quantidade, valor,
-           anvisa_authorization para CBD/THC),
-         insurance, insurance_value }
-       Retorna: { id, status, tracking_code, label_url }
-    2. Confirmar: POST /shipments/{id}/confirm
-    3. Rastrear: GET /tracking/{id}
-    4. Etiqueta: GET /shipments/{id}/label
-    Tipos de item:
-    - 10: Produtos, 20: Livros, 30: Medicamento
-    - 40: CBD, 41: THC (exigem campos ANVISA)
-    - 90: Outro (imune)
+  MEMPHIS / LICONS (Logistica e Envio — PENDENTE)
+    Substitui a integracao TriStar (REMOVIDA). Ainda nao
+    construida. Detalhes do fornecedor ja recebidos:
+    - Webhooks com ID unico por evento; reenvio a cada
+      30 min por ate 15 dias se nao houver sucesso.
+    - Auth por token no header ou parametro de URL; webhooks
+      enviados de 3 IPs fixos.
+    - Ambiente sandbox: https://sandboxweb.licons.pe/
+    - Sem versionamento de API; sem breaking changes.
+    Pendente: mapear endpoints e payload de criacao de
+    remessa a partir da colecao Postman. Ver requisitos
+    INT-09.
 
   GOOGLE AI / GEMINI (IA)
     - Classificacao automatica de documentos uploadados.
@@ -939,8 +924,9 @@ FLUXO COMPLETO DE UMA VENDA
      - Pedido atualizado: status "paid".
 
   5. Envio (modulo Envio):
-     - Criacao de remessa TriStar ou manual.
-     - Etiqueta gerada e impressa.
+     - Criacao de remessa manual (Correios/Motoboy); envio
+       internacional via Memphis pendente.
+     - Etiqueta/rastreio conforme o metodo.
      - Pedido atualizado: status "shipped".
 
   6. Entrega:

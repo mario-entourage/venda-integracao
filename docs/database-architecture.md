@@ -12,7 +12,7 @@
 | **Soft deletes** | Records use `active` / `softDeleted` flags rather than physical deletion, preserving audit trails. |
 | **Timestamp bookkeeping** | Every document carries `createdAt` and `updatedAt` server timestamps for auditability. |
 | **Composite indexes for queries** | All list views that filter + sort use declared composite indexes, keeping query performance O(log n). |
-| **Mandatory audit logging** | Every write operation on business-critical collections (`orders`, `clients`, `doctors`, `users`, `preregistrations`) is logged to `audit_logs` with the performing user's UID, the action type, and a `changes` payload. The `performedById` parameter is required (not optional) — TypeScript enforces this at compile time, preventing accidental unaudited writes. |
+| **Mandatory audit logging** | Every write operation on business-critical collections (`orders`, `clients`, `doctors`, `users`, `preregistrations`) is logged to `audit_log` with the performing user's UID, the action type, and a `changes` payload. The `performedById` parameter is required (not optional) — TypeScript enforces this at compile time, preventing accidental unaudited writes. |
 
 ---
 
@@ -44,7 +44,7 @@ The central collection. Each document represents one sales order. The document I
 | `allowedPaymentMethods` | object? | `{ creditCard, debitCard, boleto, pix }` flags |
 | `frete` | number? | Shipping cost (BRL) |
 | `documentsComplete` | boolean | All required documents received |
-| `tristarShipmentId` | string? | TriStar shipment reference |
+| `anvisaRequestId` | string? | FK → `anvisa_requests` — the linked ANVISA authorization request |
 | `prescriptionDocId` | string? | Firebase Storage path to prescription image |
 | `prescriptionHash` | string? | SHA-256 hex hash of the prescription file (for duplicate detection). Queried to prevent the same prescription from being used across multiple active orders. Admins can override the check. |
 | `softDeleted` | boolean? | Soft-delete flag |
@@ -70,10 +70,10 @@ The central collection. Each document represents one sales order. The document I
 | Subcollection | Cardinality | Purpose |
 |---|---|---|
 | `customer` | 1 doc | Patient name, CPF, linked `userId` |
-| `representative` | 1 doc | Sales rep name, linked `userId` |
+| `representative` | 1 doc | Sales rep `name`, `userId`, `saleId` (= orderId), optional `code` |
 | `doctor` | 1 doc | Doctor name, CRM, linked `userId` |
 | `products` | N docs | Line items: `stockProductId`, `productName`, `quantity`, `price`, `discount` |
-| `shipping` | 0–1 doc | Address, tracking, carrier info, TriStar fields |
+| `shipping` | 0–1 doc | Address + manual-carrier fields: `method` (`LOCAL_MAIL` / `MOTOBOY` / `OTHER`), `carrier`, `trackingNumber`, `shipper`, `sendDate`, `cost`, `notes`, `shippingStatus`. (TriStar was removed; an international carrier integration — Memphis, on the Licons platform — is pending and not yet built, so no carrier-specific fields are stored.) |
 | `documentRequests` | N docs | Required document checklist: type, status, `receivedAt` |
 | `payments` | N docs | Payment records: provider, amount, status |
 | `paymentLinks` | N docs | GlobalPay links: URL, amount, expiry, `secretKey`, denormalized `repName`, `invoice`, `clientName`, `doctorName` |
@@ -125,7 +125,7 @@ One-to-one with orders — shares the same document ID.
 | `mainSpecialty` | string? | Specialty |
 | `state`, `city` | string? | Registration location |
 | `email`, `phone`, `mobilePhone` | string? | Contact |
-| `repUserId` | string? | Optional FK → `representantes` — the sales rep assigned to this doctor for commission credit |
+| `repUserId` | string? | Optional FK → `users` (the rep user's UID) — the sales rep assigned to this doctor for commission credit. Re-pointed to the canonical UID by the login-merge (see §8). |
 | `active` | boolean | Soft-delete flag |
 | `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
 
@@ -133,7 +133,9 @@ One-to-one with orders — shares the same document ID.
 
 ---
 
-### 5. `representantes/{representanteId}`
+### 5. `representantes/{representanteId}` *(legacy)*
+
+> **Legacy collection — read-only for backward compatibility.** Sales reps are now modeled as `users` documents with `isRepresentante: true` (including login-less *external* reps; see §8). This collection is retained only for historical references and is not written by new flows.
 
 | Field | Type | Description |
 |---|---|---|
@@ -181,15 +183,25 @@ Document ID = Firebase Auth UID.
 
 | Field | Type | Description |
 |---|---|---|
-| `email` | string | Google OAuth email |
+| `email` | string | Google OAuth email — the user's stable identity key |
 | `displayName` | string? | Display name (from Google OAuth / profile) |
 | `groupId` | string | Role: admin, user, view_only |
 | `isRepresentante` | boolean? | Whether this user is a sales rep |
+| `external` | boolean? | Sales rep with **no** Firebase Auth identity — exists only to receive sales credit and can never sign in. Always paired with `isRepresentante === true`. Created via `POST /api/admin/external-reps` with a random doc ID (not an Auth UID). |
+| `state` | string? | UF two-letter state code (captured for external reps) |
+| `mergedIntoUid` | string? | Set when this doc was folded into a canonical UID-keyed user on login (see merge note below). The doc is deactivated and points to the survivor; the commissions API follows this pointer so historical credit still resolves. |
+| `legacyRepresentanteId` | string? | Legacy `representantes` doc ID, for migration traceability |
+| `notificationPreferences` | object? | `{ emailOnOrderCreated, emailOnPaymentLinkCreated, emailOnPaymentReceived, inAppOnPaymentLinkCreated, inAppOnPaymentReceived }` (all boolean; defaults to all true if absent) |
 | `active` | boolean | Account active |
-| `lastLogin` | Timestamp | Last sign-in |
+| `lastLogin` | Timestamp? | Last sign-in |
+| `removedAt` | Timestamp? | Set on soft delete |
 | `createdAt`, `updatedAt` | Timestamp | Bookkeeping |
 
+**Subcollection:** `users/{uid}/profiles/{auto}` — a `UserProfile` (full name, contact, address, document number) created alongside the user on first login.
+
 **Indexes:** `(active ASC, email ASC)`, `(isRepresentante ASC, active ASC, displayName ASC)`, `(groupId ASC, active ASC, createdAt DESC)`
+
+> **Login merge (no duplicate reps).** A rep can be designated without ever logging in — either as an *external* rep (random doc ID) or by activating a pending pre-registration (`POST /api/admin/activate-rep`). When such a person later signs in, `ensureUser` finds any other `users` doc sharing their email and folds it into the canonical UID-keyed doc: it re-points `doctors.repUserId` to the surviving UID, deactivates the old doc and stamps `mergedIntoUid`, and the new doc inherits rep status. Best-effort and non-blocking.
 
 ---
 
@@ -201,6 +213,8 @@ Pre-registers users before their first login. Document ID = email with `@` and `
 |---|---|---|
 | `email` | string | User email |
 | `groupId` | string | Role to assign on first login |
+| `isRepresentante` | boolean? | Optional — pre-marks the user as a sales rep, applied on first login |
+| `displayName` | string? | Optional display name to seed on first login |
 | `createdAt` | Timestamp | When pre-registered |
 
 ---
@@ -236,9 +250,9 @@ Each request has subcollections: `pacienteDocuments`, `procuracaoDocuments`, `co
 
 ---
 
-### 12. `audit_logs/{logId}`
+### 12. `audit_log/{entryId}`
 
-Comprehensive audit trail. Every write operation (create, update, soft-delete) on business-critical collections is logged here by `writeAuditLog()`. The `performedById` parameter is **required** on all service-layer write functions — TypeScript enforces this at compile time.
+Comprehensive audit trail (collection name is singular: `audit_log`; doc ID is an auto-generated `entryId`). Every write operation (create, update, soft-delete) on business-critical collections is logged here by `writeAuditLog()`. The `performedById` parameter is **required** on all service-layer write functions — TypeScript enforces this at compile time.
 
 | Field | Type | Description |
 |---|---|---|
@@ -266,10 +280,12 @@ Comprehensive audit trail. Every write operation (create, update, soft-delete) o
 | Collection | Purpose |
 |---|---|
 | `counters/invoice` | Atomic counter for invoice number generation (`nextValue` field) |
+| `counters/invoiceManual` | Atomic counter for manually-issued invoice numbers (`nextValue` field) |
 | `roles_admin/{userId}` | Dynamic admin role assignments |
 | `exchangeQuotes/{quoteId}` | Currency exchange quotes for payments |
 | `paymentMethods/{paymentMethodId}` | Payment method configurations and installment plans |
 | `medicalSpecialties/{specialtyId}` | Lookup table for doctor specialties |
+| `audit_sessions/{sessionId}` | Read-only auditor sessions (`creatingUserId`, `auditorEmail`, `status`, `expiresAt`, `startedAt`, `endedAt`, `modulesVisited`, …) for the external-auditor access feature |
 
 ---
 
@@ -287,8 +303,8 @@ orders ──1:1──> prescriptions (SAME document ID = Receita ID)
 orders ──1:N──> payments, paymentLinks, documentRequests
 orders ──1:1──> customer, representative, doctor, shipping (subcollections)
 
-users ──1:N──> audit_logs (via performedById)
-orders/clients/doctors/users ──1:N──> audit_logs (via collection + documentId)
+users ──1:N──> audit_log (via performedById)
+orders/clients/doctors/users ──1:N──> audit_log (via collection + documentId)
 ```
 
 ## Why this architecture is standard and tidy
@@ -309,4 +325,4 @@ orders/clients/doctors/users ──1:N──> audit_logs (via collection + docum
 
 8. **Consistent timestamp bookkeeping.** Every document tracks `createdAt`, `updatedAt`, and (where applicable) `createdById` / `updatedById`, providing baseline traceability.
 
-9. **Mandatory audit logging.** Beyond timestamps, every write operation on business-critical collections is logged to the `audit_logs` collection with full attribution (`performedById`), action type, and a `changes` payload documenting exactly what was modified. The `performedById` parameter is required at the TypeScript level — callers that omit it fail to compile. This prevents accidental unaudited writes and provides a comprehensive audit trail for regulatory compliance.
+9. **Mandatory audit logging.** Beyond timestamps, every write operation on business-critical collections is logged to the `audit_log` collection with full attribution (`performedById`), action type, and a `changes` payload documenting exactly what was modified. The `performedById` parameter is required at the TypeScript level — callers that omit it fail to compile. This prevents accidental unaudited writes and provides a comprehensive audit trail for regulatory compliance.
