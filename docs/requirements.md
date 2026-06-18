@@ -24,7 +24,7 @@ Comprehensive requirements document for developer handoff. Last updated: 2026-03
 >
 > **2. Hardened API Security.** All server-side API routes now enforce authentication verification and structured input validation using Zod schemas. Every client-side API call is wrapped in authenticated fetch utilities (`useAuthFetch` / `authFetchWithToken`) that automatically inject Firebase ID tokens — eliminating an entire class of silent 401 failures that previously broke features without surfacing any error to the operator. When an authentication failure does occur, users now receive a structured error code (e.g. `AUTH-20260325143012-api-ai-extract-prescription`) they can forward to an administrator, replacing the blank screen they would have seen before. Webhook endpoints from our payment and e-signature partners verify cryptographic tokens before processing any event.
 >
-> **3. TriStar Express Integration Rebuild.** Our international shipping integration with TriStar Express has been rebuilt from the ground up to match the current API specification. This includes proper customs declaration HS codes per item type, person type and document type classification for sender and recipient, the sender entity's trading name, and corrected field names for address, state, and country. This enables our Miami warehouse to fulfill complex orders containing multiple product types in a single shipment — reducing shipping costs, accelerating delivery to patients, and eliminating manual data re-entry. Homologation testing is complete.
+> **3. International Shipping — Carrier Transition.** The prior TriStar Express integration has been retired and removed from the platform. Its replacement, **Memphis** (on the Licons logistics platform), is in progress: vendor onboarding details (webhooks, authentication, environments, payload schema) have been received and documented, and the integration is pending build (see INT-09). In the interim, international shipment creation is paused in the UI while domestic Correios and local Motoboy fulfillment continue to operate normally.
 >
 > **4. Prescription Auto-Fill Restored.** The root cause of prescription upload failing to auto-populate client, doctor, and product fields was identified and fixed: the AI extraction API call was missing its authentication header, causing a silent 401. Prescription upload now reliably auto-fills all available fields in the Nova Venda wizard on every upload.
 >
@@ -69,9 +69,9 @@ This platform is the internally facing operations system that manages the entire
 1. Creates sales orders via a guided 5-step wizard (select patient/doctor/products with shipping cost, generate payment link, create e-signature documents, send everything to the client, and select shipping method).  
 2. Tracks order progress through a multi-condition checklist: payment confirmation, document signing, ANVISA authorization, document completeness, and shipping.  
 3. Automates ANVISA submissions by extracting data from uploaded documents via AI (Google Gemini OCR) and auto-filling the ANVISA government portal via a Chrome browser extension.  
-4. Manages inventory across two physical locations: Miami (USA, via TriStar Express warehouse) and Brazil (local).  
+4. Manages inventory across two physical locations: Miami (USA) and Brazil (local).  
 5. Processes payments through GlobalPay, a cross-border payment gateway that handles USD-to-BRL conversion.  
-6. Handles shipping through three methods: TriStar Express (international from Miami), Correios/Sedex (domestic Brazil), and motoboy (local delivery).
+6. Handles shipping through three methods: international from Miami (carrier integration in transition — TriStar retired, Memphis pending), Correios/Sedex (domestic Brazil), and motoboy (local delivery).
 
 ### **What success looks like**
 
@@ -132,7 +132,7 @@ The platform's visual identity should feel professional, trustworthy, and calm. 
 * Frontend: Next.js 15 (App Router) with React 19, TypeScript, Tailwind CSS, shadcn/ui components  
 * Backend: Firebase ecosystem — Firestore (database), Firebase Auth (authentication), Firebase Storage (file uploads), Firebase App Hosting (deployment), Cloud Functions (OCR pipeline)  
 * AI: Google Genkit with Gemini 2.5 Flash/Pro for document classification and OCR extraction  
-* Integrations: GlobalPay (payments), ZapSign (e-signatures), TriStar Express (shipping), BCB PTAX (exchange rates)  
+* Integrations: GlobalPay (payments), ZapSign (e-signatures), Memphis/Licons (shipping — pending; replaced retired TriStar), BCB PTAX (exchange rates)  
 * Browser extension: Chrome Manifest V3 extension for ANVISA portal auto-fill
 
 ---
@@ -157,7 +157,7 @@ The platform's visual identity should feel professional, trustworthy, and calm. 
 | ANVISA | Government regulatory body. Operators submit import authorization requests through the ANVISA gov.br portal. The Chrome extension auto-fills the portal form. |
 | GlobalPay | Payment gateway. Sends webhook notifications when payments are completed. |
 | ZapSign | E-signature provider. Sends webhook notifications when documents are signed. |
-| TriStar Express | Shipping partner in Miami. API used to create shipments and generate labels. |
+| Memphis (Licons) | International shipping partner (Miami). Replaces the retired TriStar Express. API integration pending (see INT-09). |
 | BCB (Central Bank of Brazil) | Public API provides daily PTAX exchange rates for USD/BRL conversion. |
 
 ### **Pre-registration system**
@@ -186,7 +186,7 @@ Step 2  Documents         Create ZapSign e-signature documents if needed        
                           Enter Signatario details (name + CPF).
 Step 3  Send to Client    Review summary. Copy/share payment + signing links
                           via WhatsApp. Order created atomically.
-Step 4  Shipping          Select shipping method (TriStar, Correios, or Motoboy).
+Step 4  Shipping          Select shipping method (Correios or Motoboy; international/Memphis pending).
 ```
 
 Phase 2 — Async Resolution (Checklist Tracking)
@@ -201,7 +201,7 @@ The operator monitors the order in the Pedidos module. A checklist tracks:
 [ ] ANVISA Solicitacao         -> blocked until payment + ZapSign complete
 [ ] ANVISA Autorizacao         -> created after ANVISA submission
 [ ] Documents complete         -> upload Autorizacao + remaining docs
-[ ] Shipped                    -> create shipment via TriStar/Correios/Motoboy
+[ ] Shipped                    -> create shipment via Correios/Motoboy (international/Memphis pending)
 ```
 
 Ready-to-Ship Predicate: An order is "ready to ship" when ALL of these conditions are met:
@@ -211,7 +211,7 @@ Ready-to-Ship Predicate: An order is "ready to ship" when ALL of these condition
 * ANVISA is either exempt OR anvisaStatus \=== 'CONCLUIDO'  
 * All ZapSign documents are signed (if any were created)
 
-When an order is ready to ship, the UI highlights it with an emerald accent and shows shipping action buttons (TriStar, Correios, Motoboy). Before that point, pre-shipping actions are shown instead (mark paid, upload docs, ANVISA, ZapSign).
+When an order is ready to ship, the UI highlights it with an emerald accent and shows shipping action buttons (Correios, Motoboy, plus a disabled international/Memphis option pending that integration). Before that point, pre-shipping actions are shown instead (mark paid, upload docs, ANVISA, ZapSign).
 
 Separately, the operator may view a CONTROLE module, with a more detailed list of orders, with more options for status, but with far fewer means of completing orders. Only questions or details that cannot be addressed elsewhere should be editable in the CONTROLE module
 
@@ -236,7 +236,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | | **Design decision — Data source for prescribed quantity:** |
 | | **Option A (chosen): Operator manually enters the prescribed quantity per product line.** The operator reads the prescription and types the quantity into a "Qtd Prescrita" input next to each product row. On blur of the order quantity field, the system compares and warns if order qty > prescribed qty. |
 | | **Option B (not chosen): AI extracts prescribed quantity from the prescription image.** The classify-document AI flow would also extract per-product quantities from the uploaded prescription via Gemini vision, auto-populating the prescribed qty fields. **Why it might be right:** eliminates manual data entry, reduces operator error, and is faster for high-volume workflows. **Why it was not chosen:** prescription formats vary widely (handwritten, typed, different layouts), making reliable extraction difficult; the operator already reviews the prescription anyway; and a wrong AI extraction that goes unnoticed is worse than no extraction at all. This option can be revisited once AI accuracy is validated on a representative sample of real prescriptions. |
-| FR-01.11 | Post-finalization shipping choice: After the wizard is finalized, a dialog presents two shipping options — "TriStar Express" (opens TriStar shipment dialog pre-populated with order data) or "Enviar do Brasil" (sends an email notification to the fulfillment team with the order summary). The "Enviar do Brasil" option sends the notification email to adm@entouragelab.com. |
+| FR-01.11 | Post-finalization shipping choice: After the wizard is finalized, a dialog presents the shipping options. The international option (Memphis) is currently **disabled** ("Indisponível — aguardando integração com a Memphis") since that integration is unbuilt and TriStar was removed. The active "Enviar do Brasil" option sends an email notification with the order summary to adm@entouragelab.com. |
 | | **Design decision — Email recipient for "Enviar do Brasil":** |
 | | **Option A (chosen): Hardcoded to adm@entouragelab.com.** The notification email is always sent to the admin shared mailbox. Simple, predictable, and avoids single-point-of-failure by going to a shared address rather than an individual. |
 | | **Option B (not chosen): Configurable recipient stored in Firestore settings.** An admin screen would allow changing the notification recipient without a code deploy. **Why it might be right:** if Caio's role changes, or if different products/regions need different fulfillment contacts, a hardcoded email becomes a bottleneck requiring developer intervention. Also more robust for team scaling — new fulfillment staff could be added without code changes. |
@@ -250,7 +250,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | FR-02.2 | Each order row shows a granular status badge computed from checklist state (e.g., "Falta Pagamento \+ Documentos", "Pronto para Envio"). Missing items are shown as colored pills. |
 | FR-02.3 | Orders that satisfy isReadyToShip() are visually highlighted with an emerald accent ring/background. |
 | FR-02.4 | Pre-ship actions (shown when order is NOT ready to ship): Mark as Paid, upload Documents, trigger ANVISA, open ZapSign signing URLs. |
-| FR-02.5 | Shipping actions (shown when order IS ready to ship): Create TriStar international shipment, create Correios (Sedex/PAC) shipment within Brazil, assign Motoboy or other hand-carried delivery. |
+| FR-02.5 | Shipping actions (shown when order IS ready to ship): create Correios (Sedex/PAC) shipment within Brazil, assign Motoboy or other hand-carried delivery, and a disabled international option (Memphis, pending — TriStar was removed). |
 | FR-02.6 | Admin batch operations: select-all checkbox, batch soft-delete with confirmation dialog. |
 | FR-02.7 | Per-order actions via dropdown menu: view detail, regenerate payment link, open signing URLs, cancel order, soft-delete. |
 | FR-02.8 | ANVISA status is shown as missing ("Falta ANVISA") unless anvisaOption \=== 'exempt' OR anvisaStatus \=== 'CONCLUIDO'. |
@@ -319,23 +319,22 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | ID | Requirement |
 | :---- | :---- |
 | FR-06.1 | Product catalog with: name, SKU, HS code (customs), concentration, USD price. |
-| FR-06.2 | Two named stock locations: Miami (Tristar) and Brasil. Each has independent product quantities. |
-|  | Inventory at Tristar in Miami may be fetched by API or may be manually updated by an admin |
+| FR-06.2 | Two named stock locations: Miami and Brasil. Each has independent product quantities. |
+|  | Inventory in Miami may eventually be fetched by carrier API (pending the Memphis integration) or may be manually updated by an admin |
 | FR-06.3 | Inventory is managed via a many-to-many junction (stockProducts): each product can exist at multiple locations with different quantities. |
 | FR-06.4 | Inline quantity editing per location (click quantity, edit, save). |
 | FR-06.5 | Products not yet assigned to a location show a dash and an "Add" button. |
-| FR-06.6 | Estoque module has 4 tabs: Miami (Tristar), Brasil, Catalogo (product CRUD), Locais de Estoque (location management). |
+| FR-06.6 | Estoque module has 4 tabs: Miami, Brasil, Catalogo (product CRUD), Locais de Estoque (location management). |
 
 #### **FR-07 Shipping**
 
 | ID | Requirement |
 | :---- | :---- |
-|  | The user may select between three types of shipping: Tristar Express, in-Brazil sending, and local hand-delivery.  |
-| FR-07.1 | TriStar Express: Create shipments via API with flat `to_*` recipient fields and `from_*` sender fields (injected server-side from env vars). Multi-item support: each item has `shipment_item_type`, `description`, `quantity`, `unit_price`, `hscode` (customs tariff code, computed server-side from item type), and optional ANVISA fields for CBD products. All field name mapping (e.g. `to_address_1`, `to_state_code`, `to_country_code`, `from_trading_name`) is done server-side in the API route — the client dialog uses internal names. |
-| FR-07.1a | The TriStar dialog supports dynamic item management: operators can add and remove item rows. Each item has its own product type, description, quantity, and unit price. ANVISA authorization number and commercial name fields appear automatically when an item's type is set to CBD (40). |
-| FR-07.2 | TriStar item types: Produtos (10), Livros (20), Medicamento (30), CBD (40), THC (41), Outro (90). |
-| FR-07.3 | Track shipment status and retrieve tracking codes. |
-| FR-07.4 | Generate and download shipping labels. |
+|  | The user may select between shipping types: an international carrier (out of Miami), in-Brazil sending, and local hand-delivery. **Note:** the international-carrier integration (formerly TriStar Express) has been **removed**; its replacement, **Memphis** (Licons platform, see INT-09), is **not yet built**, so the international option is currently disabled in the UI ("aguardando integração com a Memphis"). Only the manual Brazil/Correios/Motoboy paths are active today. |
+| FR-07.1 | *(Retired — TriStar removed.)* The former TriStar API shipment-creation flow (flat `to_*`/`from_*` fields, multi-item, server-side HS-code mapping, per-item ANVISA fields for CBD) is no longer in the codebase. The equivalent capability will be re-specified for Memphis when that integration is built — see INT-09. |
+| FR-07.2 | *(Retired with TriStar.)* Item-type codes used by the former integration: Produtos (10), Livros (20), Medicamento (30), CBD (40), THC (41), Outro (90). Retained for reference; to be confirmed against Memphis. |
+| FR-07.3 | Track shipment status and retrieve tracking codes (manual entry today; carrier-API tracking pending Memphis). |
+| FR-07.4 | Generate and download shipping labels *(pending Memphis; not available while the international integration is unbuilt)*. |
 | FR-07.5 | Correios (local mail): Manual entry of tracking code, carrier (Sedex/PAC), and shipping date. |
 | FR-07.6 | Motoboy: Manual entry of delivery person name, phone, and estimated delivery date. |
 | FR-07.7 | After shipping is confirmed, the order row is immediately hidden from the active list (local shippedIds state for instant UX feedback before Firestore updates propagate). |
@@ -415,7 +414,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-03.1 | All Firestore operations require Firebase Authentication. |
 | NFR-03.2 | Domain restriction: only @entouragelab.com users can access the app. Enforced by onAuthStateChanged listener; non-matching accounts are signed out immediately. |
 | NFR-03.3 | Delete operations restricted to admin role in Firestore security rules. |
-| NFR-03.4 | Sensitive API keys stored as Firebase App Hosting secrets, never in client code. Secrets: GOOGLE\_API\_KEY, GLOBALPAY\_API\_URL, GLOBALPAY\_PUB\_KEY, ZAPSIGN\_API\_KEY, TRISTAR\_API\_KEY. |
+| NFR-03.4 | Sensitive API keys stored as Firebase App Hosting secrets, never in client code. Secrets: GOOGLE\_API\_KEY, GLOBALPAY\_API\_URL, GLOBALPAY\_PUB\_KEY, ZAPSIGN\_API\_KEY (TriStar secrets removed; Memphis secrets TBD — see INT-09). |
 | NFR-03.5 | ANVISA requests: owner-or-admin access control. Users can only read/update their own requests unless they are admins. |
 | NFR-03.6 | Super-admin status is determined by the `config/superAdmins` Firestore document (not a hardcoded list). The `isSuperAdmin()` Firestore rule function reads the `emails` array from this document. The client provider subscribes via `onSnapshot`. The `config` collection is readable by all authenticated users (`isSignedIn()`) and writable only by users whose email is already in the super-admin list — preventing any form of privilege escalation via dynamic admin role. |
 | NFR-03.7 | **API route authentication:** All server-side API routes enforce Firebase Authentication via a `requireAuth()` middleware that verifies the Firebase ID token from the request's Authorization header. Unauthenticated requests receive a 401 response. Admin-only routes use a `requireAdmin()` variant. |
@@ -438,7 +437,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | NFR-05.1 | Every document tracks createdAt, updatedAt, createdById, updatedById. |
 | NFR-05.2 | Soft deletes preserve historical records. Active flags: active (products, clients, doctors, reps, users) and softDeleted (orders, ANVISA requests). |
 | NFR-05.3 | Deleted ANVISA requests are archived to anvisa\_deleted\_requests (write-protected collection). |
-| NFR-05.4 | **Comprehensive audit logging:** All write operations (create, update, soft-delete) on orders, clients, doctors, users, and pre-registrations are logged to the `audit_logs` collection via `writeAuditLog()`. Each log entry records: action type, target collection, document ID, `performedById` (the authenticated user who performed the action), a `changes` payload documenting what was modified, and a server-generated timestamp. |
+| NFR-05.4 | **Comprehensive audit logging:** All write operations (create, update, soft-delete) on orders, clients, doctors, users, and pre-registrations are logged to the `audit_log` collection via `writeAuditLog()`. Each log entry records: action type, target collection, document ID, `performedById` (the authenticated user who performed the action), a `changes` payload documenting what was modified, and a server-generated timestamp. |
 | NFR-05.5 | **Mandatory audit context:** The `performedById` parameter is required (not optional) on all service-layer write functions. TypeScript enforces this at compile time — callers that omit the authenticated user's UID will not compile. This prevents accidental unaudited writes. |
 | NFR-05.6 | **Audit trail for orders:** The orders collection — the most business-critical entity — has full audit coverage across all four write functions: `createOrder`, `updateOrderStatus`, `updateOrder`, and `updateOrderRepresentative`. Each logs the performing user and the specific changes made. |
 
@@ -510,11 +509,13 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Returns | PtaxQuote with buyRate, sellRate, midRate (calculated average), quotedAt, queryDate. |
 | Env vars | None required. |
 
-#### **INT-04 TriStar Express — Shipping & Logistics**
+#### **INT-04 TriStar Express — Shipping & Logistics (RETIRED)**
+
+> **Retired.** The TriStar Express integration has been **removed from the codebase** (no `/api/tristar/*` route, no TriStar dialog; `ShippingMethod` is now `LOCAL_MAIL | MOTOBOY | OTHER`). Its replacement is **Memphis** on the Licons platform — see **INT-09**, which is not yet built. The spec below is kept for historical reference and as a payload-mapping baseline for the Memphis work; **none of it is live**.
 
 | Attribute | Value |
 | :---- | :---- |
-| Purpose | Create shipments from Miami warehouse, generate labels, and track delivery. |
+| Purpose | *(Historical)* Create shipments from Miami warehouse, generate labels, and track delivery. |
 | Base URL | Configurable via TRISTAR\_API\_URL. Sandbox URL used during homologation; production credentials pending from TriStar. Homologation complete — shipments 1825 and 1826 created successfully in sandbox. |
 | Authentication | Bearer API key. All requests must include `Accept: application/json` header or TriStar returns a 302 redirect instead of JSON. |
 | Endpoints | POST /shipments — create shipment |
@@ -567,7 +568,7 @@ Separately, the operator may view a CONTROLE module, with a more detailed list o
 | Purpose | Send operational email notifications for shipping events and rep alerts. |
 | SDK | resend (npm package, v6.9.x) |
 | Endpoint | POST /api/notifications/send-email — internal API route that creates emails via Resend API. |
-| Use cases | (1) "Enviar do Brasil" notification to adm@entouragelab.com with order summary when Brazil-origin shipping is selected. (2) TriStar shipment rep notifications — when a rep-assigned order ships via TriStar, the rep receives an email with tracking code and order details. |
+| Use cases | (1) "Enviar do Brasil" notification to adm@entouragelab.com with order summary when Brazil-origin shipping is selected. (2) Shipment rep notifications — when a rep-assigned order ships, the rep receives an email with tracking code and order details. (This previously fired on TriStar shipments; it will reattach to the international carrier when Memphis lands.) |
 | Graceful degradation | If RESEND\_API\_KEY is not configured, the endpoint logs a warning and returns `{ sent: false, reason: 'no_api_key' }`. No error is thrown. |
 | Env vars | RESEND\_API\_KEY (secret) |
 
@@ -649,7 +650,7 @@ Each document represents one sales order. Document ID \= Receita ID \= prescript
 | frete | number? | Shipping cost (BRL) |
 | documentsComplete | boolean | All required documents received |
 | prescriptionDocId | string? | Firebase Storage path to prescription |
-| tristarShipmentId | string? | TriStar shipment reference |
+| anvisaRequestId | string? | FK to anvisa\_requests (linked ANVISA authorization request) |
 | softDeleted | boolean? | Soft-delete flag |
 | createdById | string | Auth UID of creator |
 | updatedById | string? | Auth UID of last updater |
@@ -676,7 +677,7 @@ Subcollections of orders/{receitaId}:
 | representative | 1 doc | Sales rep name, linked userId |
 | doctor | 1 doc | Doctor name, CRM, linked userId |
 | products | N docs | Line items: stockProductId, productName, quantity, price, discount |
-| shipping | 0-1 doc | Address, tracking, carrier info, TriStar fields |
+| shipping | 0-1 doc | Address + manual-carrier fields (`method` = LOCAL_MAIL/MOTOBOY/OTHER, `carrier`, `trackingNumber`, `shipper`, `sendDate`, `cost`, `notes`, `shippingStatus`). No TriStar fields — that integration was removed; international carrier (Memphis) pending. |
 | documentRequests | N docs | Required document checklist: type, status, receivedAt |
 | payments | N docs | Payment records: provider, amount, status |
 | paymentLinks | N docs | GlobalPay links: URL, amount, expiry, secretKey |
@@ -728,7 +729,7 @@ Index: (active ASC, fullName ASC)
 | mainSpecialty | string? | Specialty |
 | state, city | string? | Registration location |
 | email, phone, mobilePhone | string? | Contact |
-| repUserId | string? | Optional FK to representantes — the sales rep assigned to this doctor for commission credit |
+| repUserId | string? | Optional FK to users (the rep user's UID) — the sales rep assigned to this doctor for commission credit. Re-pointed to the surviving UID by the login merge. |
 | active | boolean | Soft-delete flag |
 | createdAt, updatedAt | Timestamp | Bookkeeping |
 
@@ -776,7 +777,7 @@ Many-to-many junction for product-to-location inventory.
 * stocks: { code, name, description, createdAt, updatedAt }  
 * stockProducts: { stockId, productId, quantity, createdAt, updatedAt }
 
-Two named locations expected: "Miami (Tristar)" and "Brasil".
+Two named locations expected: "Miami" and "Brasil".
 
 ---
 
@@ -786,13 +787,24 @@ Document ID \= Firebase Auth UID.
 
 | Field | Type | Description |
 | :---- | :---- | :---- |
-| email | string | Google OAuth email |
+| email | string | Google OAuth email — stable identity key |
+| displayName | string? | Display name |
 | groupId | string | Role: admin, user, view\_only |
+| isRepresentante | boolean? | Whether this user is a sales rep |
+| external | boolean? | Login-less rep (no Auth identity); created via /api/admin/external-reps; paired with isRepresentante |
+| state | string? | UF (captured for external reps) |
+| mergedIntoUid | string? | Set when this doc was folded into a canonical UID-keyed user on login; commissions follow this pointer |
+| notificationPreferences | object? | Per-event email/in-app toggles (defaults all true) |
 | active | boolean | Account active |
-| lastLogin | Timestamp | Last sign-in |
+| lastLogin | Timestamp? | Last sign-in |
+| removedAt | Timestamp? | Set on soft delete |
 | createdAt, updatedAt | Timestamp | Bookkeeping |
 
-Index: (active ASC, email ASC)
+Subcollection: users/{uid}/profiles/{auto} — a UserProfile created on first login.
+
+Index: (active ASC, email ASC), (isRepresentante ASC, active ASC, displayName ASC)
+
+> **Login merge:** a rep can be designated without ever logging in (external rep, or activated pending pre-registration via /api/admin/activate-rep). On that person's first login, ensureUser folds any other same-email user doc into the UID-keyed doc — re-pointing doctors.repUserId, deactivating the old doc with mergedIntoUid, and inheriting rep status.
 
 ---
 
@@ -804,6 +816,8 @@ Pre-register users before first login. Document ID \= email with @ and . replace
 | :---- | :---- | :---- |
 | email | string | User email |
 | groupId | string | Role to assign |
+| isRepresentante | boolean? | Optional — pre-marks the user as a sales rep, applied on first login |
+| displayName | string? | Optional display name to seed on first login |
 | createdAt | Timestamp | When pre-registered |
 
 ---
@@ -839,7 +853,7 @@ Each request has subcollections: pacienteDocuments, procuracaoDocuments, comprov
 
 ---
 
-#### **audit\_logs/{logId} — Audit trail**
+#### **audit\_log/{entryId} — Audit trail**
 
 Every write operation (create, update, soft-delete) on business-critical collections is logged here.
 
@@ -892,7 +906,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | :---- | :---- | :---- | :---- |
 | ANVISA portal DOM changes | High | High | The Chrome extension relies on specific CSS selectors and DOM structure of the gov.br ANVISA portal. Any redesign of the portal will break the extension. There is no API alternative — ANVISA only offers a web form. Monitor the portal for changes; maintain a test suite of expected selectors. |
 | GlobalPay API instability | Medium | Medium | GlobalPay uses non-standard conventions (statusCode \=== 1 for success, custom error codes). Documentation is sparse. The integration has 40+ error code mappings that were reverse-engineered. New error codes may appear without notice. |
-| TriStar API in sandbox mode | Medium | Certain | The TriStar API URL is currently set to sandbox. Homologation testing is complete (shipment IDs 1825 and 1826 created successfully with multi-item payloads). The payload format has been corrected to match the actual API specification (flat `from_*`/`to_*` fields, `shipment_item_type`, `unit_price`, `description`). Production migration requires: (1) receiving production API credentials from TriStar, (2) updating `TRISTAR_API_URL` and `TRISTAR_API_KEY` env vars, (3) validating one test shipment in production. The inventory sync endpoint is not yet known. |
+| No international shipping integration | Medium | Certain | TriStar was removed; its replacement (Memphis, on the Licons platform) is not yet built. International shipment creation is disabled in the UI in the interim. Vendor onboarding details are captured in INT-09; endpoints/payload still need mapping from the Memphis Postman collection before build. |
 | Firestore batch write limits | Low | Low | Firestore limits batch writes to 500 operations. CSV import chunks at 80 rows to stay safe. If order subcollections grow significantly, single-order creation could approach limits. Currently well within bounds. |
 | AI OCR accuracy | Medium | Medium | Gemini OCR extraction depends on image quality. Poor scans, handwritten prescriptions, or unusual formats may produce incorrect field values. The system shows confidence scores and allows manual correction, but operators must verify. |
 | Exchange rate timing | Low | Low | PTAX rates are fetched at order creation time and stored with the order. If there is a significant delay between order creation and payment, the rate used may differ from the actual rate at payment time. Currently mitigated by the 30-minute cache and the fact that most payments happen within 24 hours. |
@@ -924,10 +938,9 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | Firebase App Hosting | Deployment is tied to GitHub repo venda-integracao on branch main. Auto-deploys on push. Backend name: vend-backend. Max 4 instances, 512 MiB memory each. |
 | Firestore (NoSQL) | No joins, no transactions across collections (batches are within a single commit). Denormalization is required. Queries require pre-declared composite indexes. |
 | Google OAuth only | No username/password authentication. All users must have @entouragelab.com Google Workspace accounts. |
-| Server-side API keys | All external API calls (GlobalPay, ZapSign, TriStar, Gemini) must go through Next.js API routes or Cloud Functions — never from the browser client. |
+| Server-side API keys | All external API calls (GlobalPay, ZapSign, Gemini, and the future Memphis shipping API) must go through Next.js API routes or Cloud Functions — never from the browser client. |
 | Firestore security rules | Rules are declarative and cannot call external services. Complex authorization logic must be duplicated between client-side code and rules. |
 | Chrome extension (Manifest V3) | Content scripts run in page context. Service workers replace background pages. No eval() or remote code loading. |
-| TriStar sandbox | Currently pointed at sandbox URL. Production migration requires URL change and testing. |
 | Cloud Functions region | Functions deployed to us-central1. Must match Firestore region for low-latency triggers. |
 
 ### **Resource Constraints**
@@ -956,13 +969,13 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | Feature | Priority | Description |
 | :---- | :---- | :---- |
 | Payment processor migration — Brazil-based provider | High | **PLACEHOLDER — to be scoped.** GlobalPay (INT-01) remains the active payment processor for now. The plan is to migrate to a payment processor based in Brazil to avoid USD↔BRL exchange fees on transactions. TBD: (1) processor selection and commercial terms; (2) new integration spec (auth, payment-link creation, status query, cancel, webhook events — cf. INT-01); (3) order data model mapping; (4) dual-run / cutover strategy so in-flight orders are not disrupted; (5) reconciliation and idempotency for the new webhook; (6) whether BCB PTAX exchange-rate lookups (INT-03) are still needed once pricing is BRL-native. No code change yet — GlobalPay stays in place until the replacement is ready. |
-| TriStar inventory sync | High | Implement real-time or daily inventory sync between the platform and TriStar Express warehouse in Miami. A placeholder API route exists at /api/tristar/inventory/route.ts. The TriStar inventory API endpoint is not yet documented — research required. |
-| TriStar production migration | High | Switch TRISTAR\_API\_URL from sandbox to production (https://api.tristarexpress.com/v1/). Validate all shipment creation, tracking, and label flows against real shipments. |
+| Memphis (Licons) shipping integration | High | Build the international shipping integration that replaces the retired TriStar. Vendor Q&A received (webhooks with unique event IDs + 30-min/15-day retries, header/URL-param auth, 3 fixed webhook IPs, sandbox at sandboxweb.licons.pe, no API versioning). Remaining: map endpoints + shipment-creation payload from the Postman collection, implement create/track/label, and a Brazil-origin vs international UI. See INT-09. |
+| Memphis inventory sync | Medium | Once the Memphis integration lands, evaluate real-time or daily inventory sync between the platform and the Miami warehouse. Endpoint TBD. |
 | Staging environment | Medium | Create a separate Firebase project for development/staging with isolated Firestore, Auth, and Storage. Currently all development tests against production. |
 | LGPD compliance | Medium | Implement explicit consent workflow for patient data, data retention policies, right-to-deletion support, and breach notification procedures. |
 | Chrome Web Store publication | Medium | Publish the ANVISA extension to the Chrome Web Store for automatic updates instead of manual .zip distribution. |
-| Automated testing | Medium | The project has 113 unit tests covering order status logic, BCB PTAX, GlobalPay, ZapSign, and webhook handlers (~300ms total runtime). Remaining gaps: Firestore integration tests (Firebase Emulator), E2E smoke tests (Playwright), Chrome extension regression tests, AI/OCR accuracy tests. |
-| Notification system | Low | Partially implemented: email notifications via Resend for "Enviar do Brasil" (admin alert) and TriStar shipment rep notifications. Remaining: push notifications or email alerts for payment received, document signed, ANVISA approved. |
+| Automated testing | Medium | The project has 176 unit tests across 7 files covering order status logic, BCB PTAX, GlobalPay, ZapSign, webhook handlers, commission computation, and document helpers. Remaining gaps: Firestore integration tests (Firebase Emulator — incl. the login rep-merge), E2E smoke tests (Playwright), Chrome extension regression tests, AI/OCR accuracy tests, and a **required CI build check on PRs** (a non-building `main` went undetected for ~2 months). |
+| Notification system | Low | Partially implemented: email notifications via Resend for "Enviar do Brasil" (admin alert) and rep shipment notifications. Remaining: push notifications or email alerts for payment received, document signed, ANVISA approved. |
 | Reporting & analytics | Low | Dashboard with sales metrics, conversion rates, average processing time, revenue by representative. Currently the Dashboard page is minimal. |
 | Multi-language support | Low | English UI option for Miami-based operators. Currently hardcoded Portuguese only. |
 
@@ -1025,21 +1038,7 @@ orders ──1:0..1──> anvisa_requests (via anvisaRequestId)
 | ZAPSIGN\_API\_URL | Plain | https://api.zapsign.com.br |
 | ZAPSIGN\_SANDBOX | Plain | false |
 | ZAPSIGN\_API\_KEY | Secret | ZapSign API key |
-| TRISTAR\_API\_URL | Plain | https://sandbox.tristarexpress.com/v1/ |
-| TRISTAR\_API\_KEY | Secret | TriStar Express API key |
-| TRISTAR\_FROM\_NAME | Plain | Sender name (Entourage Lab) |
-| TRISTAR\_FROM\_DOCUMENT | Plain | Sender document/tax ID |
-| TRISTAR\_FROM\_ADDRESS | Plain | Sender street address |
-| TRISTAR\_FROM\_NUMBER | Plain | Sender address number |
-| TRISTAR\_FROM\_NEIGHBORHOOD | Plain | Sender neighborhood |
-| TRISTAR\_FROM\_CITY | Plain | Sender city (Miami) |
-| TRISTAR\_FROM\_STATE | Plain | Sender state (FL) |
-| TRISTAR\_FROM\_COUNTRY | Plain | Sender country (US) |
-| TRISTAR\_FROM\_POSTCODE | Plain | Sender postal code |
-| TRISTAR\_FROM\_PHONE | Plain | Sender phone number |
-| TRISTAR\_FROM\_EMAIL | Plain | Sender email (logistics@entouragelab.com) |
-| TRISTAR\_FROM\_TRADING\_NAME | Plain | Sender trading name (required for juridical entities — Entourage Lab trade name) |
-| TRISTAR\_INTEGRATION\_CODE | Plain | TriStar integration identifier (default: 1) |
+| *(TRISTAR\_\* removed)* | — | The TriStar integration was retired; its env vars (`TRISTAR_API_URL`, `TRISTAR_API_KEY`, `TRISTAR_FROM_*`, `TRISTAR_INTEGRATION_CODE`) are no longer used. Memphis replacements are TBD — see INT-09. |
 | GLOBALPAY\_WEBHOOK\_SECRET | Secret | GlobalPay webhook signature verification token |
 | ZAPSIGN\_WEBHOOK\_TOKEN | Secret | ZapSign webhook token verification |
 | RESEND\_API\_KEY | Secret | Resend email API key (for shipping notifications) |

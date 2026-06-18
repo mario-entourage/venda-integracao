@@ -1,7 +1,7 @@
 # QA Document
 
 > Entourage Lab — Sales Integration Platform
-> Last updated: 2026-03-22
+> Last updated: 2026-06-18
 
 ---
 
@@ -9,7 +9,7 @@
 
 This document describes the quality assurance strategy for the Entourage Lab Sales Integration Platform. It covers the automated test suite, what is tested, what is not yet tested, how to run the tests, and a manual QA checklist for features that cannot be verified through automation alone.
 
-**Current state:** 113 automated unit tests across 5 test files, covering all critical business logic and external integration modules. All tests pass. Total execution time: ~300ms.
+**Current state:** 176 automated unit tests across 7 test files, covering all critical business logic and external integration modules. Run with `npm test`.
 
 ---
 
@@ -55,9 +55,9 @@ npm run test:coverage
 | `src/server/integrations/globalpay.test.ts` | 17 | `globalpay.ts` (353 lines) | Payment link creation, auth flow, token caching, auto-retry, error mapping |
 | `src/server/integrations/zapsign.test.ts` | 26 | `zapsign.ts` (261 lines) | Markdown document generation, API calls, sandbox mode, error handling |
 | `src/server/integrations/webhooks.test.ts` | 19 | `payment/route.ts` (153 lines), `zapsign/route.ts` (114 lines) | Webhook payload parsing, status detection, idempotency, token matching |
-| **Total** | **113** | **1,205 lines of source** | |
-
-Test code: 1,710 lines. Source code under test: 1,205 lines. Ratio: 1.42:1.
+| `src/lib/commission.test.ts` | 24 | `commission.ts` | Marginal commission tiers and per-rep computation |
+| `src/lib/document-helpers.test.ts` | 39 | `document-helpers.ts` | Document type/status helpers and patient-name search |
+| **Total** | **176** | | |
 
 ---
 
@@ -257,7 +257,7 @@ All service-layer write functions now call `writeAuditLog()` with a required `pe
 
 | Area | What to Verify |
 |---|---|
-| **Orders** | Create an order → verify `audit_logs` collection has an entry with action=`create`, collection=`orders`, and the correct `performedById`. |
+| **Orders** | Create an order → verify the `audit_log` collection has an entry with action=`create`, collection=`orders`, and the correct `performedById`. |
 | **Order status** | Mark an order as paid → verify audit entry with action=`update_status`, changes=`{ status: 'paid' }`. |
 | **Clients** | Create/edit/soft-delete a client → verify audit entries for each action. |
 | **Doctors** | Create/edit/soft-delete a doctor → verify audit entries. |
@@ -269,23 +269,30 @@ All service-layer write functions now call `writeAuditLog()` with a required `pe
 
 | Area | What to Verify |
 |---|---|
-| **Auth middleware** | Call any `/api/tristar/*` route without an Authorization header → verify 401 response. |
-| **Zod validation** | Send a malformed body to `/api/tristar/create-shipment` (e.g., missing `to_name`) → verify 422 response with field-level error details. |
+| **Auth middleware** | Call any protected `/api/*` route (e.g. `/api/admin/activate-rep`, `/api/payments/sync`) without an Authorization header → verify 401 response. |
+| **Zod validation** | Send a malformed body to a validated route (e.g. `/api/admin/external-reps` with a missing `name`) → verify 4xx response with field-level error details. |
 | **Webhook secrets** | If `GLOBALPAY_WEBHOOK_SECRET` or `ZAPSIGN_WEBHOOK_TOKEN` env vars are not set, verify server logs show `console.warn` messages about disabled signature checks. |
 | **Webhook token rejection** | Send a webhook request with an incorrect token → verify 401 response. |
 
-#### TriStar Express Integration Fix
+#### Shipping (TriStar removed; Memphis pending)
+
+TriStar was removed. The only active shipping flows are the manual **Correios** (`LocalMailDialog`) and **Motoboy** dialogs, plus the "Enviar do Brasil" path. The international-carrier replacement (**Memphis**, on the Licons platform) is **not yet built** — the international option is disabled with "Indisponível — aguardando integração com a Memphis." There is nothing to QA on Memphis yet; when it lands, add payload/tracking/label checks here.
 
 | Area | What to Verify |
 |---|---|
-| **Payload format** | Open the TriStar dialog from an order's shipping step. Submit a shipment. Verify the API receives flat `from_*`/`to_*` fields (not nested `recipient` objects). Check server logs for any 422 errors from TriStar. |
-| **Multi-item support** | In the TriStar dialog, click "+ Adicionar item" to add a second item. Set different types, descriptions, quantities, and prices for each. Submit the shipment → verify TriStar API accepts the multi-item payload. |
-| **CBD ANVISA fields** | Set an item's type to "CBD" (40). Verify ANVISA authorization number and commercial name fields appear for that item. Fill them in and submit → verify the fields are included in the API payload. |
-| **Description field** | Verify each item row has a "Descrição do item" input. Leave it empty and try to submit → verify validation requires it. |
-| **Sender env vars** | Remove one `TRISTAR_FROM_*` env var and attempt a shipment → verify a 500 response with a clear error message listing the missing variable. |
-| **Optional recipient contact** | Verify phone and email fields appear for the recipient (optional). Submit with and without them → verify both succeed. |
-| **Insurance toggle** | Toggle insurance on. Enter a value. Submit → verify `with_insurance: true` and `insurance_value` are sent. Toggle off → verify `with_insurance: false`. |
-| **Success state** | After successful shipment creation, verify the dialog shows tracking code, TriStar ID, and a label download button. |
+| **Manual carriers** | From a paid order, open the shipping options → verify **Correios** and **Motoboy** dialogs work and persist tracking/carrier fields to the `shipping` subcollection. |
+| **Memphis disabled** | Verify the international shipping option is present but disabled with the "aguardando integração com a Memphis" message — no TriStar option anywhere. |
+| **Enviar do Brasil** | Choose the Brazil-origin path → verify the `adm@entouragelab.com` notification email fires with the order summary. |
+
+#### Sales reps without login (#32, #33)
+
+| Area | What to Verify |
+|---|---|
+| **External rep creation** | `/representantes → Novo Representante → Externo` → create a rep (name required, email/UF optional). Verify it posts to `/api/admin/external-reps`, appears immediately in rep dropdowns (e.g. Nova Venda), and is marked Externo. |
+| **Pending-user toggle** | On `/usuarios`, enable the Representante toggle for a `Pendente` (never-logged-in) user → verify it calls `/api/admin/activate-rep` and the user becomes selectable as a rep right away (no login required). |
+| **Login merge** | Have a rep that was designated without login sign in for the first time → verify they do **not** appear twice on `/usuarios` (old doc deactivated, `mergedIntoUid` set) and their prior sales still credit them in `/comissoes`. |
+| **Rules dependency** | The merge deactivates another user's doc; it relies on the `firestore.rules` clause allowing a signed-in user to update a same-email user doc. Confirm rules are deployed (`firebase deploy --only firestore:rules`) or the merge silently no-ops. |
+| **Commissions pointer** | In `/comissoes`, verify a merged rep's totals include orders whose `representative.userId` is the pre-merge id (the route follows `mergedIntoUid`). |
 
 ---
 
@@ -356,14 +363,8 @@ Use this checklist when deploying significant changes. Each item should be verif
 
 ### 5.1c Shipping Choice & Email Notifications
 
-- [ ] **Post-finalization dialog**: Complete the Nova Venda wizard. Verify a shipping choice dialog appears with two options: "TriStar Express" and "Enviar do Brasil".
-- [ ] **TriStar option**: Click "TriStar Express". Verify it opens the TriStar shipment dialog pre-populated with order data (recipient name, CPF, address from order's shipping address).
-- [ ] **TriStar multi-item**: In the TriStar dialog, add 2+ items with different types, descriptions, and prices. Submit → verify all items appear in the shipment.
-- [ ] **TriStar CBD item**: Add a CBD (type 40) item. Verify ANVISA fields appear. Fill them and submit → verify no API errors.
-- [ ] **TriStar insurance**: Toggle insurance on, set a value. Submit → verify the shipment is created with insurance.
-- [ ] **TriStar success**: After creating a shipment, verify tracking code and label download button appear in the success state.
+- [ ] **Post-finalization dialog**: Complete the Nova Venda wizard. Verify a shipping choice dialog appears. The international option (Memphis) is **disabled** with "Indisponível — aguardando integração com a Memphis"; the active path is "Enviar do Brasil". (TriStar has been removed — there should be no TriStar option.)
 - [ ] **Brazil option**: Click "Enviar do Brasil". Verify an email notification is sent to adm@entouragelab.com with the order summary (order ID, client name, amount, products).
-- [ ] **Rep notification (TriStar)**: Ship a rep-assigned order via TriStar. Verify the assigned rep receives an email notification with the tracking code and order details.
 - [ ] **No API key graceful**: If RESEND_API_KEY is not configured, verify the system logs a warning but does not throw an error. The order flow should complete normally.
 
 ### 5.2 Pedidos (Order Tracker)
@@ -374,7 +375,7 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Granular badges**: Verify unpaid orders show "Falta Pagamento", orders missing ANVISA show "Falta ANVISA", exempt orders do NOT show "Falta ANVISA".
 - [ ] **Ready-to-ship highlight**: Create an order that meets all 5 conditions (paid, docs complete, ANVISA exempt/concluded, ZapSign signed). Verify it has emerald accent styling.
 - [ ] **Pre-ship actions**: For orders NOT ready to ship, verify Mark as Paid, upload Documents, ANVISA, and ZapSign buttons appear.
-- [ ] **Shipping actions**: For orders that ARE ready to ship, verify TriStar, Correios, and Motoboy shipping buttons appear.
+- [ ] **Shipping actions**: For orders that ARE ready to ship, verify Correios and Motoboy shipping buttons appear, plus the disabled Memphis ("aguardando integração") international option. (No TriStar button — it was removed.)
 - [ ] **Regenerate payment link**: Click "Regenerar link" on an order. Verify a new invoice number is generated and the payment link is recreated.
 - [ ] **Batch operations** (admin only): Select multiple orders, click delete. Verify confirmation dialog appears and soft-deletes work.
 
@@ -420,7 +421,7 @@ Use this checklist when deploying significant changes. Each item should be verif
 
 ### 5.6 Estoque (Inventory)
 
-- [ ] **Miami tab**: Shows products with quantities for the Miami (Tristar) stock location.
+- [ ] **Miami tab**: Shows products with quantities for the Miami stock location. (Formerly the TriStar warehouse; the international carrier integration — Memphis — is pending.)
 - [ ] **Brasil tab**: Shows products with quantities for the Brasil stock location.
 - [ ] **Inline editing**: Click a quantity, change it, save. Verify Firestore is updated.
 - [ ] **Auto-create prompt**: If a stock location doesn't exist, verify the "create" prompt appears.
@@ -449,6 +450,20 @@ Use this checklist when deploying significant changes. Each item should be verif
 - [ ] **Manual deploy**: Run `firebase apphosting:rollouts:create vend-backend --git-branch main`. Verify rollout succeeds.
 - [ ] **Favicon**: Verify browser tab shows the custom favicon.ico.
 
+### 5.11 Comissões (Commissions)
+
+- [ ] **Per-rep totals**: Navigate to /comissoes for a period. Verify gross sales, order count, and commission per rep, with marginal tiers applied.
+- [ ] **Zero-sales reps**: Verify reps with no sales in the period still appear (with zeros).
+- [ ] **Merged-rep credit**: For a rep that was merged on login, verify orders created before the merge (whose `representative.userId` is the old id) still roll into the surviving rep's totals.
+
+### 5.12 Importar (CSV Bulk Import — admin)
+
+- [ ] **Admin-only**: Verify `/importar` is reachable only by admins.
+- [ ] **Format note**: Verify the upload screen states the file must have a header row on the first line **and be UTF-8**.
+- [ ] **Happy path**: Upload a UTF-8 CSV with the correct header (doctors/clients/reps) → verify column mapping, validation, preview, and import.
+- [ ] **Wrong encoding (negative)**: Upload a non-UTF-8 (e.g. Mac Roman) or header-less file → verify every row fails with "Nome/CRM obrigatório" and accents render corrupted, confirming the requirement is real.
+- [ ] **Duplicate detection**: Re-import the same batch → verify `batchImportId` dedup prevents duplicates.
+
 ---
 
 ## 6. Test Execution Log
@@ -456,18 +471,19 @@ Use this checklist when deploying significant changes. Each item should be verif
 ```
 $ npm test
 
- ✓ src/server/integrations/webhooks.test.ts    (19 tests)   3ms
- ✓ src/server/integrations/bcb-ptax.test.ts    (12 tests)  21ms
- ✓ src/server/integrations/globalpay.test.ts   (17 tests)  24ms
- ✓ src/server/integrations/zapsign.test.ts     (26 tests)  60ms
- ✓ src/lib/order-status-helpers.test.ts        (39 tests)   4ms
+ ✓ src/server/integrations/webhooks.test.ts    (19 tests)
+ ✓ src/server/integrations/bcb-ptax.test.ts    (12 tests)
+ ✓ src/server/integrations/globalpay.test.ts   (17 tests)
+ ✓ src/server/integrations/zapsign.test.ts     (26 tests)
+ ✓ src/lib/order-status-helpers.test.ts        (39 tests)
+ ✓ src/lib/commission.test.ts                  (24 tests)
+ ✓ src/lib/document-helpers.test.ts            (39 tests)
 
- Test Files  5 passed (5)
-      Tests  113 passed (113)
-   Duration  300ms
+ Test Files  7 passed (7)
+      Tests  176 passed (176)
 ```
 
-**TypeScript check:** `npx tsc --noEmit` — 0 errors.
+**TypeScript check:** `npm run typecheck` (`tsc --noEmit`) — 0 errors. **Build check:** `npx next build`.
 
 ---
 
@@ -480,13 +496,16 @@ $ npm test
 | GlobalPay integration | 17 tests | **Low** | Auth, caching, retry, error mapping covered. |
 | ZapSign integration | 26 tests | **Low** | Markdown, API, sandbox, errors covered. |
 | Webhook handlers | 19 tests | **Low** | Parsing, idempotency, status logic covered. |
-| Firestore services | 0 tests | **Medium** | Atomic batch writes not tested. Audit logging (`writeAuditLog`) called from all write functions but not unit tested. Recommend Firebase Emulator tests. |
+| Commission computation | 24 tests | **Low** | Marginal tiers and per-rep totals covered. |
+| Document helpers | 39 tests | **Low** | Type/status helpers and patient-name search covered. |
+| Firestore services | 0 tests | **Medium** | Atomic batch writes not tested. Audit logging (`writeAuditLog`) and the login rep-merge (`ensureUser` / `mergeDuplicateRepUsers`) called from write/login paths but not unit tested. Recommend Firebase Emulator tests. |
 | React components | 0 tests | **Low** | Thin UI wrappers. Low defect probability. |
 | Chrome extension | 0 tests | **High** | Dependent on ANVISA portal DOM. Highest regression risk. |
 | AI/OCR pipeline | 0 tests | **Medium** | Dependent on image quality and model accuracy. |
 | E2E flows | 0 tests | **Medium** | Integration between modules not automatically verified. |
 | Audit logging | 0 tests | **Medium** | `writeAuditLog()` called from all service write functions. Needs Firebase Emulator tests to verify entries are written correctly. |
-| TriStar integration | 0 tests | **Medium** | Payload format corrected (flat fields, multi-item). Homologation passed (IDs 1825, 1826). No automated tests — relies on Zod validation and manual QA. |
+| Memphis (Licons) shipping | 0 tests | **N/A — not built** | Replaces removed TriStar. Integration not yet implemented; nothing to test. Vendor Q&A captured in requirements INT-09. |
+| Rep login-merge | 0 tests | **Medium** | `mergeDuplicateRepUsers` (re-points `doctors.repUserId`, sets `mergedIntoUid`) and the commissions `mergedIntoUid` rollup run on real login + Firestore writes. Verify manually on first login of a no-login rep; depends on deployed `firestore.rules`. |
 | API route auth/validation | 0 tests | **Low** | `requireAuth()` and `validateBody()` middleware added to all routes. Simple pass-through logic with minimal branching. |
 
 ---
